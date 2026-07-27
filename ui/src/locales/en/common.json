@@ -32,6 +32,11 @@
     "copyLog": "Copy full log",
     "reportBug": "Report bug"
   },
+  "env": {
+    "partialListing": "Packages installed for your user account are not shown here.",
+    "partialListingDetail": "PipDock reads this environment in isolated mode, which skips {{path}}. Virtual environments are unaffected.",
+    "requiresPython": "Needs Python {{required}} — this environment is {{found}}."
+  },
   "phase0": {
     "heading": "Phase 0 — scaffold",
     "body": "The shell, design tokens and locale catalogs are in place. Screens land in M2, after the Phase 0 spikes answer how each engine reports its dry-run plan.",

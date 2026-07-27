@@ -21,7 +21,7 @@
 | PD-BLD-001 | `Microsoft Visual C++ 14.0 or greater is required` | missing MSVC build tools | Install VS Build Tools, or prefer a wheel-providing version |
 | PD-BLD-002 | `error in pyproject.toml` / `Backend … failed` / `metadata-generation-failed` | broken sdist build backend | Try previous version; report upstream (owner's example case) |
 | PD-BLD-003 | `error: Microsoft Visual C++`-absent + `Failed building wheel` generic | sdist-only build failed | Same as above; details in log |
-| PD-PKG-001 | `No matching distribution found` + requires-python mismatch in metadata | package needs different Python | Shows required range vs env version |
+| PD-PKG-001 | **Raised by PipDock before the engine runs** — `crates/pipdock-core/src/compat.rs` evaluates the candidate's `Requires-Python` against the env's version. (Engine stderr is not a reliable signal: pip reports it as plain `No matching distribution found`, indistinguishable from PD-PKG-002, and uv does not enforce it at all.) | package needs different Python | Shows required range vs env version |
 | PD-PKG-002 | `No matching distribution found` (plain) | name/version typo or yanked | Check spelling/version; `pipdock info <pkg>` |
 | PD-PKG-003 | `File was already yanked` / yanked marker | yanked release requested | Pick a non-yanked version |
 | PD-PKG-004 | hash mismatch / `THESE PACKAGES DO NOT MATCH THE HASHES` | corrupted download | Purge engine cache (P1 UI; CLI: engine cache purge) and retry |

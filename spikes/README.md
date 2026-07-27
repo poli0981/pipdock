@@ -249,11 +249,15 @@ bites non-venv system Pythons — and `C:\Python314` reports `externally_managed
 blocks PipDock from managing it. The remaining 376 vs 375 gap is likely a shadowed distribution
 that `importlib.metadata` reports twice and pip de-duplicates by normalized name.
 
-**Open decision** — it trades a documented security control against list accuracy:
+**DECIDED 2026-07-27 (owner): keep `-I`, and disclose the gap.** Dropping to `-E` was rejected —
+a package in user site is part of the untrusted surface the isolation exists to exclude. Probing
+twice was rejected as a second interpreter start per scan for a non-primary case.
 
-- keep `-I` and show a "user-site packages not shown" note on non-venv environments; or
-- drop to `-E` (ignore `PYTHONPATH` only, keep user site); or
-- probe twice and reconcile, at the cost of a second interpreter start per scan.
+Implemented: `probe.py` now reports `hidden_user_site`, the user-site path when it exists, is off
+`sys.path` and is non-empty, and `null` otherwise. Verified: the system Python reports the path
+(352 dists), a venv reports `null`. `PyEnv::listing_is_partial()` exposes it, and the Installed
+screen shows a note naming the path only when it is non-null, so the disclosure is accurate rather
+than a permanent disclaimer. See SECURITY §2 and UI-SPEC §4.
 
 ### Python 3.14 metadata deprecation (fixed)
 
@@ -268,13 +272,23 @@ detected-and-explained before v1.0.
 
 ---
 
-## Open questions for the owner
+## Decisions
 
-1. **Requires-Python divergence (SP-2).** pip refuses `scipy==1.7.3` on Python 3.12; uv plans it.
-   Should PipDock enforce Requires-Python itself so the preview is engine-independent, or show
-   each engine's own verdict?
-2. **`probe.py -I` (SP-6).** Which of the three options above?
-3. **Search ranking (SP-3).** Confirm that an exact/prefix boost over nucleo's score is in scope
-   for M1 rather than deferred — the Search screen is unusable without it.
-4. **`PD-BLD-001` fixture (SP-2).** Capture on a clean VM, or ship a labelled synthetic fixture?
-   `docs/TESTING.md` §2 requires a fixture per code before ship.
+**1. Requires-Python — DECIDED 2026-07-27: PipDock enforces it itself.** (SP-2: pip refuses
+`scipy==1.7.3` on Python 3.12; uv plans it.) The preview must not change shape because the user
+flipped the engine radio, so `crates/pipdock-core/src/compat.rs` screens every candidate against
+the environment's version before any engine command runs, and rejects surface as `PD-PKG-001` with
+the required range against the found version. Unparseable specifiers count as **compatible** —
+PipDock failing to read metadata must never be why an installable package is refused. See
+ARCHITECTURE §3, ERROR-CATALOG PD-PKG-001, DATA-FLOW §2.
+
+**2. `probe.py -I` — DECIDED 2026-07-27: keep `-I`, disclose the gap.** See SP-6 above.
+
+## Still open
+
+1. **Search ranking (SP-3).** Confirm that an exact/prefix boost over nucleo's score is in scope
+   for M1 rather than deferred — the Search screen is unusable without it (`requests-ntlm` ranks
+   above `requests`).
+2. **`PD-BLD-001` fixture (SP-2).** Capture on a clean VM, or ship a labelled synthetic fixture?
+   `docs/TESTING.md` §2 requires a fixture per code before ship. Same question for `PD-NET-002`,
+   `PD-PRM-002`, `PD-SYS-001` and `PD-SYS-002`, none of which this machine can produce.

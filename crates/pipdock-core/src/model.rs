@@ -67,8 +67,24 @@ pub struct PyEnv {
     /// PEP 668 marker present. When true, mutation is blocked unless the user enabled the
     /// Settings override (`PD-ENV-002`, SECURITY §3).
     pub externally_managed: bool,
+    /// User site-packages directory that `probe.py -I` is hiding, when there is one.
+    ///
+    /// Owner decision 2026-07-27 (SP-6): the probe keeps running isolated, so on a non-venv
+    /// system Python it reports fewer distributions than `pip list` does. `Some` means packages
+    /// really are hidden and the Installed screen shows a note naming this path; `None` — always
+    /// the case inside a venv — means the listing is complete.
+    #[serde(default)]
+    pub hidden_user_site: Option<PathBuf>,
     /// Where this env came from.
     pub source: EnvSource,
+}
+
+impl PyEnv {
+    /// True when the installed listing is known to be incomplete, so the UI must say so.
+    #[must_use]
+    pub fn listing_is_partial(&self) -> bool {
+        self.hidden_user_site.is_some()
+    }
 }
 
 /// A PEP 503-normalized distribution name.

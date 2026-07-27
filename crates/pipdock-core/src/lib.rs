@@ -23,6 +23,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod compat;
 pub mod engine;
 pub mod envs;
 pub mod errors;
@@ -34,6 +35,7 @@ pub mod pins;
 pub mod plan;
 pub mod snapshot;
 
+pub use compat::{Compatibility, PyVersion};
 pub use errors::{Code, PdError, Result};
 pub use model::{Dist, EngineId, OutdatedDist, PkgName, PyEnv, Version};
 

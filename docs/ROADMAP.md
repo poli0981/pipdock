@@ -17,7 +17,7 @@ The entire architecture stands on assumptions that must be verified on a real ma
 | SP-5 | Answered by SP-1 | **No engine reports held-back items at all.** Resolved version, latest version and blocker must all be derived by PipDock — for pip as much as for uv, contrary to ARCHITECTURE §3's implication. |
 | SP-6 | Answered | `uv python list` returns downloadable entries and duplicate shims; `env_hash` **must lowercase** the interpreter path on Windows or pins and snapshots split in two. `probe.py -I` hides 24 user-site packages on a system Python — open decision. Microsoft Store Python still unverified. |
 
-Four open questions for the owner are listed at the end of `spikes/README.md`; M1 should not start until at least the Requires-Python and `-I` decisions are made, since both change adapter behaviour.
+**Both adapter-behaviour questions were decided 2026-07-27** and are implemented: PipDock enforces `Requires-Python` itself so the preview is engine-independent (`crates/pipdock-core/src/compat.rs`, ARCHITECTURE §3), and `probe.py` keeps `-I` while reporting `hidden_user_site` so the Installed screen can disclose the gap accurately (SECURITY §2). Two non-blocking questions remain at the end of `spikes/README.md`: search ranking scope, and how to obtain the five error fixtures this machine cannot produce.
 
 | # | Spike | Question to answer | Exit criterion |
 |---|---|---|---|

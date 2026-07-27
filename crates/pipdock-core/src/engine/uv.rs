@@ -156,6 +156,7 @@ mod tests {
             prefix: r"C:\proj\.venv".into(),
             python_version: "3.12.4".into(),
             externally_managed: false,
+            hidden_user_site: None,
             source: crate::model::EnvSource::VenvScan,
         };
         let err = UvEngine

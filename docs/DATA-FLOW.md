@@ -15,11 +15,18 @@
 ## 2. Shared preamble (all mutating flows)
 
 ```text
-[Select env] → probe.py → env facts (python ver, PEP 668, dist metadata)
+[Select env] → probe.py -I → env facts (python ver, PEP 668, hidden_user_site, dist metadata)
      │
      ├─ EXTERNALLY-MANAGED detected → BLOCKED banner (PD-ENV-002)
      │        └─ explicit override in Settings → proceed with persistent warning chip
+     ├─ hidden_user_site non-null → Installed screen shows the partial-listing note
+     │                              (not a block; see SECURITY §2)
      └─ ok → flow continues; reverse-dep graph built from probe data
+
+Every candidate is then screened against the environment's Python version by
+pipdock-core (ARCHITECTURE §3): incompatible ones are dropped from the plan with
+PD-PKG-001 before any engine command runs, so the preview is identical under pip
+and uv even though the engines themselves disagree.
 ```
 
 ## 3. Update flow (state machine)

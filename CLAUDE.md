@@ -27,6 +27,18 @@ The design is fully specified. Read in this order; do not invent behaviour that 
 Two more that follow from them: every user-visible failure carries exactly one catalog code, and a
 failed package never aborts a batch (skip-and-continue, then a `"13 successful, 2 failed"` summary).
 
+## What the spikes proved (read `spikes/README.md` before writing an adapter)
+
+6. **Every plan must restate the full installed set as explicit requirements.** `install -U <pkg>`
+   ignores installed packages' constraints in **both** engines and will break them at exit 0.
+7. **Every pip invocation needs `PYTHONIOENCODING=utf-8` + `PYTHONUTF8=1`.** Without it
+   `--dry-run --report -` crashes on Windows/cp1252 (pip 25 *and* 26), data-dependently.
+8. **uv writes its plan to stderr**, so classify errors only after a plan-parse attempt.
+9. **`env_hash` lowercases the interpreter path on Windows**, or one env splits its pins and
+   snapshots in two.
+10. **PipDock enforces `Requires-Python` itself** (`src/compat.rs`) — the engines disagree, and the
+    preview must not depend on which one is selected.
+
 ## Conventions
 
 - Crates `pipdock-*`; React components prefixed `Pd` (`PdPackageRow`, `PdConflictDialog`)

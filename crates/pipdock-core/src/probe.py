@@ -70,6 +70,38 @@ def _externally_managed() -> bool:
     return any(os.path.isfile(p) for p in candidates)
 
 
+def _hidden_user_site() -> str | None:
+    """Return the user site-packages path when it exists but is NOT on this run's sys.path.
+
+    Owner decision 2026-07-27 (spike SP-6): PipDock keeps running the probe with -I, because
+    isolated mode is what stops a poisoned environment injecting code into it (SECURITY section 2).
+    The cost is that -I also disables user site-packages, so on a non-venv system Python the probe
+    reports fewer distributions than `pip list` does -- measured at 352 vs 375 on the dev machine.
+
+    Rather than warn always, report the path only when packages really are being hidden, so the UI
+    can show an accurate note instead of a permanent disclaimer. Returns None inside a venv (no
+    user site applies) and None when the directory is absent or empty.
+    """
+    if sys.prefix != sys.base_prefix:
+        return None  # venv: user site does not apply
+    try:
+        import site
+
+        user_site = site.getusersitepackages()
+    except Exception:  # noqa: BLE001 - absence of a user site is not an error
+        return None
+    if not user_site or not os.path.isdir(user_site):
+        return None
+    if user_site in sys.path:
+        return None  # not hidden: it is already being read
+    try:
+        if not os.listdir(user_site):
+            return None  # exists but empty: nothing is being hidden
+    except OSError:
+        return None
+    return user_site
+
+
 def _dists() -> list[dict[str, object]]:
     """Read installed distribution metadata.
 
@@ -126,6 +158,8 @@ def main(argv: list[str] | None = None) -> int:
             "executable": sys.executable,
             "is_venv": sys.prefix != sys.base_prefix,
             "externally_managed": _externally_managed(),
+            # Non-null means -I is hiding packages that pip would list; the UI shows a note.
+            "hidden_user_site": _hidden_user_site(),
             "dists": _dists(),
         }
     except Exception as exc:  # noqa: BLE001 - the core turns this into PD-ENV-003

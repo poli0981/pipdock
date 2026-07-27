@@ -32,6 +32,11 @@
     "copyLog": "Sao chép toàn bộ nhật ký",
     "reportBug": "Báo lỗi"
   },
+  "env": {
+    "partialListing": "Các gói cài riêng cho tài khoản của bạn không hiển thị ở đây.",
+    "partialListingDetail": "PipDock đọc môi trường này ở chế độ cách ly nên bỏ qua {{path}}. Môi trường ảo không bị ảnh hưởng.",
+    "requiresPython": "Cần Python {{required}} — môi trường này là {{found}}."
+  },
   "phase0": {
     "heading": "Giai đoạn 0 — dựng khung",
     "body": "Khung ứng dụng, design token và các catalog ngôn ngữ đã sẵn sàng. Các màn hình sẽ có ở M2, sau khi các spike của Giai đoạn 0 trả lời được cách từng engine báo cáo kế hoạch dry-run.",

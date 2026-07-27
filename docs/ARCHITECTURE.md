@@ -60,6 +60,12 @@ Key model types:
 - `ResolutionReport` — normalized output of the dry-run: `{ changes: Vec<Change>, held_back: Vec<HeldBack{ pkg, resolved, latest, blockers: Vec<Blocker{by, constraint}> }>, impossible: Option<ImpossibleDetail>, raw: String }`. **Both adapters must emit this same shape** — this is the whole point of the trait. The pip adapter fills it from `--dry-run --report` JSON; the uv adapter from its dry-run plan output (format pinned during spike SP-1; fixtures under `crates/pipdock-core/tests/fixtures/`).
 - `Blocker` computation: the engine's report says *what* was held back; *who* is responsible comes from cross-referencing the reverse-dependency graph (§4) with each blocker's `Requires-Dist` constraints. If attribution is ambiguous, show constraints without a culprit rather than guessing.
 
+### Requires-Python is enforced by PipDock, not the engine
+
+**Owner decision 2026-07-27 (spike SP-2).** The two engines disagree: `scipy==1.7.3` declares `Requires-Python >=3.7,<3.11`, and on Python 3.12 pip refuses it while uv plans to install it. Since G5 promises one behavior across heads, the preview must not change shape because the user flipped the engine radio — so `pipdock-core` evaluates `Requires-Python` itself in `src/compat.rs`, before any candidate reaches an engine command, and reports rejects as `PD-PKG-001` with the required range against the environment's version.
+
+This does not violate "explain, don't reimplement" (§1.2): resolution is still entirely the engine's. `compat.rs` only filters candidates the engine should never have been offered, using a narrow slice of PEP 440 — the comparison, wildcard and compatible-release operators as they appear in `Requires-Python`. Specifiers it cannot parse are treated as **compatible**, because PipDock failing to read metadata must never be the reason an installable package is refused.
+
 ### Engine selection
 
 `Settings.engine ∈ {pip, uv}`. First run: probe `uv --version` on PATH → preselect uv if present, else pip; user can change any time. The status bar always shows the active engine. Per-env override is P2.
@@ -70,10 +76,13 @@ Rust cannot cheaply read a foreign env's installed metadata. PipDock embeds a si
 
 ```json
 { "python": "3.12.4", "prefix": "...", "externally_managed": false,
+  "is_venv": true, "hidden_user_site": null,
   "dists": [ { "name": "requests", "version": "2.32.3",
                "requires_dist": ["urllib3<3,>=1.21.1", "..."],
                "requires_python": ">=3.8" } ] }
 ```
+
+`hidden_user_site` is non-null only when `-I` is actually hiding packages from the listing — see SECURITY §2 for the decision and the UI note it drives.
 
 From `requires_dist` the core builds the **reverse-dependency graph** used by: held-back attribution, uninstall guard, and pin auto-suggest. The helper is written to a temp file per invocation and never installed into the env. Compatibility floor: Python 3.10 (uses `importlib.metadata` only).
 
