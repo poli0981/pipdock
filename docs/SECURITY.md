@@ -1,0 +1,52 @@
+# PipDock — Security
+
+*Version 0.1 · 2026-07-17*
+
+## 1. Threat model (scoped)
+
+PipDock's job is to run package managers against local environments. The realistic risks are: (a) PipDock being tricked into running something other than the intended engine command, (b) users being nudged into damaging their system Python, (c) compromised update delivery of PipDock itself, and (d) PipDock's own dependency supply chain. Malicious *packages* the user chooses to install are out of scope — pip/uv execute setup code by design; PipDock's mitigations are the preview step, snapshots, and the (P1) audit tab, not sandboxing.
+
+## 2. Command execution hygiene
+
+- All engine/tool invocations use argv arrays via `tokio::process::Command`; **no shell is ever involved**, so quoting/injection classes are structurally absent.
+- Package names are validated against the PEP 508 name grammar (`^[A-Za-z0-9]([A-Za-z0-9._-]*[A-Za-z0-9])?$` after normalization) and version specs against PEP 440 before entering argv; anything else is rejected client-side with PD-PKG-002.
+- Interpreter paths come only from discovery (registry/launcher/uv) or an explicit user file-pick; they are canonicalized and existence-checked (PD-ENV-001) before use.
+- `probe.py` is stdlib-only, written to a temp file with a random name, executed with `-I` (isolated mode: ignores `PYTHONPATH`, user site) so a poisoned env cannot inject code into the probe.
+- Child processes run with inherited user privileges only; PipDock never elevates in v1 (PD-PRM-001 blocks instead — elevation broker is P2 with its own review).
+
+## 3. PEP 668 policy (protecting the system Python)
+
+Environments carrying an `EXTERNALLY-MANAGED` marker are **blocked by default** with an explanation and a "create a venv instead" pointer. The override lives in Settings, off by default, with explicit warning copy; when enabled, every mutating screen for that env shows a persistent warning chip, and the flag corresponding to `--break-system-packages` is passed only then. PipDock never adds that flag silently — this is a hard rule.
+
+## 4. Network surface
+
+| Destination | Purpose | Notes |
+|---|---|---|
+| `pypi.org` | PEP 691 name index, per-package JSON metadata | HTTPS with certificate verification; redirects restricted to `pypi.org`/`files.pythonhosted.org` |
+| `github.com` (Releases) | PipDock's own updates | via `tauri-plugin-updater`, see §5 |
+| — everything else | none | engines make their own PyPI connections per their configs (user `pip.ini`/`uv.toml` respected, incl. private indexes — PipDock does not rewrite index URLs) |
+
+No telemetry, no crash reporting endpoints, no analytics. TLS failures surface as PD-NET-002 and the app **never** offers to disable verification.
+
+## 5. Update integrity (PipDock itself)
+
+`tauri-plugin-updater` with the Tauri signing key: release artifacts + `latest.json` are signed at build; the app verifies signatures before applying. The private key lives only in GitHub Actions secrets (`TAURI_SIGNING_PRIVATE_KEY`); SHA-256 checksums are published per release for manual verification (SmartScreen note in README). Installer artifacts: NSIS + MSI from the Tauri bundler.
+
+## 6. Auditing user environments (P1 Security tab)
+
+pip-audit runs **from the tools venv** in freeze-file mode: snapshot-freeze the target env → `pip-audit -r <freeze> --no-deps --format json` → findings joined to installed rows (CVE/GHSA id, severity, fixed-in). Exact flags validated in spike SP-4 (pip-audit's foreign-env options evolve). Findings link to the OSV entry; "update to fixed version" hands off to the normal Update flow — audit never auto-applies anything.
+
+## 7. Supply chain of PipDock itself
+
+- CI: `cargo audit` (RustSec) + `npm audit --audit-level=high` gate every PR; Renovate keeps Rust/npm/tools-requirements pins current (see RELEASE-CI.md).
+- `Cargo.lock` and `package-lock.json` committed; builds are `--locked`.
+- CodeQL enabled via the ops-repo caller with the established permissions block.
+- Third-party licenses tracked in `legal/THIRD-PARTY-NOTICES.md`; `cargo about`/`license-checker` regenerate the inventory at release.
+
+## 8. Data & privacy engineering
+
+All state is local under `%LOCALAPPDATA%\PipDock\`. Logs may contain package names and paths — the bug-report flow shows the user exactly what will be prefilled and requires manual submission (ERROR-CATALOG §4). No identifiers are generated or stored beyond the random consent record. Deleting the app data folder is a complete reset (documented in Settings → Legal & About).
+
+## 9. Vulnerability reporting
+
+`SECURITY.md` at repo root (this file doubles as it) will carry a private reporting channel via GitHub Security Advisories on `poli0981/pipdock`; target acknowledgment ≤ 7 days. Coordinated disclosure preferred; in-range CVEs in shipped dependencies trigger a patch release via the standard pipeline.

@@ -1,0 +1,85 @@
+# PipDock
+
+**A friendly dock for your Python environments.** Inspect, install, update, and clean up Python packages in bulk — through a keyboard-first GUI or a scriptable CLI — without ever hand-typing another `pip install` incantation or guessing why an upgrade broke your project.
+
+> Repo: `poli0981/pipdock` · License: **GPL-3.0** · Platform: **Windows 10/11 (v1)** · Status: **design phase**
+
+---
+
+## Why PipDock
+
+`pip` is powerful but unforgiving: it does not preview what an upgrade will change, `pip uninstall` removes packages that other packages still need without a word of warning, and a failed bulk update leaves you guessing what state your environment is in. PipDock wraps the official resolvers (pip or uv — your choice) with:
+
+- **Preview before touch** — every install/update runs a dry-run resolve first and shows you exactly what will change.
+- **Three-way conflict handling** — when the latest version of a package would break another, choose *compatible version* (safe default), *skip*, or *force latest* with a clear "this will break X" warning.
+- **Snapshots & rollback** — a `pip freeze` snapshot is taken before every batch operation; one click restores it.
+- **Reverse-dependency guard** — uninstalling a package that others depend on triggers a warning listing exactly what would break.
+- **Skip-and-continue execution** — one failed package never aborts the batch; you get a final report: *"13 successful, 2 failed"* with per-package reasons.
+- **Never touches itself** — PipDock is a standalone binary that lives outside every environment it manages, so it can never break itself mid-update.
+
+## Features (v1)
+
+| Area | What you get |
+|---|---|
+| Environments | Auto-discovery of venvs / uv venvs / system Pythons (PEP 514 + `py` launcher), manual add, PEP 668 guard |
+| Installed | Full package list per env; up-to-date packages dimmed, outdated badged |
+| Updates | Bulk update with group dry-run resolve, held-back explanations, 3-way conflict choices |
+| Search & Install | Instant fuzzy search over a locally cached PyPI name index (PEP 691), metadata on demand, install queue |
+| Uninstall | Bulk uninstall with reverse-dependency warnings |
+| Pins | Exclude packages from bulk updates; auto-suggest pinning heavily-depended-on packages |
+| Snapshots | Automatic pre-batch snapshots, diff view, one-click rollback |
+| Engine | pip **or** uv, selectable in Settings (uv auto-detected on first run) |
+| Code Health | deptry + vulture + ruff against a project folder — unused deps, dead code, style — run from PipDock's own isolated tools env |
+| pip upkeep | Check & update pip itself per environment |
+| CLI | `pipdock` — full parity for core operations, JSON output, CI-friendly exit codes |
+| i18n | English + Tiếng Việt |
+| Privacy | No telemetry. Network traffic goes only to PyPI (package data) and GitHub (app updates) |
+
+## Install
+
+Download the installer (NSIS `.exe` or `.msi`) from [GitHub Releases](https://github.com/poli0981/pipdock/releases). Auto-updates are delivered via signed Tauri updater artifacts from the same Releases page.
+
+> Windows SmartScreen may warn on first run because binaries are not EV-code-signed. Verify the SHA-256 checksum published with each release.
+
+## Quick start
+
+**GUI:** launch PipDock → accept the first-run legal gate → pick an environment (auto-discovered or *Browse…*) → the *Updates* tab shows what's outdated → *Select all* → *Update* → review the preview → *Confirm*. Four clicks.
+
+**CLI:**
+
+```text
+pipdock env list
+pipdock update --all --env C:\proj\.venv --strategy compatible --yes
+pipdock doctor
+pipdock snapshot rollback latest
+```
+
+## Documentation
+
+| Doc | Purpose |
+|---|---|
+| [docs/PRD.md](docs/PRD.md) | Product goals, personas, feature matrix P0–P2, non-goals |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crate layout, Engine trait, IPC surface, storage |
+| [docs/DATA-FLOW.md](docs/DATA-FLOW.md) | State machines for update / install / uninstall, engine command mapping |
+| [docs/UI-SPEC.md](docs/UI-SPEC.md) | Terminal-tech design system, screens, click budgets |
+| [docs/CLI-SPEC.md](docs/CLI-SPEC.md) | Commands, flags, exit codes, JSON contracts |
+| [docs/CODE-HEALTH-SPEC.md](docs/CODE-HEALTH-SPEC.md) | deptry / vulture / ruff integration |
+| [docs/ERROR-CATALOG.md](docs/ERROR-CATALOG.md) | Error codes, stderr detection patterns, user guidance |
+| [docs/SECURITY.md](docs/SECURITY.md) | Threat model, PEP 668 policy, supply-chain hygiene |
+| [docs/TESTING.md](docs/TESTING.md) | Test strategy incl. disposable-venv integration tests |
+| [docs/RELEASE-CI.md](docs/RELEASE-CI.md) | CI callers into `poli0981/.github`, release & updater pipeline |
+| [docs/I18N.md](docs/I18N.md) | EN/VI localization rules |
+| [docs/ROADMAP.md](docs/ROADMAP.md) | Spike week, milestones, exit criteria |
+| [legal/](legal/) | EULA, Disclaimer, Privacy Policy, Third-Party Notices (linked by the in-app legal gate) |
+
+## License
+
+GPL-3.0. See [LICENSE](LICENSE) (add the standard GPL-3.0 text at repo creation). The legal documents in [legal/](legal/) must be committed publicly so the in-app legal gate can link to them on GitHub.
+
+PipDock is an independent project. It is not affiliated with or endorsed by the Python Software Foundation (Python, pip, PyPI) or Astral (uv, ruff).
+
+---
+
+## Tiếng Việt (tóm tắt)
+
+PipDock là ứng dụng Windows (GUI + CLI) giúp kiểm tra, cài đặt, cập nhật và gỡ **hàng loạt** gói thư viện Python một cách an toàn: luôn chạy dry-run xem trước thay đổi, xử lý xung đột phiên bản với 3 lựa chọn rõ ràng, tự chụp snapshot trước mỗi lần chạy để rollback một chạm, cảnh báo khi gỡ gói mà gói khác đang phụ thuộc, và tổng kết "13 thành công, 2 thất bại" kèm lý do từng gói. Hỗ trợ engine pip hoặc uv (chọn trong Settings), tìm gói tức thì nhờ cache chỉ mục PyPI, kèm module Code Health (deptry/vulture/ruff) để dọn dependency thừa và dead code. Không thu thập dữ liệu. Giấy phép GPL-3.0.

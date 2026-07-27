@@ -1,0 +1,43 @@
+# Rust
+/target/
+/src-tauri/target/
+**/*.rs.bk
+
+# Node
+node_modules/
+dist/
+dist-ssr/
+.vite/
+*.tsbuildinfo
+
+# Tauri build output
+/src-tauri/gen/
+
+# Environments (test venvs created by the integration suite / spikes)
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+
+# Editors / IDEs
+.idea/
+.vs/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# OS
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# Secrets & local config
+.env
+.env.*
+!.env.example
+*.key
+tauri-signing-private.key*
+
+# Logs & scratch
+*.log
+/spikes/out/

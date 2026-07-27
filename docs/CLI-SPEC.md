@@ -1,0 +1,87 @@
+# PipDock — CLI Specification
+
+*Version 0.1 · 2026-07-17 · Binary: `pipdock` (clap, from `pipdock-cli` crate, same `pipdock-core` as the GUI)*
+
+## 1. Principles
+
+1. **Same core, same behavior.** Every CLI command maps 1:1 onto the core functions the GUI uses; the CLI adds no logic of its own.
+2. **Safe by default, scriptable on request.** Interactive prompts appear on a TTY; in scripts (`--yes` / no TTY), conflicts default to **skip**, never force.
+3. **Machine-readable everywhere.** `--json` on every read/report command emits the same structs the GUI receives.
+4. English-only in v1 (GUI carries EN/VI); messages reuse catalog codes so they stay greppable.
+
+## 2. Global options
+
+```text
+--env <path>        interpreter or env dir (default: last used / auto-detected .venv in CWD)
+--engine <pip|uv>   override configured engine for this invocation
+--json              machine-readable output (NDJSON for streaming commands)
+--yes / -y          assume defaults on all prompts (conflicts → skip)
+--quiet / --verbose log level; --log-file <path> to tee
+--no-snapshot       DANGEROUS: skip pre-batch snapshot (CI images only; prints warning)
+```
+
+## 3. Commands
+
+```text
+pipdock env list                         # discovered envs, sources, PEP 668 flags
+pipdock env use <path>                   # set default env
+pipdock list [--outdated]                # installed table; dims/badges become columns in --json
+pipdock search <query> [--limit n]       # local fuzzy index search
+pipdock info <pkg>                       # cached PyPI metadata
+pipdock install <spec...> [--dry-run]    # spec = name[==version]; dry-run prints the ResolutionReport
+pipdock update [--all | <pkg...>]
+        [--strategy compatible|latest]   # latest == force; requires --yes off-TTY acknowledgement
+        [--except <pkg,...>]             # ad-hoc exclusions on top of pins
+        [--dry-run]
+pipdock uninstall <pkg...> [--force]     # guard prints breakage list; --force overrides
+pipdock pin add|remove <pkg> [--reason "…"] | pin list
+pipdock snapshot list | create | diff <id> | rollback <id|latest>
+pipdock doctor                           # engine check + env sanity + (P1) audit summary
+pipdock health [--path <dir>] [--tool deptry|vulture|ruff] [--fix]   # --fix = ruff only, prompts
+pipdock pip-upgrade                      # upgrade pip inside --env (pip engine paths only)
+pipdock engine [pip|uv]                  # show or set configured engine
+pipdock index refresh                    # re-pull PEP 691 name index
+pipdock self report-bug                  # prints prefilled GitHub issue URL (ERROR-CATALOG §4)
+```
+
+## 4. Interactive conflict handling (TTY)
+
+`update`/`install` render the preview, then per needs-decision package:
+
+```text
+requests  held back at 2.30.0 (latest 2.32.3) — blocked by apiclient 1.4 (requires <2.31)
+  [C]ompatible (default)   [S]kip   [F]orce latest   [A]bort plan
+```
+
+`--yes` answers `C` for held-back and `S` for impossible. `--strategy latest` pre-answers `F` and prints the breakage warning before a mandatory 3-second countdown (skippable with a second `-y`).
+
+## 5. Exit codes
+
+| Code | Meaning |
+|---|---|
+| 0 | success, all steps ok |
+| 1 | completed with per-package failures (see JSON `counts.failed`) |
+| 2 | plan aborted (resolution impossible & user/skip policy removed everything) |
+| 3 | environment error (PD-ENV-*, incl. PEP 668 block) |
+| 4 | engine unavailable / version too old (PD-ENG-*) |
+| 5 | snapshot failure — nothing was executed (PD-SNP-001) |
+| 6 | network/index error (PD-NET-*) |
+| 10 | internal error (PD-INT-*; log path printed) |
+| 130 | user cancelled (Ctrl-C; child processes reaped, partial summary printed) |
+
+## 6. JSON contracts
+
+`--json` payloads are the serde-serialized core types (`Dist`, `OutdatedDist`, `ResolutionReport`, `ExecutionSummary`, `CheckReport`) — schema documented by `pipdock schema <type>` which prints the JSON Schema generated from the Rust types, so scripts can pin against it. Streaming commands (`update`, `install`, `health`) with `--json` emit NDJSON events matching the GUI's `plan-progress` payloads, terminated by a final `summary` object.
+
+## 7. Examples
+
+```bash
+# Nightly maintenance of a bot venv (task scheduler), safe strategy, log kept:
+pipdock update --all --env C:\bots\scraper\.venv --yes --json --log-file C:\logs\pd.json
+
+# Audit what an upgrade would do without touching anything:
+pipdock update pandas numpy --dry-run --json | jq '.held_back'
+
+# Refuse-to-break uninstall in CI (exit 1 if guard trips):
+pipdock uninstall legacylib --json || echo "dependents exist, aborting"
+```

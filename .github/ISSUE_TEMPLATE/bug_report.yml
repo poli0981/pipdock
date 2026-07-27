@@ -1,0 +1,64 @@
+name: Bug report
+description: Report a problem with PipDock (the in-app "Report bug" button prefills this form)
+title: "[Bug]: "
+labels: ["bug", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for the report! If you came here from the in-app **Report bug** button, most fields
+        are prefilled and the full log was copied to your clipboard — paste it below if asked.
+        Vui lòng viết bằng English hoặc Tiếng Việt đều được.
+  - type: input
+    id: pd-version
+    attributes:
+      label: PipDock version
+      placeholder: "1.0.0"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2 (26100.x)"
+    validations:
+      required: true
+  - type: dropdown
+    id: engine
+    attributes:
+      label: Engine
+      options: [pip, uv, "not sure"]
+    validations:
+      required: true
+  - type: input
+    id: python
+    attributes:
+      label: Environment Python / engine versions
+      placeholder: "Python 3.12.4 · pip 26.1.2 (or uv 0.9.x)"
+  - type: input
+    id: error-code
+    attributes:
+      label: Error code (if shown)
+      placeholder: "PD-BLD-002"
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened / steps to reproduce
+      placeholder: "1. Selected env … 2. Update all … 3. …"
+    validations:
+      required: true
+  - type: textarea
+    id: log-excerpt
+    attributes:
+      label: Log excerpt
+      description: Prefilled by the app (last ~6 KB). Paste the full clipboard log if it was truncated.
+      render: text
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Checks
+      options:
+        - label: I searched existing issues for this problem
+          required: true
+        - label: The log excerpt contains no private information I don't want public
+          required: true
