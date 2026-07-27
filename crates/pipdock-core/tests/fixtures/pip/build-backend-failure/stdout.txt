@@ -1,0 +1,6 @@
+Collecting numpy==1.19.5
+  Using cached numpy-1.19.5.zip (7.3 MB)
+  Installing build dependencies: started
+  Installing build dependencies: finished with status 'done'
+  Getting requirements to build wheel: started
+  Getting requirements to build wheel: finished with status 'done'

@@ -1,0 +1,31 @@
+{
+  "scenario": "clean-upgrade",
+  "question": "Baseline: what does an unconstrained upgrade plan look like?",
+  "expects_code": null,
+  "engine": "pip",
+  "engine_version": "pip 25.0.1 from C:\\Users\\Anon\\AppData\\Local\\Temp\\pd-pip-clean-upgrade-enhq45pn\\venv\\Lib\\site-packages\\pip (python 3.12)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "<TMP>\\pd-pip-clean-upgrade-enhq45pn\\venv\\Scripts\\python.exe",
+    "-m",
+    "pip",
+    "install",
+    "-U",
+    "--dry-run",
+    "--quiet",
+    "--report",
+    "-",
+    "idna"
+  ],
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 0,
+  "seed": [
+    "idna==3.4"
+  ],
+  "seed_exit_code": 0,
+  "stdout_bytes": 7526,
+  "stderr_bytes": 203
+}

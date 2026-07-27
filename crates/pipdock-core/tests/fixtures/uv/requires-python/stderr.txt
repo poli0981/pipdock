@@ -1,0 +1,6 @@
+Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-requires-python-d0zbs0as\venv
+Resolved 2 packages in 949ms
+Would download 2 packages
+Would install 2 packages
+ + numpy==1.22.4
+ + scipy==1.7.3

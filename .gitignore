@@ -41,3 +41,6 @@ tauri-signing-private.key*
 # Logs & scratch
 *.log
 /spikes/out/
+
+# Spike tooling venvs (SP-1 needs several uv versions side by side)
+/spikes/.venv*/

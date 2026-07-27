@@ -1,0 +1,3 @@
+
+[notice] A new release of pip is available: 25.0.1 -> 26.1.2
+[notice] To update, run: C:\Users\Anon\AppData\Local\Temp\pd-pip-held-back-constrained-c9qurkon\venv\Scripts\python.exe -m pip install --upgrade pip

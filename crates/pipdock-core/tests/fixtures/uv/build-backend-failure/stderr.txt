@@ -1,0 +1,18 @@
+Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-build-backend-failure-x06525p0\venv
+Resolved 1 package in 325ms
+   Building numpy==1.19.5
+  × Failed to build `numpy==1.19.5`
+  ├─▶ The build backend returned an error
+  ╰─▶ Call to `setuptools.build_meta:__legacy__.build_wheel` failed (exit
+      code: 1)
+
+      [stderr]
+      Traceback (most recent call last):
+        File "<string>", line 8, in <module>
+        File
+      "C:\Users\Anon\AppData\Local\uv\cache\builds-v0\.tmpM6qzfj\Lib\site-packages\setuptools\__init__.py",
+      line 9, in <module>
+          import distutils.core
+      ModuleNotFoundError: No module named 'distutils'
+
+hint: `distutils` was removed from the standard library in Python 3.12. Consider adding a constraint (like `numpy >1.19.5`) to avoid building a version of `numpy` that depends on `distutils`.

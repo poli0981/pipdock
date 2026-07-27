@@ -1,0 +1,7 @@
+Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-impossible-9aivzjzy\venv
+  × No solution found when resolving dependencies:
+  ╰─▶ Because httpx==0.23.0 depends on httpcore>=0.15.0,<0.16.0 and you
+      require httpcore>=1.0, we can conclude that your requirements and
+      httpx==0.23.0 are incompatible.
+      And because you require httpx==0.23.0, we can conclude that your
+      requirements are unsatisfiable.

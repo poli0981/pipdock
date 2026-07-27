@@ -1,0 +1,29 @@
+{
+  "scenario": "yanked",
+  "question": "Yanked release explicitly requested. Does the engine flag the yank, and where \u2014 structured field or stderr text?",
+  "expects_code": "PD-PKG-003",
+  "engine": "pip",
+  "engine_version": "pip 25.0.1 from C:\\Users\\Anon\\AppData\\Local\\Temp\\pd-pip-yanked-id7w4uu1\\venv\\Lib\\site-packages\\pip (python 3.12)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "<TMP>\\pd-pip-yanked-id7w4uu1\\venv\\Scripts\\python.exe",
+    "-m",
+    "pip",
+    "install",
+    "-U",
+    "--dry-run",
+    "--quiet",
+    "--report",
+    "-",
+    "urllib3==2.0.0"
+  ],
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 0,
+  "seed": [],
+  "seed_exit_code": null,
+  "stdout_bytes": 8246,
+  "stderr_bytes": 685
+}

@@ -1,0 +1,6 @@
+Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-yanked-q_o2x7qx\venv
+Resolved 1 package in 740ms
+Would download 1 package
+Would install 1 package
+ + urllib3==2.0.0
+warning: `urllib3==2.0.0` is yanked (reason: "Truncated response bodies when streaming a large compressed body. Upgrade to at least 2.0.2 (See: https://github.com/urllib3/urllib3/issues/3009)")

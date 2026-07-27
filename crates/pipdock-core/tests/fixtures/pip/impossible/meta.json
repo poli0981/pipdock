@@ -1,0 +1,32 @@
+{
+  "scenario": "impossible",
+  "question": "Unsatisfiable set: how is ResolutionImpossible reported and is it attributable?",
+  "expects_code": "PD-RES-001",
+  "engine": "pip",
+  "engine_version": "pip 25.0.1 from C:\\Users\\Anon\\AppData\\Local\\Temp\\pd-pip-impossible-6ja7hyci\\venv\\Lib\\site-packages\\pip (python 3.12)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "<TMP>\\pd-pip-impossible-6ja7hyci\\venv\\Scripts\\python.exe",
+    "-m",
+    "pip",
+    "install",
+    "-U",
+    "--dry-run",
+    "--quiet",
+    "--report",
+    "-",
+    "httpcore>=1.0",
+    "httpx==0.23.0"
+  ],
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 1,
+  "seed": [
+    "httpx==0.23.0"
+  ],
+  "seed_exit_code": 0,
+  "stdout_bytes": 0,
+  "stderr_bytes": 454
+}

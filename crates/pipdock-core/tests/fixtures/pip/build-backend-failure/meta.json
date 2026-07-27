@@ -1,0 +1,25 @@
+{
+  "scenario": "build-backend-failure",
+  "question": "sdist build backend failure (PEP 517 backend unavailable).",
+  "expects_code": "PD-BLD-002",
+  "engine": "pip",
+  "engine_version": "pip 25.0.1 from C:\\Users\\Anon\\AppData\\Local\\Temp\\pd-pip-build-backend-failure-tykm5pzw\\venv\\Lib\\site-packages\\pip (python 3.12)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "<TMP>\\pd-pip-build-backend-failure-tykm5pzw\\venv\\Scripts\\python.exe",
+    "-m",
+    "pip",
+    "install",
+    "-U",
+    "numpy==1.19.5"
+  ],
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 2,
+  "seed": [],
+  "seed_exit_code": null,
+  "stdout_bytes": 282,
+  "stderr_bytes": 7255
+}
