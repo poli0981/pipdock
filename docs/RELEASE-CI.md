@@ -56,8 +56,12 @@ Two active lines at most: latest release gets features; previous minor gets secu
 
 ## 5. Repo scaffolding checklist (day one)
 
-- [ ] GPL-3.0 `LICENSE` at root; `legal/` committed **publicly** (the in-app legal gate links to these GitHub URLs — CommandForge lesson: don't leave them gitignored).
-- [ ] `.github/ISSUE_TEMPLATE/bug_report.yml` (shipped in this suite) + `config.yml` disabling blank issues.
-- [ ] Branch protection, Dependabot, CodeQL (JS/TS), secrets via `gh secret set`.
-- [ ] `rust-toolchain.toml`, `.nvmrc` (24), `Cargo.lock`/`package-lock.json` committed.
+- [x] GPL-3.0 `LICENSE` at root; `legal/` committed **publicly** (the in-app legal gate links to these GitHub URLs — CommandForge lesson: don't leave them gitignored).
+- [x] `.github/ISSUE_TEMPLATE/bug_report.yml` (shipped in this suite) + `config.yml` disabling blank issues.
+- [x] `.github/dependabot.yml` covering cargo, npm, github-actions and the Code Health pins.
+- [x] `rust-toolchain.toml`, `.nvmrc` (24), `Cargo.lock`/`package-lock.json` committed.
+- [ ] **Repo settings (owner, via the GitHub UI or `gh` — not committable):** branch protection on `main`; disable Advanced Security → CodeQL *Default setup* (the reusable is advanced-setup and is rejected at upload time otherwise); enable Discussions for the issue-template contact links.
+- [ ] **Secrets via `gh secret set`:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the Discord webhooks (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`).
+- [ ] **Generate the updater keypair** (`npx tauri signer generate`) and replace the `plugins.updater.pubkey` placeholder in `src-tauri/tauri.conf.json` with the public half. Until then the updater cannot verify a release.
+- [ ] Replace the placeholder app icon (`src-tauri/icons/`) in the ROADMAP Phase 3 branding pass.
 - [ ] README badges: CI, CodeQL, release, license.

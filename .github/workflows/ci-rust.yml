@@ -1,0 +1,73 @@
+# Project-local: the ops repo (poli0981/.github) has no reusable Rust workflow, and only its
+# desktop-csharp reusable runs on Windows. See docs/RELEASE-CI.md §1.
+#
+# Windows runner because the environment-discovery module reads the PEP 514 registry and the `py`
+# launcher — a Linux run would skip exactly the code most likely to break.
+
+name: CI / Rust
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-rust-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  RUSTFLAGS: -D warnings
+
+jobs:
+  check:
+    name: fmt · clippy · test
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # rust-toolchain.toml pins the exact version, so no toolchain action is needed — rustup
+      # honours it on first invocation and installs rustfmt and clippy with it.
+      - name: Show toolchain
+        run: |
+          rustup show
+          cargo --version
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      - name: Format
+        run: cargo fmt --all -- --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
+      - name: Test
+        run: cargo test --workspace --locked
+
+  audit:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      # RustSec advisories against the committed Cargo.lock. Split from the Windows job because
+      # it needs no toolchain pin and no target build — it is a lockfile scan.
+      - name: Audit
+        uses: rustsec/audit-check@v2
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}

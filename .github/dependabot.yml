@@ -1,0 +1,52 @@
+# Dependency updates — docs/RELEASE-CI.md §2.
+#
+# Dependabot, not Renovate: there is no Renovate configuration anywhere in the poli0981/.github
+# ops repo, and that repo ships a dependabot-summary.yml, which makes Dependabot the portfolio
+# standard.
+#
+# Grouping intent carried over from the original spec: weekly grouped minor/patch PRs per
+# ecosystem, and Code Health pins kept in their own group so they stay reviewable in isolation.
+# Security advisories bypass grouping and schedule automatically — that is Dependabot's default
+# for security updates and cannot be configured away here.
+
+version: 2
+
+updates:
+  - package-ecosystem: cargo
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      cargo-minor-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, rust]
+
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+    groups:
+      npm-minor-patch:
+        update-types: [minor, patch]
+    labels: [dependencies, frontend]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, ci]
+
+  # Code Health tool pins (deptry / vulture / ruff), shipped with the app and resolved at release
+  # time — CODE-HEALTH-SPEC §2. Kept as its own ecosystem so a bump here is never bundled with
+  # application dependencies.
+  - package-ecosystem: pip
+    directory: /tools
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, code-health]

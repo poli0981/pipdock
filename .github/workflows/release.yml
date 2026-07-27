@@ -1,0 +1,97 @@
+# Project-local: the ops repo has no reusable Tauri/build workflow (docs/RELEASE-CI.md §1).
+#
+# Produces the NSIS .exe and .msi, signs the updater artifacts, publishes SHA256SUMS.txt and
+# leaves a DRAFT release for owner review. Publishing is manual on purpose — RELEASE-CI.md §3.4 —
+# and announce-release.yml fires on `release: published`.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to build (for re-runs)
+        required: true
+        type: string
+
+permissions:
+  contents: write # release assets
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build:
+    name: Build · sign · draft
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-release-
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: Build frontend
+        run: npm run build
+
+      - name: Build, bundle and sign
+        env:
+          # Private key lives only in Actions secrets (docs/SECURITY.md §5); the matching public
+          # key is baked into tauri.conf.json so the app verifies updates before applying them.
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        run: npx tauri build --locked --bundles nsis,msi,updater
+
+      - name: Collect artifacts
+        shell: pwsh
+        run: |
+          $out = "release-artifacts"
+          New-Item -ItemType Directory -Force $out | Out-Null
+          Get-ChildItem -Recurse target\release\bundle `
+            -Include *.exe, *.msi, *.zip, *.sig, latest.json |
+            ForEach-Object { Copy-Item $_.FullName $out }
+          Get-ChildItem $out
+
+      - name: Publish checksums
+        shell: pwsh
+        run: |
+          # SmartScreen warns on first run because the binaries are not EV-code-signed, so the
+          # README tells users to verify these instead (docs/SECURITY.md §5).
+          Get-ChildItem release-artifacts -File |
+            Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
+            ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
+            Set-Content release-artifacts\SHA256SUMS.txt -Encoding ascii
+          Get-Content release-artifacts\SHA256SUMS.txt
+
+      - name: Draft GitHub release
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ inputs.tag || github.ref_name }}
+          draft: true # owner reviews, then publishes; publishing triggers the announcement
+          generate_release_notes: true
+          files: release-artifacts/*

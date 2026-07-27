@@ -1,0 +1,40 @@
+{
+  "app": {
+    "name": "PipDock",
+    "tagline": "A friendly dock for your Python environments."
+  },
+  "nav": {
+    "environments": "Environments",
+    "installed": "Installed",
+    "updates": "Updates",
+    "search": "Search",
+    "pins": "Pins",
+    "health": "Health",
+    "security": "Security",
+    "settings": "Settings"
+  },
+  "status": {
+    "idle": "idle",
+    "scanning": "scanning",
+    "resolving": "resolving",
+    "executing": "executing",
+    "log": "log",
+    "noEnvironment": "no environment selected"
+  },
+  "actions": {
+    "confirm": "Confirm",
+    "cancel": "Cancel",
+    "back": "Back",
+    "rescan": "Rescan",
+    "browse": "Browse…",
+    "selectAll": "Select all",
+    "details": "Details",
+    "copyLog": "Copy full log",
+    "reportBug": "Report bug"
+  },
+  "phase0": {
+    "heading": "Phase 0 — scaffold",
+    "body": "The shell, design tokens and locale catalogs are in place. Screens land in M2, after the Phase 0 spikes answer how each engine reports its dry-run plan.",
+    "docs": "See docs/ROADMAP.md"
+  }
+}

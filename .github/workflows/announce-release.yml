@@ -1,0 +1,28 @@
+# Caller into the ops repo's Discord announcer.
+#
+# docs/RELEASE-CI.md §1 originally described a `notify.yml` cross-posting to six platforms; the
+# ops repo has no such workflow. Announcements are Discord-only, via
+# poli0981/.github/.github/scripts/discord_notify.py.
+
+name: Announce Release
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Tag to announce (for re-runs)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  announce:
+    uses: poli0981/.github/.github/workflows/announce-release.yml@main
+    with:
+      tag_override: ${{ inputs.tag || '' }}
+    secrets: inherit

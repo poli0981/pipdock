@@ -1,0 +1,48 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "PipDock",
+  "version": "0.1.0",
+  "identifier": "com.skullmute.pipdock",
+  "build": {
+    "beforeDevCommand": "npm run dev",
+    "beforeBuildCommand": "npm run build",
+    "devUrl": "http://localhost:1420",
+    "frontendDist": "../dist"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "PipDock",
+        "width": 1180,
+        "height": 760,
+        "minWidth": 900,
+        "minHeight": 560,
+        "resizable": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis", "msi"],
+    "icon": ["icons/icon.ico"],
+    "copyright": "Copyright (C) 2026 Kokone (poli0981). Licensed under GPL-3.0-only.",
+    "category": "DeveloperTool",
+    "shortDescription": "A friendly dock for your Python environments.",
+    "longDescription": "Inspect, install, update and clean up Python packages in bulk, with a preview of every change, three-way conflict handling and one-click rollback.",
+    "windows": {
+      "allowDowngrades": false
+    }
+  },
+  "plugins": {
+    "updater": {
+      "endpoints": [
+        "https://github.com/poli0981/pipdock/releases/latest/download/latest.json"
+      ],
+      "pubkey": "REPLACE_AT_FIRST_RELEASE_WITH_TAURI_SIGNING_PUBLIC_KEY"
+    }
+  }
+}

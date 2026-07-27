@@ -1,0 +1,20 @@
+# Caller into the ops repo's Discord CI-failure notifier.
+#
+# The reusable skips workflows that have their own dedicated notifier (release, CodeQL,
+# Dependabot), so this does not double-report.
+
+name: Notify CI Failure
+
+on:
+  workflow_run:
+    workflows: ['*']
+    types: [completed]
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  notify:
+    uses: poli0981/.github/.github/workflows/notify-ci-failure.yml@main
+    secrets: inherit

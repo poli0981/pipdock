@@ -1,0 +1,30 @@
+# Caller into the ops repo's CodeQL reusable.
+#
+# JavaScript/TypeScript only: CodeQL has no Rust analyzer, and the reusable's supported set is
+# csharp, python, javascript-typescript, ruby, c-cpp, java-kotlin, go and swift. Rust's static
+# analysis is clippy `-D warnings` plus `cargo audit`, both blocking in ci-rust.yml.
+# See docs/RELEASE-CI.md §1 and docs/SECURITY.md §7.
+#
+# The reusable notes that repo Settings → Advanced Security → CodeQL "Default setup" must be
+# DISABLED, or this advanced-setup workflow is rejected at upload time.
+
+name: CodeQL
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  schedule:
+    # Weekly, offset off the hour to avoid the top-of-hour scheduling pileup.
+    - cron: '37 4 * * 1'
+
+permissions:
+  actions: read
+  contents: read
+  security-events: write
+
+jobs:
+  analyze:
+    uses: poli0981/.github/.github/workflows/reusable-codeql.yml@main
+    with:
+      languages: '["javascript-typescript"]'

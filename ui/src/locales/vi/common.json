@@ -1,0 +1,40 @@
+{
+  "app": {
+    "name": "PipDock",
+    "tagline": "Bến đỗ thân thiện cho các môi trường Python của bạn."
+  },
+  "nav": {
+    "environments": "Môi trường",
+    "installed": "Đã cài",
+    "updates": "Cập nhật",
+    "search": "Tìm kiếm",
+    "pins": "Ghim",
+    "health": "Sức khỏe mã",
+    "security": "Bảo mật",
+    "settings": "Cài đặt"
+  },
+  "status": {
+    "idle": "rảnh",
+    "scanning": "đang quét",
+    "resolving": "đang phân giải",
+    "executing": "đang chạy",
+    "log": "nhật ký",
+    "noEnvironment": "chưa chọn môi trường"
+  },
+  "actions": {
+    "confirm": "Xác nhận",
+    "cancel": "Hủy",
+    "back": "Quay lại",
+    "rescan": "Quét lại",
+    "browse": "Duyệt…",
+    "selectAll": "Chọn tất cả",
+    "details": "Chi tiết",
+    "copyLog": "Sao chép toàn bộ nhật ký",
+    "reportBug": "Báo lỗi"
+  },
+  "phase0": {
+    "heading": "Giai đoạn 0 — dựng khung",
+    "body": "Khung ứng dụng, design token và các catalog ngôn ngữ đã sẵn sàng. Các màn hình sẽ có ở M2, sau khi các spike của Giai đoạn 0 trả lời được cách từng engine báo cáo kế hoạch dry-run.",
+    "docs": "Xem docs/ROADMAP.md"
+  }
+}

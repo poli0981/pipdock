@@ -1,0 +1,11 @@
+# RELEASE-CI.md §5: blank issues disabled so every report carries the fields the triage flow and
+# the in-app "Report bug" deep link depend on (ERROR-CATALOG §4).
+blank_issues_enabled: false
+
+contact_links:
+  - name: Question or idea
+    url: https://github.com/poli0981/pipdock/discussions
+    about: Ask about usage, propose a feature, or share a workflow.
+  - name: Security vulnerability
+    url: https://github.com/poli0981/pipdock/security/advisories/new
+    about: Report privately via GitHub Security Advisories. Please do not open a public issue.

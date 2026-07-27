@@ -1,0 +1,20 @@
+# Code Health tools — CODE-HEALTH-SPEC §2.
+#
+# These are installed into PipDock's own isolated environment at
+# %LOCALAPPDATA%\PipDock\tools\.venv, NEVER into the user's environment. Exact `==` pins are
+# resolved at PipDock release time; there are no floating versions at runtime, so a report is
+# reproducible for a given PipDock build.
+#
+# Dependabot bumps these in their own group (see .github/dependabot.yml) so a tool upgrade is
+# never bundled with application dependencies — a ruff minor can change findings across every
+# user's report, and that deserves its own review.
+#
+# Versions verified against PyPI 2026-07-27.
+
+deptry==0.25.1
+vulture==2.16
+ruff==0.16.0
+
+# P1 (Security tab, PRD P1-1). Pinned now so spike SP-4 has something concrete to invoke while
+# it settles the foreign-environment audit flags.
+pip-audit==2.10.1

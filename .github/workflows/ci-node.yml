@@ -1,0 +1,53 @@
+# Caller into the ops repo's React reusable, plus one local job.
+#
+# The reusable runs Node 24, `npm ci`, then lint / typecheck / test when the matching npm script
+# exists, then the build. It has no `npm audit` step, so that gate lives here — see
+# docs/RELEASE-CI.md §1.
+#
+# It also has no working-directory input, which is why package.json sits at the repo root with
+# Vite configured `root: './ui'` (ARCHITECTURE §2).
+
+name: CI / Node
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-node-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web:
+    name: lint · typecheck · test · build
+    uses: poli0981/.github/.github/workflows/reusable-web-react.yml@main
+    with:
+      node-version: '24'
+      package-manager: npm
+      build-command: npm run build
+      dist-dir: dist
+      deploy-pages: false
+
+  audit:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Audit
+        run: npm audit --audit-level=high

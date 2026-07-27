@@ -1,0 +1,75 @@
+@import 'tailwindcss';
+
+/* Design tokens — UI-SPEC §2, "dark terminal-tech".
+ *
+ * Restrained phosphor-green on near-black, monospace where data lives, one accent doing real
+ * work. Anti-goals from that section: gradients-everywhere SaaS look, rounded-blob cards,
+ * decorative glow. Any glow is functional (focus rings, live-activity pulse) and subtle.
+ *
+ * Every text/surface pair here is asserted at WCAG AA by the contrast test in
+ * ui/src/tokens.test.ts (TESTING L3).
+ */
+@theme {
+  --color-bg: #0a0e0c;
+  --color-surface: #101612;
+  --color-surface-2: #161e18;
+  --color-border: #1f2b23;
+  --color-accent: #4ade80;
+  --color-accent-dim: #22935b;
+  --color-text: #e7f0ea;
+  --color-text-dim: #8aa394;
+  --color-warn: #f5b94a;
+  --color-danger: #f0574f;
+  --color-info: #5bc0de;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  --text-base: 0.875rem; /* 14px UI */
+  --text-data: 0.8125rem; /* 13px mono data */
+
+  --radius-pd: 6px;
+
+  /* UI-SPEC §2: motion is 120–160 ms ease-out. */
+  --ease-pd: cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+@layer base {
+  html,
+  body,
+  #root {
+    height: 100%;
+  }
+
+  body {
+    background-color: var(--color-bg);
+    color: var(--color-text);
+    font-family: var(--font-sans);
+    font-size: var(--text-base);
+  }
+
+  /* UI-SPEC §8: the focus ring is 2px accent and is never removed. */
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  /* UI-SPEC §2: prefers-reduced-motion is respected. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+    }
+  }
+
+  /* UI-SPEC §8: Windows high-contrast mode falls back to system colors. */
+  @media (forced-colors: active) {
+    body {
+      background-color: Canvas;
+      color: CanvasText;
+    }
+  }
+}
