@@ -94,13 +94,116 @@ pub trait Engine: Send + Sync {
 /// offers a one-click pip upgrade (`PD-ENG-002`, DATA-FLOW §7).
 pub const PIP_MIN_VERSION_FOR_REPORT: (u32, u32) = (22, 2);
 
+/// uv's floor, pinned by spike SP-1: 0.10.12 and 0.11.32 produce identical plan formats.
+pub const UV_MIN_VERSION: (u32, u32) = (0, 10);
+
+/// Build the extra requirements a dry-run resolve must be given alongside the user's own.
+///
+/// **This is the single most important consequence of spike SP-1.** `<engine> install -U <pkg>`
+/// ignores the constraints of packages already installed: seeded with `httpx 0.23.0`, which
+/// requires `httpcore<0.16`, both pip and uv plan `httpcore 1.0.9` and exit 0, silently breaking
+/// it. Restating the installed set as explicit `name==version` requirements is what makes the
+/// resolver hold packages back instead.
+///
+/// Returned here is the guard group: **everything installed that the user is not moving**, pinned
+/// to its current version. Packages the user chose to upgrade or install are deliberately absent
+/// so they remain free to move.
+///
+/// Without this, PipDock would preview a plan that breaks the environment — the exact failure the
+/// product exists to prevent.
+#[must_use]
+pub fn plan_requirements(req: &PlanRequest, installed: &[crate::model::Dist]) -> Vec<PinnedSpec> {
+    use std::collections::BTreeSet;
+
+    let moving: BTreeSet<&PkgName> = req
+        .upgrades
+        .iter()
+        .chain(req.installs.iter().map(|s| &s.name))
+        .collect();
+
+    installed
+        .iter()
+        .filter(|d| !moving.contains(&d.name))
+        .map(|d| PinnedSpec {
+            name: d.name.clone(),
+            version: d.version.clone(),
+        })
+        .collect()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::model::{Dist, Version};
+    use crate::plan::Strategy;
+
+    fn dist(name: &str, version: &str) -> Dist {
+        Dist {
+            name: PkgName::parse(name).unwrap(),
+            version: Version(version.into()),
+            requires_dist: Vec::new(),
+            requires_python: None,
+        }
+    }
 
     #[test]
     fn documented_pip_floor() {
         // DATA-FLOW §7 and ERROR-CATALOG PD-ENG-002 both name 22.2; keep them in step.
         assert_eq!(PIP_MIN_VERSION_FOR_REPORT, (22, 2));
+        // SP-1 verified two uv minors produce identical plan text.
+        assert_eq!(UV_MIN_VERSION, (0, 10));
+    }
+
+    #[test]
+    fn the_installed_set_is_restated_so_the_resolver_cannot_break_it() {
+        // The SP-1 scenario: upgrading httpcore while httpx 0.23.0 is installed. httpx must be
+        // pinned in the request, or both engines plan httpcore 1.0.9 and break it at exit 0.
+        let installed = [
+            dist("httpx", "0.23.0"),
+            dist("httpcore", "0.15.0"),
+            dist("h11", "0.12.0"),
+        ];
+        let req = PlanRequest {
+            upgrades: vec![PkgName::parse("httpcore").unwrap()],
+            installs: Vec::new(),
+            strategy: Strategy::Compatible,
+        };
+
+        let guards = plan_requirements(&req, &installed);
+        let rendered: Vec<String> = guards.iter().map(PinnedSpec::to_requirement).collect();
+
+        assert!(
+            rendered.contains(&"httpx==0.23.0".to_owned()),
+            "httpx must be pinned"
+        );
+        assert!(rendered.contains(&"h11==0.12.0".to_owned()));
+        assert!(
+            !rendered.iter().any(|r| r.starts_with("httpcore==")),
+            "the package being upgraded must stay free to move"
+        );
+    }
+
+    #[test]
+    fn a_package_being_installed_is_not_pinned_to_its_old_version() {
+        let installed = [dist("idna", "3.4")];
+        let req = PlanRequest {
+            upgrades: Vec::new(),
+            installs: vec![crate::model::Spec {
+                name: PkgName::parse("idna").unwrap(),
+                version_req: None,
+            }],
+            strategy: Strategy::Compatible,
+        };
+        assert!(plan_requirements(&req, &installed).is_empty());
+    }
+
+    #[test]
+    fn an_empty_environment_needs_no_guards() {
+        let req = PlanRequest {
+            upgrades: Vec::new(),
+            installs: Vec::new(),
+            strategy: Strategy::Compatible,
+        };
+        assert!(plan_requirements(&req, &[]).is_empty());
     }
 }

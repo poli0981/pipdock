@@ -353,6 +353,85 @@ fn uv_yank_warnings(text: &str) -> Vec<YankWarning> {
     out
 }
 
+// -- list / check ------------------------------------------------------------
+
+/// Parse `list --format=json` from either engine.
+///
+/// DATA-FLOW §7 notes the two shapes "differ slightly"; in practice both emit
+/// `[{"name": …, "version": …}, …]`, so one parser serves both and normalizes to [`Dist`].
+/// Note this listing carries **no** `requires_dist` — only `probe.py` provides that, which is why
+/// the reverse-dependency graph is built from the probe and not from here.
+///
+/// # Errors
+/// `PD-ENG-003` when the output is not the expected JSON array.
+pub fn list_json(stdout: &str) -> Result<Vec<Dist>> {
+    let items: Vec<serde_json::Value> = serde_json::from_str(stdout.trim())
+        .map_err(|e| PdError::new(Code::EngUvShapeUnknown, format!("list output: {e}")))?;
+    Ok(items
+        .into_iter()
+        .filter_map(|v| {
+            let name = PkgName::parse(v.get("name")?.as_str()?).ok()?;
+            Some(Dist {
+                name,
+                version: Version(v.get("version")?.as_str()?.to_owned()),
+                requires_dist: Vec::new(),
+                requires_python: None,
+            })
+        })
+        .collect())
+}
+
+/// Parse `list --outdated --format=json`.
+///
+/// # Errors
+/// `PD-ENG-003` when the output is not the expected JSON array.
+pub fn outdated_json(stdout: &str) -> Result<Vec<crate::model::OutdatedDist>> {
+    let items: Vec<serde_json::Value> = serde_json::from_str(stdout.trim())
+        .map_err(|e| PdError::new(Code::EngUvShapeUnknown, format!("outdated output: {e}")))?;
+    Ok(items
+        .into_iter()
+        .filter_map(|v| {
+            Some(crate::model::OutdatedDist {
+                name: PkgName::parse(v.get("name")?.as_str()?).ok()?,
+                current: Version(v.get("version")?.as_str()?.to_owned()),
+                latest: Version(v.get("latest_version")?.as_str()?.to_owned()),
+            })
+        })
+        .collect())
+}
+
+/// Normalize `pip check` / `uv pip check` output.
+///
+/// `ok` is the process's own verdict: both engines exit non-zero when they find problems, which
+/// is a **successful check with findings**, not a command failure. Treating it as a failure would
+/// turn every post-run verification on an already-broken environment into an error the user
+/// cannot act on.
+#[must_use]
+pub fn check_text(stdout: &str, ok: bool) -> crate::model::CheckReport {
+    let mut findings = Vec::new();
+    for line in stdout.lines() {
+        let line = line.trim();
+        // "apiclient 1.4 requires requests<2.31, but you have requests 2.32.3 which is incompatible."
+        let Some((head, _)) = line.split_once(" requires ") else {
+            continue;
+        };
+        let Some(name) = head.split_whitespace().next() else {
+            continue;
+        };
+        let Ok(pkg) = PkgName::parse(name) else {
+            continue;
+        };
+        findings.push(crate::model::CheckFinding {
+            pkg,
+            requirement: line.to_owned(),
+        });
+    }
+    crate::model::CheckReport {
+        ok: ok && findings.is_empty(),
+        findings,
+    }
+}
+
 // -- shared ------------------------------------------------------------------
 
 /// Collapse wrapping and CRLF so multi-word phrases can be found.

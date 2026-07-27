@@ -1,17 +1,24 @@
 //! The uv adapter: `uv pip … --python <env-python>`.
 //!
-//! **This adapter is gated on spike SP-1.** Unlike pip, uv has no stable JSON report for
-//! `install --dry-run` — it prints a text plan. SP-1 must establish whether that text carries
-//! enough information to populate [`ResolutionReport::held_back`] blockers; if it does not,
-//! `docs/ROADMAP.md` says v1.0 ships pip-primary with uv behind a beta-engine flag.
+//! **SP-1 answered: GO.** uv has no JSON report — it prints a hard-wrapped text plan, and it
+//! prints it to **stderr**, not stdout. That turned out not to be the weakness the roadmap feared:
+//! on the output that matters most, an unsatisfiable set, uv names the exact blocking constraint
+//! where pip says only that versions conflict.
 //!
-//! Until SP-1 lands, the parsing entry point below is deliberately unimplemented rather than
-//! guessed at, and `PD-ENG-003` is the documented outcome when uv emits a shape the adapter does
-//! not recognize.
+//! Two consequences shape this adapter:
+//!
+//! - `resolve` parses the plan whether or not uv exited zero, because its failure message is the
+//!   most useful thing it produces.
+//! - Every plan restates the installed set as explicit requirements. Without that, uv upgrades
+//!   straight past an installed package's constraint and exits 0 — see [`super::plan_requirements`].
+//!
+//! `PD-ENG-003` remains the documented outcome when uv emits a shape the parser does not know,
+//! which the weekly latest-engine job in CI exists to catch before users do.
 
 use async_trait::async_trait;
 
 use crate::errors::Result;
+use crate::exec::Command;
 use crate::model::{
     CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
     StepResult,
@@ -81,19 +88,67 @@ impl Engine for UvEngine {
     }
 
     async fn info(&self, _env: &PyEnv) -> EngineInfo {
-        todo!("M1: run `uv --version`")
+        // uv is a standalone binary on PATH, not a module inside the environment, so this is the
+        // one engine query that does not involve the interpreter.
+        match Command::new("uv").arg("--version").run().await {
+            Ok(o) if o.ok() => EngineInfo {
+                id: EngineId::Uv,
+                // "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)" -> "0.11.32"
+                version: o.stdout.split_whitespace().nth(1).map(str::to_owned),
+                available: true,
+            },
+            _ => EngineInfo {
+                id: EngineId::Uv,
+                version: None,
+                available: false,
+            },
+        }
     }
 
-    async fn list_installed(&self, _env: &PyEnv) -> Result<Vec<Dist>> {
-        todo!("M1: normalize uv's list output into Dist (shape differs slightly from pip)")
+    async fn list_installed(&self, env: &PyEnv) -> Result<Vec<Dist>> {
+        let python = env.interpreter.display().to_string();
+        let out = Command::new("uv")
+            .args(Self::argv_list(&python))
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(out.into_error());
+        }
+        super::parse::list_json(&out.stdout)
     }
 
-    async fn list_outdated(&self, _env: &PyEnv) -> Result<Vec<OutdatedDist>> {
-        todo!("M1 (SP-1 fixtures): parse uv's outdated output")
+    async fn list_outdated(&self, env: &PyEnv) -> Result<Vec<OutdatedDist>> {
+        let python = env.interpreter.display().to_string();
+        let out = Command::new("uv")
+            .args([
+                "pip".to_owned(),
+                "list".to_owned(),
+                "--outdated".to_owned(),
+                "--format=json".to_owned(),
+                "--python".to_owned(),
+                python,
+            ])
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(out.into_error());
+        }
+        super::parse::outdated_json(&out.stdout)
     }
 
-    async fn resolve(&self, _env: &PyEnv, _req: &PlanRequest) -> Result<ResolutionReport> {
-        todo!("SP-1 go/no-go gates this")
+    async fn resolve(&self, env: &PyEnv, req: &PlanRequest) -> Result<ResolutionReport> {
+        // SP-1: without the installed set restated, uv plans an upgrade that breaks installed
+        // dependents and exits 0. Identical requirement to pip's adapter.
+        let installed = self.list_installed(env).await?;
+        let specs = super::plan_requirements(req, &installed);
+        let python = env.interpreter.display().to_string();
+        let out = Command::new("uv")
+            .args(Self::argv_dry_run(&python, &specs))
+            .run()
+            .await?;
+        // uv exits non-zero on an unsatisfiable set, but its message is the most useful thing it
+        // produces (SP-1), so the plan is parsed either way and the parser decides.
+        super::parse::uv_plan(&out.stdout, &out.stderr, &installed).map(|p| p.report)
     }
 
     async fn install(
@@ -115,8 +170,20 @@ impl Engine for UvEngine {
         todo!("M1: `uv pip uninstall`, sequential, skip-and-continue")
     }
 
-    async fn check(&self, _env: &PyEnv) -> Result<CheckReport> {
-        todo!("M1: normalize `uv pip check` findings")
+    async fn check(&self, env: &PyEnv) -> Result<CheckReport> {
+        let python = env.interpreter.display().to_string();
+        let out = Command::new("uv")
+            .args([
+                "pip".to_owned(),
+                "check".to_owned(),
+                "--python".to_owned(),
+                python,
+            ])
+            .run()
+            .await?;
+        // uv reports findings on stderr where pip uses stdout, so both are given to the parser.
+        let combined = [out.stdout.as_str(), out.stderr.as_str()].join("\n");
+        Ok(super::parse::check_text(&combined, out.ok()))
     }
 
     async fn upgrade_pip(&self, _env: &PyEnv) -> Result<StepResult> {

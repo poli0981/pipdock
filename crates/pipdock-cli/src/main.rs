@@ -295,18 +295,74 @@ enum SelfCommand {
     ReportBug,
 }
 
-fn main() -> ExitCode {
+mod run;
+
+#[tokio::main]
+async fn main() -> ExitCode {
     let cli = Cli::parse();
 
-    // M1 wires each command to its pipdock-core call. Until then the binary parses its full
-    // surface — which is what the CLI-SPEC §5 exit-code tests and the golden-output tests in
-    // TESTING L4 exercise — and reports honestly that nothing is implemented.
-    let _ = (&cli.global, &cli.command);
-    eprintln!(
-        "error[PD-INT-001]: pipdock is in Phase 0; commands are not implemented yet.\n\
-         The command surface is parsed and stable — see docs/CLI-SPEC.md."
-    );
-    Exit::Internal.into()
+    let result = match &cli.command {
+        Command::Env(EnvCommand::List) => run::env_list(&cli.global).await,
+        Command::List { outdated } => run::list(&cli.global, *outdated).await,
+        Command::Doctor => run::doctor(&cli.global).await,
+        Command::Engine { engine: None } => run::engine_status(&cli.global).await,
+
+        // Everything below needs the planner, snapshots or the index, none of which are wired
+        // yet. Reporting that honestly beats a stub that appears to work — this is a tool whose
+        // whole promise is that it tells you what it is about to do.
+        other => {
+            eprintln!(
+                "error[PD-INT-001]: `{}` is not implemented yet.\n\
+                 Working today: env list, list [--outdated], doctor, engine.",
+                command_name(other)
+            );
+            Ok(Exit::Internal)
+        }
+    };
+
+    match result {
+        Ok(exit) => exit.into(),
+        Err(e) => {
+            // ERROR-CATALOG §3: `error[PD-XXX-NNN]: <one-liner>` on stderr, or the JSON envelope.
+            if cli.global.json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "code": e.code.as_str(),
+                        "message": e.message,
+                        "stderrTail": e.stderr_tail,
+                    })
+                );
+            } else {
+                eprintln!("error[{}]: {}", e.code, e.message);
+                if let Some(tail) = &e.stderr_tail {
+                    eprintln!("{tail}");
+                }
+            }
+            run::exit_for(e.code).into()
+        }
+    }
+}
+
+fn command_name(cmd: &Command) -> &'static str {
+    match cmd {
+        Command::Env(_) => "env",
+        Command::List { .. } => "list",
+        Command::Search { .. } => "search",
+        Command::Info { .. } => "info",
+        Command::Install { .. } => "install",
+        Command::Update { .. } => "update",
+        Command::Uninstall { .. } => "uninstall",
+        Command::Pin(_) => "pin",
+        Command::Snapshot(_) => "snapshot",
+        Command::Doctor => "doctor",
+        Command::Health { .. } => "health",
+        Command::PipUpgrade => "pip-upgrade",
+        Command::Engine { .. } => "engine",
+        Command::Index(_) => "index",
+        Command::Schema { .. } => "schema",
+        Command::Selfx(_) => "self",
+    }
 }
 
 #[cfg(test)]

@@ -6,7 +6,8 @@
 
 use async_trait::async_trait;
 
-use crate::errors::Result;
+use crate::errors::{PdError, Result};
+use crate::exec::Command;
 use crate::model::{
     CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
     StepResult,
@@ -80,19 +81,60 @@ impl Engine for PipEngine {
     }
 
     async fn info(&self, env: &PyEnv) -> EngineInfo {
-        todo!("M1: run `{} -m pip --version`", env.interpreter.display())
+        let out = Command::python(&env.interpreter)
+            .args(["-m", "pip", "--version"])
+            .run()
+            .await;
+        match out {
+            Ok(o) if o.ok() => EngineInfo {
+                id: EngineId::Pip,
+                // "pip 26.1.2 from C:\... (python 3.12)" -> "26.1.2"
+                version: o.stdout.split_whitespace().nth(1).map(str::to_owned),
+                available: true,
+            },
+            _ => EngineInfo {
+                id: EngineId::Pip,
+                version: None,
+                available: false,
+            },
+        }
     }
 
-    async fn list_installed(&self, _env: &PyEnv) -> Result<Vec<Dist>> {
-        todo!("M1: parse argv_list() output into Dist")
+    async fn list_installed(&self, env: &PyEnv) -> Result<Vec<Dist>> {
+        let out = Command::python(&env.interpreter)
+            .args(Self::argv_list())
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(out.into_error());
+        }
+        super::parse::list_json(&out.stdout)
     }
 
-    async fn list_outdated(&self, _env: &PyEnv) -> Result<Vec<OutdatedDist>> {
-        todo!("M1: parse argv_outdated() output into OutdatedDist")
+    async fn list_outdated(&self, env: &PyEnv) -> Result<Vec<OutdatedDist>> {
+        let out = Command::python(&env.interpreter)
+            .args(Self::argv_outdated())
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(out.into_error());
+        }
+        super::parse::outdated_json(&out.stdout)
     }
 
-    async fn resolve(&self, _env: &PyEnv, _req: &PlanRequest) -> Result<ResolutionReport> {
-        todo!("M1 (SP-2 fixtures): parse `--dry-run --report -` JSON into ResolutionReport")
+    async fn resolve(&self, env: &PyEnv, req: &PlanRequest) -> Result<ResolutionReport> {
+        // SP-1: the installed set must be restated or the resolver ignores it and plans an
+        // upgrade that breaks installed dependents. The caller assembles that set into `req`.
+        let installed = self.list_installed(env).await?;
+        let specs = super::plan_requirements(req, &installed);
+        let out = Command::python(&env.interpreter)
+            .args(Self::argv_dry_run(&specs))
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(out.into_error());
+        }
+        super::parse::pip_report(&out.stdout, &out.stderr, &installed).map(|p| p.report)
     }
 
     async fn install(
@@ -114,12 +156,32 @@ impl Engine for PipEngine {
         todo!("M1: `uninstall -y`, sequential, skip-and-continue")
     }
 
-    async fn check(&self, _env: &PyEnv) -> Result<CheckReport> {
-        todo!("M1: normalize `pip check` findings")
+    async fn check(&self, env: &PyEnv) -> Result<CheckReport> {
+        let out = Command::python(&env.interpreter)
+            .args(Self::argv_check())
+            .run()
+            .await?;
+        // `pip check` exits non-zero when it finds problems, which is a successful check with
+        // findings -- not a command failure.
+        Ok(super::parse::check_text(&out.stdout, out.ok()))
     }
 
-    async fn upgrade_pip(&self, _env: &PyEnv) -> Result<StepResult> {
-        todo!("M1: `install -U pip`")
+    async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult> {
+        let out = Command::python(&env.interpreter)
+            .args(["-m", "pip", "install", "-U", "pip"])
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(PdError::from_engine_stderr(&out.stderr));
+        }
+        Ok(StepResult {
+            pkg: PkgName::parse("pip").unwrap_or_else(|_| unreachable!("pip is a valid name")),
+            from: None,
+            to: None,
+            status: crate::model::StepStatus::Ok,
+            code: None,
+            stderr_tail: None,
+        })
     }
 }
 
