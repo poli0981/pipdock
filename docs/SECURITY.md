@@ -40,6 +40,7 @@ pip-audit runs **from the tools venv** in freeze-file mode: snapshot-freeze the 
 ## 7. Supply chain of PipDock itself
 
 - CI: `cargo audit` (RustSec) + `npm audit --audit-level=high` gate every PR; Dependabot keeps Rust/npm/actions/tools-requirements pins current (see RELEASE-CI.md §2).
+  - The `cargo audit` gate is on **vulnerabilities** and is never relaxed. `.cargo/audit.toml` ignores a fixed list of *informational* advisories — unmaintained/unsound — on transitive crates PipDock cannot influence, chiefly Tauri's archived GTK3 bindings, which a Windows-only build never compiles. They are listed individually with justification so a **new** advisory still fails CI. Adding macOS/Linux builds (P2-1) is the point at which that block must be re-examined rather than extended.
 - `Cargo.lock` and `package-lock.json` committed; builds are `--locked`.
 - CodeQL enabled via the ops-repo caller with the established permissions block, scoped to **`javascript-typescript` only** — CodeQL has no Rust analyzer. Rust's static-analysis coverage is clippy `-D warnings` plus `cargo audit`, both blocking in `ci-rust.yml`.
 - Third-party licenses tracked in `legal/THIRD-PARTY-NOTICES.md`; `cargo about`/`license-checker` regenerate the inventory at release.

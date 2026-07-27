@@ -1,0 +1,46 @@
+# cargo-audit configuration.
+#
+# SECURITY §7 gates every PR on `cargo audit`. That gate is about **vulnerabilities**, and it is
+# left at its default: any RUSTSEC vulnerability fails the build, and nothing below weakens that.
+#
+# What is ignored here are *informational* advisories — "unmaintained" and "unsound" — on
+# transitive crates PipDock cannot influence and, in most cases, never compiles. They are listed
+# individually rather than switched off as a class, so a new one still fails CI and has to be
+# looked at rather than silently absorbed.
+#
+# Review obligation: when Tauri drops GTK3, or a `unic-*` dependent moves on, delete the
+# corresponding lines. A stale ignore is how a real advisory eventually gets waved through.
+
+[advisories]
+ignore = [
+    # --- Tauri's GTK3 stack (Linux only) -------------------------------------
+    # gtk-rs archived its GTK3 bindings. Tauri 2 pulls them for its Linux target; PipDock v1
+    # ships Windows only (PRD, ARCHITECTURE §10), so none of these are compiled into anything we
+    # release. They will disappear when Tauri's Linux backend moves to GTK4, and the macOS/Linux
+    # builds in P2-1 are the point at which this block must be re-examined rather than extended.
+    "RUSTSEC-2024-0411", # gdkwayland-sys — unmaintained
+    "RUSTSEC-2024-0412", # gdk — unmaintained
+    "RUSTSEC-2024-0413", # atk — unmaintained
+    "RUSTSEC-2024-0414", # gdkx11-sys — unmaintained
+    "RUSTSEC-2024-0415", # gtk — unmaintained
+    "RUSTSEC-2024-0416", # atk-sys — unmaintained
+    "RUSTSEC-2024-0417", # gdkx11 — unmaintained
+    "RUSTSEC-2024-0418", # gdk-sys — unmaintained
+    "RUSTSEC-2024-0419", # gtk3-macros — unmaintained
+    "RUSTSEC-2024-0420", # gtk-sys — unmaintained
+    "RUSTSEC-2024-0429", # glib — unsound (VariantStrIter::impl_get); same GTK3 stack
+
+    # --- Build-time only -----------------------------------------------------
+    # A proc-macro helper pulled in by a build dependency. It never reaches a shipped binary, and
+    # the advisory is "unmaintained", not a defect.
+    "RUSTSEC-2024-0370", # proc-macro-error — unmaintained
+
+    # --- unic-* Unicode tables ----------------------------------------------
+    # Superseded upstream but functionally frozen data tables, reached transitively. Nothing here
+    # parses untrusted input on PipDock's behalf.
+    "RUSTSEC-2025-0075", # unic-char-range — unmaintained
+    "RUSTSEC-2025-0080", # unic-common — unmaintained
+    "RUSTSEC-2025-0081", # unic-char-property — unmaintained
+    "RUSTSEC-2025-0098", # unic-ucd-version — unmaintained
+    "RUSTSEC-2025-0100", # unic-ucd-ident — unmaintained
+]
