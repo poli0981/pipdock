@@ -7,6 +7,7 @@
 //! ARCHITECTURE §1.5: engines are invoked with argv arrays via `tokio::process::Command`,
 //! **never through a shell**.
 
+pub mod parse;
 pub mod pip;
 pub mod uv;
 
