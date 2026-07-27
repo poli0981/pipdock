@@ -1,7 +1,7 @@
 {
   "scenario": "requires-python",
-  "question": "Requires-Python mismatch against the running interpreter.",
-  "expects_code": "PD-PKG-001",
+  "question": "Requires-Python mismatch against the running interpreter. ANSWER: pip refuses with the same 'No matching distribution found' text it uses for an unknown name, so the two are indistinguishable from stderr; uv ignores the constraint and plans the install. Hence PD-PKG-001 is raised by pipdock-core's compat module before either engine runs, and these fixtures record what the engines do instead.",
+  "expects_code": null,
   "engine": "uv",
   "engine_version": "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)",
   "python": "Python 3.12.10",
@@ -13,7 +13,7 @@
     "--dry-run",
     "scipy==1.7.3",
     "--python",
-    "<TMP>\\pd-uv-requires-python-d0zbs0as\\venv\\Scripts\\python.exe"
+    "<TMP>\\pd-uv-requires-python-tqk5qbo0\\venv\\Scripts\\python.exe"
   ],
   "extra_env": {
     "PYTHONIOENCODING": "utf-8",

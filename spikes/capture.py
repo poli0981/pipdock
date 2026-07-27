@@ -50,8 +50,16 @@ class Scenario:
     question: str = ""
     #: Error-catalog code this fixture is expected to feed, when it is an error case.
     expects_code: str | None = None
+    #: Per-engine override of `expects_code`; the engines do not always agree (see SP-2).
+    #: Map an engine to None to say "this engine does not fail here at all".
+    expects_by_engine: dict[str, str | None] = field(default_factory=dict)
     #: Set False only to capture what happens WITHOUT the UTF-8 mitigation (see SAFE_ENV).
     utf8_io: bool = True
+    #: Extra argv inserted before the requirements, e.g. an unreachable index URL.
+    extra_args: list[str] = field(default_factory=list)
+
+    def code_for(self, engine: str) -> str | None:
+        return self.expects_by_engine.get(engine, self.expects_code)
 
 
 # pip's `--report -` writes JSON through its vendored rich, which on Windows goes via
@@ -121,8 +129,30 @@ SCENARIOS: list[Scenario] = [
         # scipy 1.7.3 declares Requires-Python >=3.7,<3.11 and ships wheels, so the resolver
         # rejects it on metadata rather than attempting a build.
         target=["scipy==1.7.3"],
-        question="Requires-Python mismatch against the running interpreter.",
-        expects_code="PD-PKG-001",
+        question=(
+            "Requires-Python mismatch against the running interpreter. ANSWER: pip refuses with "
+            "the same 'No matching distribution found' text it uses for an unknown name, so the "
+            "two are indistinguishable from stderr; uv ignores the constraint and plans the "
+            "install. Hence PD-PKG-001 is raised by pipdock-core's compat module before either "
+            "engine runs, and these fixtures record what the engines do instead."
+        ),
+        expects_by_engine={"pip": "PD-PKG-002", "uv": None},
+    ),
+    # No "externally-managed" scenario. PEP 668 applies only OUTSIDE a virtual environment — pip
+    # deliberately ignores the marker inside one — and deleting pyvenv.cfg to fake a base install
+    # merely breaks the venv launcher ("No pyvenv.cfg file", exit 106). Reproducing it properly
+    # would mean planting the marker in a real system Python, which a fixture script has no
+    # business doing to a developer's machine. It does not matter: PipDock blocks such
+    # environments from probe.py's `externally_managed` field at step zero (DATA-FLOW §2), before
+    # any engine command runs, so PD-ENV-002 is raised internally rather than classified.
+    Scenario(
+        name="network-unreachable",
+        seed=[],
+        target=["idna"],
+        # Nothing listens on port 1; deterministic and works offline.
+        extra_args=["--index-url", "http://127.0.0.1:1/simple"],
+        question="Index unreachable — connection refused rather than DNS or TLS failure.",
+        expects_code="PD-NET-001",
     ),
     Scenario(
         name="yanked",
@@ -208,13 +238,13 @@ def capture(engine: str, scenario: Scenario, uv_exe: Path | None, out_root: Path
             if scenario.dry_run:
                 # DATA-FLOW §7: this is the exact planning command, JSON report to stdout.
                 args += ["--dry-run", "--quiet", "--report", "-"]
-            args += scenario.target
+            args += scenario.extra_args + scenario.target
             argv = pip_argv(python, args)
         else:
             args = ["install", "-U"]
             if scenario.dry_run:
                 args += ["--dry-run"]
-            args += scenario.target
+            args += scenario.extra_args + scenario.target
             argv = uv_argv(uv_exe, python, args)
 
         result = run(argv, extra_env=env)
@@ -226,7 +256,7 @@ def capture(engine: str, scenario: Scenario, uv_exe: Path | None, out_root: Path
         meta = {
             "scenario": scenario.name,
             "question": scenario.question,
-            "expects_code": scenario.expects_code,
+            "expects_code": scenario.code_for(engine),
             "engine": engine,
             "engine_version": engine_version(engine, python, uv_exe),
             "python": python_version(python),
@@ -273,7 +303,7 @@ def main() -> int:
 
     if args.list:
         for s in SCENARIOS:
-            print(f"{s.name:24} {s.expects_code or '-':12} {s.question}")
+            print(f"{s.name:26} {s.expects_code or '-':12} {s.question[:70]}")
         return 0
 
     if args.engine == "uv" and not args.uv_exe:

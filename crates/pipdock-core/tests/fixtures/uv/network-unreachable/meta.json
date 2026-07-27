@@ -1,0 +1,29 @@
+{
+  "scenario": "network-unreachable",
+  "question": "Index unreachable \u2014 connection refused rather than DNS or TLS failure.",
+  "expects_code": "PD-NET-001",
+  "engine": "uv",
+  "engine_version": "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "spikes\\.venv-uv-latest\\Scripts\\uv.exe",
+    "pip",
+    "install",
+    "-U",
+    "--dry-run",
+    "--index-url",
+    "http://127.0.0.1:1/simple",
+    "idna",
+    "--python",
+    "<TMP>\\pd-uv-network-unreachable-ba6imiic\\venv\\Scripts\\python.exe"
+  ],
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 2,
+  "seed": [],
+  "seed_exit_code": null,
+  "stdout_bytes": 0,
+  "stderr_bytes": 471
+}

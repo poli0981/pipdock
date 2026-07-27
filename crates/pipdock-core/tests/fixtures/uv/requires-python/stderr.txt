@@ -1,5 +1,5 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-requires-python-d0zbs0as\venv
-Resolved 2 packages in 949ms
+Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-requires-python-tqk5qbo0\venv
+Resolved 2 packages in 400ms
 Would download 2 packages
 Would install 2 packages
  + numpy==1.22.4

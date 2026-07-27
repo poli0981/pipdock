@@ -1,0 +1,4 @@
+ERROR: THESE PACKAGES DO NOT MATCH THE HASHES FROM THE REQUIREMENTS FILE. If you have updated the package versions, please update the hashes. Otherwise, examine the package contents carefully; someone may have tampered with them.
+    somepkg==1.2.3 from https://files.pythonhosted.org/packages/ab/cd/somepkg-1.2.3-py3-none-any.whl:
+        Expected sha256 0000000000000000000000000000000000000000000000000000000000000000
+             Got        1111111111111111111111111111111111111111111111111111111111111111

@@ -27,6 +27,7 @@ pub mod compat;
 pub mod engine;
 pub mod envs;
 pub mod errors;
+pub mod exec;
 pub mod graph;
 pub mod health;
 pub mod index;

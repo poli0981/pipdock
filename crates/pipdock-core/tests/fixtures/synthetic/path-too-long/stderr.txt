@@ -1,0 +1,1 @@
+ERROR: Could not install packages due to an OSError: [Errno 2] No such file or directory: 'C:\proj\.venv\Lib\site-packages\averyveryverylongpackagename\...' path too long for the current system configuration

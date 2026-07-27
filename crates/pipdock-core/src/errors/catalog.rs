@@ -240,15 +240,240 @@ impl fmt::Display for Code {
     }
 }
 
+/// A stderr pattern and the code it implies. Order in [`CLASSIFIERS`] is priority order.
+struct Classifier {
+    code: Code,
+    /// All of these substrings must be present (case-insensitively) for the rule to fire.
+    all_of: &'static [&'static str],
+}
+
+/// Priority-ordered classifiers. **First match wins** (`docs/ERROR-CATALOG.md` §preamble).
+///
+/// Ordering rules that matter, each learned from the SP-2 corpus:
+///
+/// - Specific build failures precede the generic wheel-build failure, or every MSVC problem would
+///   be reported as `PD-BLD-003`.
+/// - TLS failures precede generic network failures: a certificate error also prints "Could not
+///   fetch URL", and the corporate-proxy guidance is the useful one.
+/// - `PD-PKG-001` is **absent by design**. pip reports a Requires-Python mismatch with the same
+///   "No matching distribution found" text as an unknown name, and uv does not enforce it at all —
+///   so it is raised by [`crate::compat`] before the engine runs, not classified from stderr.
+static CLASSIFIERS: &[Classifier] = &[
+    // -- environment ---------------------------------------------------------
+    Classifier {
+        code: Code::EnvExternallyManaged,
+        all_of: &["externally-managed-environment"],
+    },
+    Classifier {
+        code: Code::EnvExternallyManaged,
+        all_of: &["externally-managed"],
+    },
+    // -- package identity ----------------------------------------------------
+    // Ahead of the resolution rules: uv reports an unknown name *through* its resolver, as
+    // "No solution found … because <name> was not found in the package registry". Classified as
+    // a resolution failure it would send the user hunting for a version conflict that does not
+    // exist.
+    Classifier {
+        code: Code::PkgNotFound,
+        all_of: &["was not found in the package registry"],
+    },
+    // -- resolution ----------------------------------------------------------
+    Classifier {
+        code: Code::ResImpossible,
+        all_of: &["resolutionimpossible"],
+    },
+    Classifier {
+        code: Code::ResImpossible,
+        all_of: &["conflicting dependencies"],
+    },
+    Classifier {
+        code: Code::ResImpossible,
+        all_of: &["no solution found when resolving"],
+    },
+    // -- build ---------------------------------------------------------------
+    Classifier {
+        code: Code::BldMsvcMissing,
+        all_of: &["microsoft visual c++"],
+    },
+    Classifier {
+        code: Code::BldBackendFailed,
+        all_of: &["metadata-generation-failed"],
+    },
+    Classifier {
+        code: Code::BldBackendFailed,
+        all_of: &["backendunavailable"],
+    },
+    Classifier {
+        code: Code::BldBackendFailed,
+        all_of: &["the build backend returned an error"],
+    },
+    Classifier {
+        code: Code::BldBackendFailed,
+        all_of: &["error in", "pyproject.toml"],
+    },
+    Classifier {
+        code: Code::BldWheelFailed,
+        all_of: &["failed to build"],
+    },
+    Classifier {
+        code: Code::BldWheelFailed,
+        all_of: &["failed building wheel"],
+    },
+    // -- permissions ---------------------------------------------------------
+    // Checked before the generic OSError shapes below, which share their prefix.
+    Classifier {
+        code: Code::PrmFileLocked,
+        all_of: &["winerror 32"],
+    },
+    Classifier {
+        code: Code::PrmSitePackagesReadOnly,
+        all_of: &["permissionerror"],
+    },
+    Classifier {
+        code: Code::PrmSitePackagesReadOnly,
+        all_of: &["winerror 5"],
+    },
+    // -- system --------------------------------------------------------------
+    Classifier {
+        code: Code::SysDiskFull,
+        all_of: &["no space left on device"],
+    },
+    Classifier {
+        code: Code::SysDiskFull,
+        all_of: &["winerror 112"],
+    },
+    Classifier {
+        code: Code::SysPathTooLong,
+        all_of: &["path too long"],
+    },
+    Classifier {
+        code: Code::SysPathTooLong,
+        all_of: &["filename or extension is too long"],
+    },
+    // -- network -------------------------------------------------------------
+    Classifier {
+        code: Code::NetTlsFailure,
+        all_of: &["certificate_verify_failed"],
+    },
+    Classifier {
+        code: Code::NetTlsFailure,
+        all_of: &["sslerror"],
+    },
+    Classifier {
+        code: Code::NetTlsFailure,
+        all_of: &["ssl certificate"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["connection aborted"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["temporary failure in name resolution"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["failed to establish a new connection"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["newconnectionerror"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["read timed out"],
+    },
+    // uv's phrasing for the same conditions; it reports through its own HTTP stack.
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["tcp connect error"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["error sending request for url"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["failed to fetch"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["could not fetch url"],
+    },
+    // -- package / index -----------------------------------------------------
+    Classifier {
+        code: Code::PkgHashMismatch,
+        all_of: &["do not match the hashes"],
+    },
+    Classifier {
+        code: Code::PkgNotFound,
+        all_of: &["no matching distribution found"],
+    },
+    Classifier {
+        code: Code::PkgNotFound,
+        all_of: &["could not find a version that satisfies"],
+    },
+    // No `PD-PKG-003` rule. A yank is not a failure: both engines exit 0 and install the release
+    // (SP-2), so it is detected structurally by the plan parsers — pip's `is_yanked` field, uv's
+    // `warning: … is yanked` line — and shown as a preview warning. A stderr rule here also
+    // misfires: pip mentions "Ignored the following yanked versions" while reporting an entirely
+    // different failure, which classified the Requires-Python fixture as a yank.
+    // -- engine --------------------------------------------------------------
+    Classifier {
+        code: Code::EngPipTooOld,
+        all_of: &["no such option: --report"],
+    },
+    Classifier {
+        code: Code::EngNotFound,
+        all_of: &["no module named pip"],
+    },
+    Classifier {
+        code: Code::EnvProbeFailed,
+        all_of: &["modulenotfounderror"],
+    },
+];
+
 /// Classify an engine's stderr into a catalog code.
 ///
-/// Filled during spike SP-2, which captures real stderr for each case. Until then this returns
-/// the documented fallback so no call site can accidentally surface an uncoded failure.
+/// Patterns are checked in priority order and the **first** match wins, falling back to
+/// [`Code::EngUnclassified`] (`PD-ENG-999`) so no failure can reach the user uncoded
+/// (DATA-FLOW §9.4).
 ///
-/// Contract when implemented: patterns are checked in priority order and the **first** match wins.
+/// Matching is case-insensitive because the same condition is phrased differently by pip, uv and
+/// the Windows CRT, and substring-based because engine messages interpolate paths and versions.
+///
+/// Whitespace is collapsed first, which is not cosmetic: **uv hard-wraps its diagnostics** at a
+/// fixed width, so its unknown-package message arrives as `"was not found in the package\n
+/// registry"`. Matched literally, that phrase never appears and the failure is misread as a
+/// version conflict, sending the user hunting for a constraint problem that does not exist.
 #[must_use]
-pub fn classify_stderr(_stderr: &str) -> Code {
+pub fn classify_stderr(stderr: &str) -> Code {
+    let haystack = normalize(stderr);
+    for rule in CLASSIFIERS {
+        if rule.all_of.iter().all(|needle| haystack.contains(needle)) {
+            return rule.code;
+        }
+    }
     Code::EngUnclassified
+}
+
+/// Lowercase and collapse every run of whitespace to a single space, so patterns survive the
+/// engines' line wrapping and CRLF.
+fn normalize(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_space = false;
+    for ch in text.chars() {
+        if ch.is_whitespace() {
+            in_space = true;
+        } else {
+            if in_space && !out.is_empty() {
+                out.push(' ');
+            }
+            in_space = false;
+            out.extend(ch.to_lowercase());
+        }
+    }
+    out
 }
 
 #[cfg(test)]
@@ -299,5 +524,78 @@ mod tests {
             Code::EngUnclassified
         );
         assert_eq!(Code::EngUnclassified.as_str(), "PD-ENG-999");
+    }
+
+    #[test]
+    fn quiet_output_is_never_a_failure() {
+        // pip prints its upgrade notice on nearly every run and uv writes its whole plan to
+        // stderr, so a non-empty stderr must not imply failure.
+        for benign in [
+            "",
+            "   \r\n",
+            "[notice] A new release of pip is available: 25.0.1 -> 26.1.2",
+            "Resolved 3 packages in 831ms\r\nWould install 2 packages\r\n + httpcore==1.0.9",
+        ] {
+            assert_eq!(classify_stderr(benign), Code::EngUnclassified, "{benign:?}");
+        }
+    }
+
+    #[test]
+    fn patterns_survive_line_wrapping() {
+        // uv hard-wraps diagnostics, so a phrase can be split mid-sentence by a newline and
+        // indentation. Matched literally this reads as a version conflict instead of a typo.
+        let wrapped = "  × No solution found when resolving dependencies:\r\n  \
+                       ╰─▶ Because widget-9f3a was not found in the package\r\n      \
+                       registry and you require widget-9f3a, we can conclude\r\n      \
+                       that your requirements are unsatisfiable.\r\n";
+        assert_eq!(classify_stderr(wrapped), Code::PkgNotFound);
+    }
+
+    #[test]
+    fn specific_build_failures_beat_the_generic_one() {
+        // Both phrases appear together in a real MSVC failure; the specific one must win or the
+        // user gets "check the log" instead of "install the Build Tools".
+        let msvc = "error: Microsoft Visual C++ 14.0 or greater is required.\r\n\
+                    ERROR: Failed building wheel for somepkg\r\n";
+        assert_eq!(classify_stderr(msvc), Code::BldMsvcMissing);
+    }
+
+    #[test]
+    fn tls_failures_beat_generic_network_failures() {
+        // A certificate error also prints "Could not fetch URL"; the proxy guidance is the useful
+        // message, and SECURITY §4 forbids ever suggesting verification be disabled.
+        let tls = "SSLError(SSLCertVerificationError(1, '[SSL: CERTIFICATE_VERIFY_FAILED] ...'))\r\n\
+             ERROR: Could not fetch URL https://pypi.org/simple/requests/\r\n";
+        assert_eq!(classify_stderr(tls), Code::NetTlsFailure);
+    }
+
+    #[test]
+    fn a_locked_file_is_not_reported_as_a_permission_problem() {
+        // WinError 32 means "close the program using it", not "you lack permission" — different
+        // code, different advice.
+        let locked = "OSError: [WinError 32] The process cannot access the file because it is \
+                      being used by another process: 'C:\\proj\\.venv\\Lib\\site-packages\\x.pyd'";
+        assert_eq!(classify_stderr(locked), Code::PrmFileLocked);
+    }
+
+    #[test]
+    fn incidental_mentions_of_yanking_do_not_hijack_a_different_failure() {
+        // pip prefixes an unrelated resolution failure with "Ignored the following yanked
+        // versions", which a naive yank rule mis-classified as PD-PKG-003.
+        let stderr = "ERROR: Ignored the following yanked versions: 1.11.0, 1.14.0rc1\r\n\
+                      ERROR: No matching distribution found for scipy==1.7.3\r\n";
+        assert_eq!(classify_stderr(stderr), Code::PkgNotFound);
+    }
+
+    #[test]
+    fn classifiers_never_yield_a_code_outside_the_catalog() {
+        let all: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
+        for rule in CLASSIFIERS {
+            assert!(
+                all.contains(rule.code.as_str()),
+                "{} is not in Code::ALL",
+                rule.code
+            );
+        }
     }
 }

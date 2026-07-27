@@ -1,0 +1,5 @@
+  running build_ext
+  building 'somepkg._speedups' extension
+  error: command 'cl.exe' failed: None
+  ERROR: Failed building wheel for somepkg
+ERROR: Failed to build installable wheels for some pyproject.toml based projects (somepkg)

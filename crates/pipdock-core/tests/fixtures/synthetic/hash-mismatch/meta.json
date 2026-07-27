@@ -1,0 +1,8 @@
+{
+  "scenario": "hash-mismatch",
+  "expects_code": "PD-PKG-004",
+  "synthetic": true,
+  "why": "This machine cannot produce the condition; see spikes/README.md SP-2.",
+  "source": "hand-written from the documented vendor message",
+  "replace_with": "a real capture from the first bug report carrying this code"
+}
