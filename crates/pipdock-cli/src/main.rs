@@ -335,6 +335,9 @@ async fn main() -> ExitCode {
             )
             .await
         }
+        Command::Search { query, limit } => run::search(&cli.global, query, *limit).await,
+        Command::Info { pkg } => run::info(&cli.global, pkg).await,
+        Command::Index(IndexCommand::Refresh) => run::index_refresh(&cli.global).await,
         Command::Pin(PinCommand::List) => run::pin_list(&cli.global).await,
         Command::Pin(PinCommand::Add { pkg, reason }) => {
             run::pin_add(&cli.global, pkg, reason.as_deref()).await
@@ -354,8 +357,8 @@ async fn main() -> ExitCode {
             eprintln!(
                 "error[PD-INT-001]: `{}` is not implemented yet.\n\
                  Working today: env list, list [--outdated], doctor, engine,
-                 update, install, pin add|remove|list, uninstall,
-                 snapshot list|create|diff.",
+                 update, install, search, info, index refresh,
+                 pin add|remove|list, uninstall, snapshot list|create|diff.",
                 command_name(other)
             );
             Ok(Exit::Internal)

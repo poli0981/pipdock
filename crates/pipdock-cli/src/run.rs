@@ -14,7 +14,7 @@ use pipdock_core::graph::ReverseDeps;
 use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, Spec, StepStatus};
 use pipdock_core::plan::{PlanRequest, Strategy};
 use pipdock_core::store::Store;
-use pipdock_core::{pins, plan, snapshot};
+use pipdock_core::{index, pins, plan, snapshot};
 
 use crate::{EngineArg, Exit, GlobalOpts};
 
@@ -772,6 +772,136 @@ fn confirm(report: &plan::ResolutionReport) -> bool {
         return false;
     }
     matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+/// `pipdock index refresh`
+///
+/// # Errors
+/// `PD-NET-010` when the index cannot be fetched. The previous index stays in place and remains
+/// searchable — a failed refresh must not cost the user the index they already had.
+pub async fn index_refresh(opts: &GlobalOpts) -> Result<Exit> {
+    let store = Store::open(&app_data_dir())?;
+    if !opts.quiet {
+        eprintln!("fetching {} …", index::SIMPLE_INDEX_URL);
+    }
+
+    let report = index::refresh(&store, jiff::Timestamp::now()).await?;
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).unwrap_or_default()
+        );
+    } else {
+        println!(
+            "indexed {} projects in {:.1}s ({:.1} MiB)",
+            report.projects,
+            report.elapsed_ms as f64 / 1000.0,
+            report.wire_bytes as f64 / 1024.0 / 1024.0
+        );
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock search <query> [--limit n]`
+///
+/// # Errors
+/// `PD-NET-010` when the index has never been built; the message says to refresh.
+pub async fn search(opts: &GlobalOpts, query: &str, limit: usize) -> Result<Exit> {
+    let store = Store::open(&app_data_dir())?;
+    let idx = index::NameIndex::load(&store)?;
+
+    // ARCHITECTURE §5: search is entirely local, so it works offline. Only the staleness note
+    // needs the clock.
+    let now = jiff::Timestamp::now();
+    if index::is_stale(index::last_refresh(&store)?, now) && !opts.quiet && !opts.json {
+        eprintln!(
+            "note: the package index is over a week old — `pipdock index refresh` updates it"
+        );
+    }
+
+    let hits = idx.search(query, limit);
+
+    // Installed packages are chipped rather than offered again (DATA-FLOW §4).
+    let installed: BTreeSet<PkgName> = match select_env(opts).await {
+        Ok(env) => envs::probe(&env.interpreter, env.source)
+            .await
+            .map(|p| p.dists.into_iter().map(|d| d.name).collect())
+            .unwrap_or_default(),
+        // Searching without an environment selected is legitimate; the chips just go away.
+        Err(_) => BTreeSet::new(),
+    };
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&hits).unwrap_or_default()
+        );
+        return Ok(Exit::Success);
+    }
+    if hits.is_empty() {
+        println!("no packages matching {query:?}");
+        return Ok(Exit::Success);
+    }
+    for hit in &hits {
+        let chip = if installed.contains(&hit.name) {
+            "INSTALLED"
+        } else {
+            ""
+        };
+        println!(
+            "{:<40} {:<10} {chip}",
+            hit.display,
+            format!("{:?}", hit.kind).to_lowercase()
+        );
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock info <pkg>`
+///
+/// # Errors
+/// `PD-PKG-002` when PyPI does not know the name; `PD-NET-001` when it is neither cached nor
+/// reachable.
+pub async fn info(opts: &GlobalOpts, pkg: &str) -> Result<Exit> {
+    let store = Store::open(&app_data_dir())?;
+    let name = PkgName::parse(pkg)?;
+    let (meta, freshness) = index::metadata(&store, &name, jiff::Timestamp::now()).await?;
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "meta": meta,
+                "freshness": freshness,
+            }))
+            .unwrap_or_default()
+        );
+        return Ok(Exit::Success);
+    }
+
+    println!("{}", meta.name);
+    if let Some(v) = &meta.version {
+        println!("  version        {v}");
+    }
+    if let Some(s) = &meta.summary {
+        println!("  summary        {s}");
+    }
+    if let Some(r) = &meta.requires_python {
+        println!("  requires-python {r}");
+    }
+    if let Some(l) = &meta.license {
+        println!("  license        {l}");
+    }
+    if let Some(h) = &meta.home_page {
+        println!("  home           {h}");
+    }
+    if freshness == index::Freshness::Stale {
+        // UI-SPEC §7: offline shows a cached badge rather than an error, because the data is
+        // still useful and search still works.
+        println!("  (offline — showing cached data)");
+    }
+    Ok(Exit::Success)
 }
 
 /// `pipdock pin add|remove|list`

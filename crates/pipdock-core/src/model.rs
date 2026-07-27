@@ -125,21 +125,7 @@ impl PkgName {
             return Err(invalid());
         }
 
-        // PEP 503 normalization.
-        let mut out = String::with_capacity(raw.len());
-        let mut prev_was_separator = false;
-        for ch in raw.chars() {
-            if matches!(ch, '.' | '_' | '-') {
-                if !prev_was_separator {
-                    out.push('-');
-                }
-                prev_was_separator = true;
-            } else {
-                out.push(ch.to_ascii_lowercase());
-                prev_was_separator = false;
-            }
-        }
-        Ok(Self(out))
+        Ok(Self(normalize_name(raw)))
     }
 
     /// The normalized name.
@@ -153,6 +139,29 @@ impl std::fmt::Display for PkgName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.write_str(&self.0)
     }
+}
+
+/// PEP 503 normalization: lowercase, and runs of `-`, `_` or `.` collapse to a single `-`.
+///
+/// Separate from [`PkgName::parse`] because search must normalize a **query**, which is not yet a
+/// valid name and may never become one. Both paths must agree, or a user typing `Zope.Interface`
+/// would not find `zope-interface`, so there is exactly one implementation.
+#[must_use]
+pub fn normalize_name(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    let mut prev_was_separator = false;
+    for ch in raw.chars() {
+        if matches!(ch, '.' | '_' | '-') {
+            if !prev_was_separator {
+                out.push('-');
+            }
+            prev_was_separator = true;
+        } else {
+            out.push(ch.to_ascii_lowercase());
+            prev_was_separator = false;
+        }
+    }
+    out
 }
 
 /// A version string as the engine reported it. Never reshaped or localized (I18N §2).

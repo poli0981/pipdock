@@ -19,7 +19,7 @@ use crate::errors::{Code, PdError, Result};
 pub const DB_FILE: &str = "index.db";
 
 /// Schema version this build expects. Bump when adding a migration.
-pub const SCHEMA_VERSION: i64 = 1;
+pub const SCHEMA_VERSION: i64 = 2;
 
 /// An open store.
 #[derive(Debug)]
@@ -80,6 +80,38 @@ impl Store {
         &self.conn
     }
 
+    /// Read a scalar from the `kv` table.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the read fails.
+    pub fn get(&self, key: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row("SELECT value FROM kv WHERE key = ?1", [key], |r| r.get(0))
+            .map(Some)
+            .or_else(|e| match e {
+                rusqlite::Error::QueryReturnedNoRows => Ok(None),
+                other => Err(PdError::new(
+                    Code::IntUnexpected,
+                    format!("store read {key}: {other}"),
+                )),
+            })
+    }
+
+    /// Write a scalar to the `kv` table.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the write fails.
+    pub fn set(&self, key: &str, value: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO kv (key, value) VALUES (?1, ?2)
+                 ON CONFLICT (key) DO UPDATE SET value = excluded.value",
+                rusqlite::params![key, value],
+            )
+            .map_err(|e| PdError::new(Code::IntUnexpected, format!("store write {key}: {e}")))?;
+        Ok(())
+    }
+
     fn migrate(&self) -> Result<()> {
         let sql = |e: rusqlite::Error| {
             PdError::new(Code::IntUnexpected, format!("store migration failed: {e}"))
@@ -119,6 +151,13 @@ impl Store {
                      version     TEXT,
                      reason      TEXT,
                      PRIMARY KEY (env_hash, pkg)
+                 );
+
+                 -- Small scalars that do not deserve a table of their own: when the name index
+                 -- was last refreshed, how many projects it holds.
+                 CREATE TABLE IF NOT EXISTS kv (
+                     key   TEXT PRIMARY KEY,
+                     value TEXT NOT NULL
                  );",
             )
             .map_err(sql)?;
