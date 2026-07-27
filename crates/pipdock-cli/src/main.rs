@@ -306,6 +306,12 @@ async fn main() -> ExitCode {
         Command::List { outdated } => run::list(&cli.global, *outdated).await,
         Command::Doctor => run::doctor(&cli.global).await,
         Command::Engine { engine: None } => run::engine_status(&cli.global).await,
+        Command::Pin(PinCommand::List) => run::pin_list(&cli.global).await,
+        Command::Pin(PinCommand::Add { pkg, reason }) => {
+            run::pin_add(&cli.global, pkg, reason.as_deref()).await
+        }
+        Command::Pin(PinCommand::Remove { pkg }) => run::pin_remove(&cli.global, pkg).await,
+        Command::Uninstall { pkgs, force } => run::uninstall(&cli.global, pkgs, *force).await,
         Command::Snapshot(SnapshotCommand::List) => run::snapshot_list(&cli.global).await,
         Command::Snapshot(SnapshotCommand::Create) => run::snapshot_create(&cli.global).await,
         Command::Snapshot(SnapshotCommand::Diff { id }) => {
@@ -319,7 +325,7 @@ async fn main() -> ExitCode {
             eprintln!(
                 "error[PD-INT-001]: `{}` is not implemented yet.\n\
                  Working today: env list, list [--outdated], doctor, engine,
-                 snapshot list|create|diff.",
+                 pin add|remove|list, uninstall, snapshot list|create|diff.",
                 command_name(other)
             );
             Ok(Exit::Internal)

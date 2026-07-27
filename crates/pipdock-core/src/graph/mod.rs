@@ -218,6 +218,80 @@ impl ReverseDeps {
             .cloned()
             .collect()
     }
+
+    /// Everything that must also go if `removing` is removed and nothing may be left broken.
+    ///
+    /// This is the *transitive* closure, which DATA-FLOW §5's "[Remove dependents too] (adds Y,Z
+    /// to set, re-guard)" implies: pulling Y in can break Z, and stopping after one level would
+    /// hand the user a set that still breaks something. Terminates on cycles because packages are
+    /// only ever added to the frontier once.
+    #[must_use]
+    pub fn removal_closure(&self, removing: &[PkgName]) -> Vec<PkgName> {
+        let mut seen: BTreeSet<PkgName> = removing.iter().cloned().collect();
+        let mut frontier: Vec<PkgName> = removing.to_vec();
+
+        while let Some(pkg) = frontier.pop() {
+            for dependent in self.dependents_of(&pkg) {
+                if seen.insert(dependent.clone()) {
+                    frontier.push(dependent);
+                }
+            }
+        }
+        seen.into_iter().collect()
+    }
+
+    /// Evaluate the uninstall guard against a removal set (DATA-FLOW §5).
+    #[must_use]
+    pub fn guard(&self, removing: &[PkgName]) -> GuardReport {
+        GuardReport {
+            removing: removing.to_vec(),
+            breaks: self.dependents_of_set(removing),
+            with_dependents: self.removal_closure(removing),
+        }
+    }
+}
+
+/// What the uninstall guard found.
+///
+/// Rationale from DATA-FLOW §5: bare `pip uninstall` performs **no** dependency check at all, so
+/// this is a core value-add rather than a nicety. It is computed once against the full set,
+/// because removing A and B together is fine when only B depends on A — asking per package would
+/// raise a warning the user cannot act on.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+pub struct GuardReport {
+    /// The set the user asked to remove.
+    pub removing: Vec<PkgName>,
+    /// For each package that has them, the installed packages that would break.
+    pub breaks: BTreeMap<PkgName, Vec<PkgName>>,
+    /// The removal set expanded to include everything that depends on it, transitively — the
+    /// "remove dependents too" option.
+    pub with_dependents: Vec<PkgName>,
+}
+
+impl GuardReport {
+    /// True when nothing would break and the flow can go straight to a plain confirm.
+    #[must_use]
+    pub fn is_clear(&self) -> bool {
+        self.breaks.is_empty()
+    }
+
+    /// Every package that would break, de-duplicated across the removal set.
+    #[must_use]
+    pub fn all_broken(&self) -> Vec<PkgName> {
+        let set: BTreeSet<&PkgName> = self.breaks.values().flatten().collect();
+        set.into_iter().cloned().collect()
+    }
+
+    /// The extra packages "remove dependents too" would add beyond what the user selected.
+    #[must_use]
+    pub fn extra_removals(&self) -> Vec<PkgName> {
+        let asked: BTreeSet<&PkgName> = self.removing.iter().collect();
+        self.with_dependents
+            .iter()
+            .filter(|p| !asked.contains(p))
+            .cloned()
+            .collect()
+    }
 }
 
 /// Does `version` satisfy the PEP 440 specifier set `constraint`?
@@ -431,5 +505,60 @@ mod tests {
     fn leaves_are_packages_nothing_depends_on() {
         let g = ReverseDeps::build(&[dist("x", "1.0", &[]), dist("y", "2.0", &["x>=1"])]);
         assert_eq!(g.leaves(&[pkg("x"), pkg("y")]), [pkg("y")]);
+    }
+
+    #[test]
+    fn the_guard_reports_the_documented_example() {
+        // DATA-FLOW §5: "Removing X breaks Y (requires X>=1), Z".
+        let g = ReverseDeps::build(&[
+            dist("x", "1.0", &[]),
+            dist("y", "2.0", &["x>=1"]),
+            dist("z", "3.0", &["x"]),
+        ]);
+        let report = g.guard(&[pkg("x")]);
+
+        assert!(!report.is_clear());
+        assert_eq!(report.all_broken(), [pkg("y"), pkg("z")]);
+        assert_eq!(report.extra_removals(), [pkg("y"), pkg("z")]);
+    }
+
+    #[test]
+    fn a_removal_that_breaks_nothing_is_clear() {
+        let g = ReverseDeps::build(&[dist("x", "1.0", &[]), dist("y", "2.0", &["x>=1"])]);
+        let report = g.guard(&[pkg("y")]);
+
+        assert!(report.is_clear());
+        assert!(report.all_broken().is_empty());
+        assert!(report.extra_removals().is_empty());
+    }
+
+    #[test]
+    fn remove_dependents_too_is_transitive() {
+        // a <- b <- c. Removing `a` and stopping after one level would hand the user {a, b},
+        // which still breaks c — a set that is guaranteed to fail its own re-guard.
+        let g = ReverseDeps::build(&[
+            dist("a", "1.0", &[]),
+            dist("b", "1.0", &["a"]),
+            dist("c", "1.0", &["b"]),
+        ]);
+        let report = g.guard(&[pkg("a")]);
+
+        assert_eq!(report.with_dependents, [pkg("a"), pkg("b"), pkg("c")]);
+        // ...and the expanded set is genuinely safe: re-guarding it finds nothing left to break.
+        assert!(g.guard(&report.with_dependents).is_clear());
+    }
+
+    #[test]
+    fn the_closure_terminates_on_a_cycle() {
+        // Mutually dependent packages are rare but real; a naive walk would not stop.
+        let g = ReverseDeps::build(&[dist("a", "1.0", &["b"]), dist("b", "1.0", &["a"])]);
+        assert_eq!(g.removal_closure(&[pkg("a")]), [pkg("a"), pkg("b")]);
+    }
+
+    #[test]
+    fn removing_a_package_together_with_its_only_dependent_is_clear() {
+        // The reason the guard runs once against the whole set rather than per package.
+        let g = ReverseDeps::build(&[dist("x", "1.0", &[]), dist("y", "2.0", &["x>=1"])]);
+        assert!(g.guard(&[pkg("x"), pkg("y")]).is_clear());
     }
 }

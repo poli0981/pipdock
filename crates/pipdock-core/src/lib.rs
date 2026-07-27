@@ -35,6 +35,7 @@ pub mod model;
 pub mod pins;
 pub mod plan;
 pub mod snapshot;
+pub mod store;
 
 pub use compat::{Compatibility, PyVersion};
 pub use errors::{Code, PdError, Result};

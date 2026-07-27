@@ -6,11 +6,13 @@
 
 use std::path::{Path, PathBuf};
 
-use pipdock_core::engine::{Engine, pip::PipEngine, uv::UvEngine};
+use pipdock_core::engine::{Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
-use pipdock_core::model::{EngineId, EnvSource, PyEnv};
-use pipdock_core::snapshot;
+use pipdock_core::graph::ReverseDeps;
+use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
+use pipdock_core::store::Store;
+use pipdock_core::{pins, plan, snapshot};
 
 use crate::{EngineArg, Exit, GlobalOpts};
 
@@ -402,6 +404,219 @@ pub async fn snapshot_diff(opts: &GlobalOpts, id: &str) -> Result<Exit> {
         }
     }
     Ok(Exit::Success)
+}
+
+/// `pipdock pin add|remove|list`
+///
+/// # Errors
+/// Propagates environment and store failures.
+pub async fn pin_list(opts: &GlobalOpts) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let store = Store::open(&app_data_dir())?;
+    let pins = pins::list(&store, &envs::env_hash(&env.interpreter))?;
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&pins).unwrap_or_default()
+        );
+    } else if pins.is_empty() {
+        println!("no pins for this environment");
+    } else {
+        for p in &pins {
+            let mode = match &p.mode {
+                pins::PinMode::Exclude => "exclude".to_owned(),
+                pins::PinMode::Hold { version } => format!("hold {version}"),
+            };
+            println!(
+                "{:<32} {:<16} {}",
+                p.pkg,
+                mode,
+                p.reason.as_deref().unwrap_or("")
+            );
+        }
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock pin add <pkg> [--reason ...]`
+///
+/// # Errors
+/// `PD-PKG-002` for an invalid name; propagates environment and store failures.
+pub async fn pin_add(opts: &GlobalOpts, pkg: &str, reason: Option<&str>) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let store = Store::open(&app_data_dir())?;
+    let name = PkgName::parse(pkg)?;
+
+    pins::add(
+        &store,
+        &envs::env_hash(&env.interpreter),
+        &pins::Pin {
+            pkg: name.clone(),
+            mode: pins::PinMode::Exclude,
+            reason: reason.map(str::to_owned),
+        },
+    )?;
+    println!("pinned {name} (excluded from bulk updates)");
+    Ok(Exit::Success)
+}
+
+/// `pipdock pin remove <pkg>`
+///
+/// # Errors
+/// `PD-PKG-002` for an invalid name; propagates environment and store failures.
+pub async fn pin_remove(opts: &GlobalOpts, pkg: &str) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let store = Store::open(&app_data_dir())?;
+    let name = PkgName::parse(pkg)?;
+
+    if pins::remove(&store, &envs::env_hash(&env.interpreter), &name)? {
+        println!("unpinned {name}");
+    } else {
+        println!("{name} was not pinned");
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock uninstall <pkg...> [--force]`
+///
+/// DATA-FLOW §5: the reverse-dependency guard runs **once against the full removal set**, before
+/// anything is touched. Bare `pip uninstall` performs no such check, which is the whole reason
+/// this exists.
+///
+/// Without `--force`, a guard trip **aborts and executes nothing**, exiting non-zero so the CI
+/// idiom in CLI-SPEC §7 (`pipdock uninstall legacylib --json || echo "dependents exist"`) works.
+///
+/// # Errors
+/// `PD-PKG-002` for an invalid name; `PD-SNP-001` when the pre-removal snapshot cannot be written,
+/// in which case nothing is executed.
+pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let engine = engine_for(opts);
+
+    let names: Vec<PkgName> = pkgs
+        .iter()
+        .map(|p| PkgName::parse(p))
+        .collect::<Result<_>>()?;
+
+    // The graph is built from probe.py, which is the only source carrying requires_dist.
+    let probed = envs::probe(&env.interpreter, env.source).await?;
+    let report = ReverseDeps::build(&probed.dists).guard(&names);
+
+    if !report.is_clear() {
+        if opts.json {
+            println!(
+                "{}",
+                serde_json::to_string_pretty(&report).unwrap_or_default()
+            );
+        } else {
+            for (pkg, broken) in &report.breaks {
+                let list = broken
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ");
+                println!("removing {pkg} breaks {list}");
+            }
+        }
+        if !force {
+            eprintln!(
+                "error[PD-PKG-002]: refusing to remove packages other packages depend on.\n\
+                 Re-run with --force to proceed anyway, or add the dependents to the removal set:\n\
+                   pipdock uninstall {}",
+                report
+                    .with_dependents
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(" ")
+            );
+            // CLI-SPEC §7 documents this as exit 1 ("exit 1 if guard trips"), so scripts can use
+            // `||` without matching a specific code.
+            return Ok(Exit::PartialFailure);
+        }
+        eprintln!("warning: --force given; proceeding despite the breakage above");
+    }
+
+    // DATA-FLOW §9.2 applies to removals too: nothing is touched before a snapshot exists.
+    let env_hash = envs::env_hash(&env.interpreter);
+    let snap = snapshot::create(
+        &app_data_dir(),
+        &env_hash,
+        engine.freeze(&env).await?,
+        snapshot::Trigger::Plan {
+            plan_id: format!("uninstall-{env_hash:.8}"),
+        },
+        engine.id(),
+        jiff::Timestamp::now(),
+    )?;
+    println!("snapshot {} written before removing", snap.meta.id);
+
+    // Engine output streams to stderr as it happens, which is the CLI's equivalent of the GUI's
+    // console drawer: a long removal that prints nothing looks hung.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
+    let quiet = opts.quiet;
+    let pump = tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if !quiet {
+                eprintln!("{}", event.line);
+            }
+        }
+    });
+
+    let summary = plan::execute_uninstall(
+        engine.as_ref(),
+        &env,
+        snap.meta.id.clone(),
+        &names,
+        &snap,
+        tx,
+    )
+    .await?;
+    drop(pump);
+
+    print_summary(opts, &summary);
+    Ok(if summary.counts.failed > 0 {
+        Exit::PartialFailure
+    } else {
+        Exit::Success
+    })
+}
+
+/// Render an execution summary (DATA-FLOW §6).
+fn print_summary(opts: &GlobalOpts, summary: &plan::ExecutionSummary) {
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(summary).unwrap_or_default()
+        );
+        return;
+    }
+
+    println!(
+        "\n{} successful, {} failed, {} skipped",
+        summary.counts.ok, summary.counts.failed, summary.counts.skipped
+    );
+    for row in &summary.results {
+        if row.status == StepStatus::Failed {
+            let code = row.code.map_or_else(String::new, |c| format!("[{c}] "));
+            println!("  {} {}", row.pkg, code);
+            if let Some(tail) = &row.stderr_tail {
+                for line in tail.lines().take(6) {
+                    println!("      {line}");
+                }
+            }
+        }
+    }
+    if !summary.check.ok {
+        println!(
+            "\npost-check found {} problem(s):",
+            summary.check.findings.len()
+        );
+        for f in &summary.check.findings {
+            println!("  {}", f.requirement);
+        }
+    }
 }
 
 /// `pipdock engine [pip|uv]`
