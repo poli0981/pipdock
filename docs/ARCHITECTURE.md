@@ -130,4 +130,4 @@ Zustand stores: `useEnvStore`, `usePlanStore`, `useIndexStore`, `useSettingsStor
 | Managed Pythons | 3.10 – 3.14 (3.9 is EOL) |
 | Windows | 10 (1809+) / 11; WebView2 Evergreen assumed present; `longPathAware` manifest enabled |
 
-Renovate + `cargo audit` + `npm audit` in CI keep this table honest (RELEASE-CI.md).
+Dependabot + `cargo audit` + `npm audit` in CI keep this table honest (RELEASE-CI.md §2).

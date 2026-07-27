@@ -21,11 +21,11 @@ The three tools are **never installed into the user's environment**. PipDock mai
 ```text
 %LOCALAPPDATA%\PipDock\tools\
 ├─ .venv/                  # created with the newest discovered Python (≥3.10)
-├─ tools-requirements.txt  # exact pins, shipped with the app, updated per release via Renovate
+├─ tools-requirements.txt  # exact pins, shipped with the app, updated per release via Dependabot
 └─ manifest.json           # installed pin set + hash; mismatch with shipped pins ⇒ re-sync
 ```
 
-Bootstrap: on first Health run (or pin-set change), create/sync the venv from `tools-requirements.txt` using the configured engine, with progress in the console drawer. Pin policy: exact `==` pins resolved at PipDock release time (Renovate PRs bump them); no floating versions at runtime. Offline: if bootstrap can't reach PyPI, Health reports PD-NET-011 and stays disabled; other tabs unaffected.
+Bootstrap: on first Health run (or pin-set change), create/sync the venv from `tools-requirements.txt` using the configured engine, with progress in the console drawer. Pin policy: exact `==` pins resolved at PipDock release time (Dependabot PRs bump them, in their own group per RELEASE-CI §2); no floating versions at runtime. Offline: if bootstrap can't reach PyPI, Health reports PD-NET-011 and stays disabled; other tabs unaffected.
 
 ## 3. Inputs
 
