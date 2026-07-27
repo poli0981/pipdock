@@ -49,7 +49,19 @@ const noJsxLiterals = {
 }
 
 export default tseslint.config(
-  { ignores: ['dist/**', 'target/**', 'src-tauri/target/**', 'node_modules/**'] },
+  {
+    // `spikes/` holds Python venvs whose site-packages ship stray .js files; without this ESLint
+    // walks into them and the type-aware rules crash on files outside the tsconfig program.
+    ignores: [
+      'dist/**',
+      'target/**',
+      'src-tauri/target/**',
+      'src-tauri/gen/**',
+      'node_modules/**',
+      'spikes/**',
+      '**/.venv*/**',
+    ],
+  },
 
   js.configs.recommended,
   ...tseslint.configs.recommendedTypeChecked,
