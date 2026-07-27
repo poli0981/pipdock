@@ -129,5 +129,6 @@ Zustand stores: `useEnvStore`, `usePlanStore`, `useIndexStore`, `useSettingsStor
 | uv engine | latest stable (0.9.x line at writing); minimum pinned after SP-1 |
 | Managed Pythons | 3.10 – 3.14 (3.9 is EOL) |
 | Windows | 10 (1809+) / 11; WebView2 Evergreen assumed present; `longPathAware` manifest enabled |
+| rusqlite | **held at 0.37** (`libsqlite3-sys` 0.35). 0.40 pulls `libsqlite3-sys` 0.38.1, whose build script uses the unstable `cfg_select!` and therefore does not compile on stable Rust 1.94.1. Revisit when the toolchain advances. |
 
 Dependabot + `cargo audit` + `npm audit` in CI keep this table honest (RELEASE-CI.md §2).

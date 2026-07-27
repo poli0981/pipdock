@@ -1,0 +1,28 @@
+[workspace]
+resolver = "3"
+members = ["crates/pipdock-core", "crates/pipdock-cli"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+rust-version = "1.94"
+license = "GPL-3.0-only"
+repository = "https://github.com/poli0981/pipdock"
+authors = ["Kokone (poli0981)"]
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+# The five hard invariants in CLAUDE.md are about *not* taking shortcuts around
+# the engine. These lints are the mechanical half of enforcing that.
+todo = "allow"           # scaffold phase; flip to "warn" once M1 lands
+dbg_macro = "deny"
+print_stdout = "deny"    # core is a library: emit events, never println
+unwrap_used = "deny"
+expect_used = "deny"
+
+[profile.release]
+strip = true
+lto = true
+codegen-units = 1

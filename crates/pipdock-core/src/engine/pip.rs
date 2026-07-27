@@ -1,0 +1,176 @@
+//! The pip adapter: `<env-python> -m pip …`.
+//!
+//! Command mapping is fixed by `docs/DATA-FLOW.md` §7. Implementation lands in M1; the argv
+//! builders below are already exercised by tests because they are the surface SECURITY §2 cares
+//! about — nothing else in this file may construct engine arguments.
+
+use async_trait::async_trait;
+
+use crate::errors::Result;
+use crate::model::{
+    CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
+    StepResult,
+};
+use crate::plan::{PlanRequest, ResolutionReport};
+
+use super::{Engine, EventSink};
+
+/// Drives pip as a subprocess.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct PipEngine;
+
+impl PipEngine {
+    /// argv for `list --format=json`.
+    #[must_use]
+    pub fn argv_list() -> Vec<String> {
+        vec![
+            "-m".into(),
+            "pip".into(),
+            "list".into(),
+            "--format=json".into(),
+        ]
+    }
+
+    /// argv for `list --outdated --format=json`.
+    #[must_use]
+    pub fn argv_outdated() -> Vec<String> {
+        vec![
+            "-m".into(),
+            "pip".into(),
+            "list".into(),
+            "--outdated".into(),
+            "--format=json".into(),
+        ]
+    }
+
+    /// argv for the dry-run resolve, whose JSON report goes to stdout.
+    #[must_use]
+    pub fn argv_dry_run(specs: &[PinnedSpec]) -> Vec<String> {
+        let mut argv = vec![
+            "-m".into(),
+            "pip".into(),
+            "install".into(),
+            "--dry-run".into(),
+            "--quiet".into(),
+            "--report".into(),
+            "-".into(),
+        ];
+        argv.extend(specs.iter().map(PinnedSpec::to_requirement));
+        argv
+    }
+
+    /// argv for `freeze --all`, used for snapshots. `--all` keeps pip/setuptools in the freeze;
+    /// the snapshot metadata records which engine produced it (DATA-FLOW §7).
+    #[must_use]
+    pub fn argv_freeze() -> Vec<String> {
+        vec!["-m".into(), "pip".into(), "freeze".into(), "--all".into()]
+    }
+
+    /// argv for `check`.
+    #[must_use]
+    pub fn argv_check() -> Vec<String> {
+        vec!["-m".into(), "pip".into(), "check".into()]
+    }
+}
+
+#[async_trait]
+impl Engine for PipEngine {
+    fn id(&self) -> EngineId {
+        EngineId::Pip
+    }
+
+    async fn info(&self, env: &PyEnv) -> EngineInfo {
+        todo!("M1: run `{} -m pip --version`", env.interpreter.display())
+    }
+
+    async fn list_installed(&self, _env: &PyEnv) -> Result<Vec<Dist>> {
+        todo!("M1: parse argv_list() output into Dist")
+    }
+
+    async fn list_outdated(&self, _env: &PyEnv) -> Result<Vec<OutdatedDist>> {
+        todo!("M1: parse argv_outdated() output into OutdatedDist")
+    }
+
+    async fn resolve(&self, _env: &PyEnv, _req: &PlanRequest) -> Result<ResolutionReport> {
+        todo!("M1 (SP-2 fixtures): parse `--dry-run --report -` JSON into ResolutionReport")
+    }
+
+    async fn install(
+        &self,
+        _env: &PyEnv,
+        _specs: &[PinnedSpec],
+        _mode: ExecMode,
+        _sink: EventSink,
+    ) -> Result<StepResult> {
+        todo!("M1: two-phase execution per ARCHITECTURE §8")
+    }
+
+    async fn uninstall(
+        &self,
+        _env: &PyEnv,
+        _names: &[PkgName],
+        _sink: EventSink,
+    ) -> Result<StepResult> {
+        todo!("M1: `uninstall -y`, sequential, skip-and-continue")
+    }
+
+    async fn check(&self, _env: &PyEnv) -> Result<CheckReport> {
+        todo!("M1: normalize `pip check` findings")
+    }
+
+    async fn upgrade_pip(&self, _env: &PyEnv) -> Result<StepResult> {
+        todo!("M1: `install -U pip`")
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::model::Version;
+
+    #[test]
+    fn dry_run_argv_matches_the_documented_command() {
+        let argv = PipEngine::argv_dry_run(&[]);
+        assert_eq!(
+            argv,
+            [
+                "-m",
+                "pip",
+                "install",
+                "--dry-run",
+                "--quiet",
+                "--report",
+                "-"
+            ]
+        );
+    }
+
+    #[test]
+    fn requirements_are_appended_as_separate_argv_entries() {
+        // One token per argument is what makes shell quoting irrelevant (SECURITY §2).
+        let specs = [
+            PinnedSpec {
+                name: PkgName::parse("httpx").unwrap(),
+                version: Version("0.28.1".into()),
+            },
+            PinnedSpec {
+                name: PkgName::parse("Requests").unwrap(),
+                version: Version("2.32.3".into()),
+            },
+        ];
+        let argv = PipEngine::argv_dry_run(&specs);
+        assert_eq!(
+            &argv[argv.len() - 2..],
+            ["httpx==0.28.1", "requests==2.32.3"]
+        );
+        assert!(
+            argv.iter().all(|a| !a.contains(' ')),
+            "no argv entry may bundle multiple arguments"
+        );
+    }
+
+    #[test]
+    fn freeze_uses_all_so_snapshots_include_pip_itself() {
+        assert!(PipEngine::argv_freeze().contains(&"--all".to_string()));
+    }
+}
