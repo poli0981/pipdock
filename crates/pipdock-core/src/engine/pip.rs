@@ -14,7 +14,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, EventSink};
+use super::{Engine, EventSink, single_pkg};
 
 /// Drives pip as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -139,21 +139,38 @@ impl Engine for PipEngine {
 
     async fn install(
         &self,
-        _env: &PyEnv,
-        _specs: &[PinnedSpec],
-        _mode: ExecMode,
-        _sink: EventSink,
+        env: &PyEnv,
+        specs: &[PinnedSpec],
+        mode: ExecMode,
+        sink: EventSink,
     ) -> Result<StepResult> {
-        todo!("M1: two-phase execution per ARCHITECTURE §8")
+        let mut argv = vec!["-m".to_owned(), "pip".to_owned(), "install".to_owned()];
+        argv.extend(specs.iter().map(PinnedSpec::to_requirement));
+        let out = Command::python(&env.interpreter)
+            .args(argv)
+            .run_streaming(&sink, 0, single_pkg(specs), mode)
+            .await?;
+        Ok(super::step_result(specs, &out))
     }
 
     async fn uninstall(
         &self,
-        _env: &PyEnv,
-        _names: &[PkgName],
-        _sink: EventSink,
+        env: &PyEnv,
+        names: &[PkgName],
+        sink: EventSink,
     ) -> Result<StepResult> {
-        todo!("M1: `uninstall -y`, sequential, skip-and-continue")
+        let mut argv = vec![
+            "-m".to_owned(),
+            "pip".to_owned(),
+            "uninstall".to_owned(),
+            "-y".to_owned(),
+        ];
+        argv.extend(names.iter().map(ToString::to_string));
+        let out = Command::python(&env.interpreter)
+            .args(argv)
+            .run_streaming(&sink, 0, names.first().cloned(), ExecMode::Isolated)
+            .await?;
+        Ok(super::removal_result(names, &out))
     }
 
     async fn check(&self, env: &PyEnv) -> Result<CheckReport> {
@@ -164,6 +181,17 @@ impl Engine for PipEngine {
         // `pip check` exits non-zero when it finds problems, which is a successful check with
         // findings -- not a command failure.
         Ok(super::parse::check_text(&out.stdout, out.ok()))
+    }
+
+    async fn freeze(&self, env: &PyEnv) -> Result<String> {
+        let out = Command::python(&env.interpreter)
+            .args(Self::argv_freeze())
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(out.into_error());
+        }
+        Ok(out.stdout)
     }
 
     async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult> {

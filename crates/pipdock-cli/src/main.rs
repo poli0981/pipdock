@@ -306,6 +306,11 @@ async fn main() -> ExitCode {
         Command::List { outdated } => run::list(&cli.global, *outdated).await,
         Command::Doctor => run::doctor(&cli.global).await,
         Command::Engine { engine: None } => run::engine_status(&cli.global).await,
+        Command::Snapshot(SnapshotCommand::List) => run::snapshot_list(&cli.global).await,
+        Command::Snapshot(SnapshotCommand::Create) => run::snapshot_create(&cli.global).await,
+        Command::Snapshot(SnapshotCommand::Diff { id }) => {
+            run::snapshot_diff(&cli.global, id).await
+        }
 
         // Everything below needs the planner, snapshots or the index, none of which are wired
         // yet. Reporting that honestly beats a stub that appears to work — this is a tool whose
@@ -313,7 +318,8 @@ async fn main() -> ExitCode {
         other => {
             eprintln!(
                 "error[PD-INT-001]: `{}` is not implemented yet.\n\
-                 Working today: env list, list [--outdated], doctor, engine.",
+                 Working today: env list, list [--outdated], doctor, engine,
+                 snapshot list|create|diff.",
                 command_name(other)
             );
             Ok(Exit::Internal)

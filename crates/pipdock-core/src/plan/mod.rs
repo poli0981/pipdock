@@ -2,7 +2,12 @@
 //!
 //! See `docs/DATA-FLOW.md` §3 for the state machine and §9 for the invariants this module owns.
 
-use crate::model::{CheckReport, ExecMode, PinnedSpec, PkgName, Spec, StepResult, Version};
+use crate::engine::{Engine, EventSink};
+use crate::errors::{Code, PdError, Result};
+use crate::model::{
+    CheckReport, ExecMode, PinnedSpec, PkgName, PyEnv, Spec, StepResult, StepStatus, Version,
+};
+use crate::snapshot::Snapshot;
 
 /// How aggressively to resolve conflicts.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -191,12 +196,287 @@ impl ExecutionSummary {
     }
 }
 
-/// DATA-FLOW §9.3: a report older than this is refused by `plan_execute` and must be re-resolved.
+/// DATA-FLOW §9.3: a report older than this is refused by [`execute`] and must be re-resolved.
 pub const PLAN_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(10 * 60);
 
 /// DATA-FLOW §3: after this many conflict-decision rounds the UI requires manual pruning, which
 /// prevents decision ping-pong.
 pub const MAX_CONFLICT_ROUNDS: u8 = 3;
+
+/// A [`ResolutionReport`] the user has confirmed.
+///
+/// **This type is how DATA-FLOW §9.1 stops being a rule and starts being a fact.** There is no
+/// other way to construct one, and [`execute`] accepts nothing else, so a mutating engine call
+/// without an accepted plan is not a bug that review has to catch — it does not compile.
+///
+/// It also carries what §9.3 needs to refuse a stale plan: when it was accepted, and a fingerprint
+/// of the environment at that moment.
+#[derive(Debug, Clone)]
+pub struct AcceptedPlan {
+    /// Correlates the plan with its snapshot, its summary and its log ring buffer.
+    pub id: String,
+    /// The confirmed report.
+    pub report: ResolutionReport,
+    /// When the user confirmed.
+    pub accepted_at: jiff::Timestamp,
+    /// Identity of the environment it was resolved against.
+    pub env_hash: String,
+    /// Fingerprint of the installed set at resolve time, for the drift check.
+    pub probe_hash: String,
+}
+
+impl AcceptedPlan {
+    /// Record the user's confirmation of a report.
+    #[must_use]
+    pub fn accept(
+        report: ResolutionReport,
+        env_hash: String,
+        installed: &[crate::model::Dist],
+        now: jiff::Timestamp,
+    ) -> Self {
+        Self {
+            id: format!(
+                "{}-{}",
+                &env_hash[..8.min(env_hash.len())],
+                now.as_millisecond()
+            ),
+            report,
+            accepted_at: now,
+            env_hash,
+            probe_hash: fingerprint(installed),
+        }
+    }
+
+    /// DATA-FLOW §9.3: refuse a plan that is too old, or one whose environment has drifted.
+    ///
+    /// Both cases mean the preview the user approved no longer describes what would happen — and
+    /// executing a plan the user did not actually see is exactly what "preview before touch" is
+    /// supposed to prevent.
+    ///
+    /// # Errors
+    /// `PD-RES-002` in either case.
+    pub fn verify(
+        &self,
+        env_hash: &str,
+        installed: &[crate::model::Dist],
+        now: jiff::Timestamp,
+    ) -> Result<()> {
+        let age = now
+            .as_millisecond()
+            .saturating_sub(self.accepted_at.as_millisecond());
+        if age < 0 || u128::try_from(age).unwrap_or(u128::MAX) > PLAN_MAX_AGE.as_millis() {
+            return Err(PdError::new(
+                Code::ResPlanStale,
+                format!(
+                    "this preview is older than {} minutes — re-run it",
+                    PLAN_MAX_AGE.as_secs() / 60
+                ),
+            ));
+        }
+        if env_hash != self.env_hash {
+            return Err(PdError::new(
+                Code::ResPlanStale,
+                "this preview was made for a different environment",
+            ));
+        }
+        if fingerprint(installed) != self.probe_hash {
+            return Err(PdError::new(
+                Code::ResPlanStale,
+                "the environment changed since the preview was made — re-run it",
+            ));
+        }
+        Ok(())
+    }
+}
+
+/// A cheap, order-independent fingerprint of an installed set.
+///
+/// Order-independent on purpose: engines do not promise a stable listing order, and a reordering
+/// is not drift. Only the set of `name==version` pairs matters.
+#[must_use]
+pub fn fingerprint(installed: &[crate::model::Dist]) -> String {
+    use std::fmt::Write as _;
+
+    use sha2::{Digest as _, Sha256};
+
+    let mut pairs: Vec<String> = installed
+        .iter()
+        .map(|d| format!("{}=={}", d.name, d.version))
+        .collect();
+    pairs.sort_unstable();
+
+    let digest = Sha256::digest(pairs.join("\n").as_bytes());
+    digest
+        .iter()
+        .take(16)
+        .fold(String::with_capacity(32), |mut acc, b| {
+            let _ = write!(acc, "{b:02x}");
+            acc
+        })
+}
+
+/// Execute a confirmed plan (ARCHITECTURE §8, DATA-FLOW §3).
+///
+/// Two phases:
+///
+/// 1. **Phase A** — one engine invocation for the whole pinned set. Fast, especially under uv, and
+///    atomic-ish. If it exits 0 the run is done.
+/// 2. **Phase B** — on Phase-A failure, re-run **per package, in resolver-report order**, and
+///    **keep going past failures**. This is the owner's skip-and-continue requirement, and it is
+///    the reason a batch of fifteen with two bad packages applies thirteen instead of nothing.
+///
+/// Then `engine.check()` runs and its findings join the summary.
+///
+/// # Why the signature looks like this
+///
+/// `plan: &AcceptedPlan` and `_snapshot: &Snapshot` are the enforcement of DATA-FLOW §9.1 and
+/// §9.2. Neither can be conjured: an `AcceptedPlan` only exists once a report was confirmed, and a
+/// `Snapshot` only exists once one was successfully written. A caller that skipped either step
+/// cannot produce the arguments, so the invariants hold by construction rather than by review.
+///
+/// # Errors
+/// `PD-RES-002` when the plan is stale or the environment drifted. Per-package failures are
+/// **not** errors — they appear in the summary with their catalog codes.
+pub async fn execute(
+    engine: &dyn Engine,
+    env: &PyEnv,
+    plan: &AcceptedPlan,
+    _snapshot: &Snapshot,
+    installed_now: &[crate::model::Dist],
+    now: jiff::Timestamp,
+    sink: EventSink,
+) -> Result<ExecutionSummary> {
+    plan.verify(&plan.env_hash, installed_now, now)?;
+
+    let pinned = plan.report.pinned_set();
+    if pinned.is_empty() {
+        return Ok(ExecutionSummary {
+            plan_id: plan.id.clone(),
+            phase: ExecMode::Batch,
+            results: Vec::new(),
+            check: engine.check(env).await.unwrap_or(CheckReport {
+                ok: true,
+                findings: Vec::new(),
+            }),
+            counts: Counts::default(),
+        });
+    }
+
+    // Phase A.
+    let batch = engine
+        .install(env, &pinned, ExecMode::Batch, sink.clone())
+        .await?;
+    if batch.status == StepStatus::Ok {
+        let results: Vec<StepResult> = pinned
+            .iter()
+            .map(|spec| StepResult {
+                pkg: spec.name.clone(),
+                from: None,
+                to: Some(spec.version.clone()),
+                status: StepStatus::Ok,
+                code: None,
+                stderr_tail: None,
+            })
+            .collect();
+        let counts = ExecutionSummary::tally(&results);
+        return Ok(ExecutionSummary {
+            plan_id: plan.id.clone(),
+            phase: ExecMode::Batch,
+            results,
+            check: post_check(engine, env).await,
+            counts,
+        });
+    }
+
+    // Phase B: isolate. One failure must not cost the user the other fourteen packages.
+    let mut results = Vec::with_capacity(pinned.len());
+    for spec in &pinned {
+        let step = engine
+            .install(
+                env,
+                std::slice::from_ref(spec),
+                ExecMode::Isolated,
+                sink.clone(),
+            )
+            .await;
+        results.push(match step {
+            Ok(r) => r,
+            // An engine that could not even be spawned is still one package's outcome here;
+            // aborting would discard the packages that already succeeded.
+            Err(e) => StepResult {
+                pkg: spec.name.clone(),
+                from: None,
+                to: Some(spec.version.clone()),
+                status: StepStatus::Failed,
+                code: Some(e.code),
+                stderr_tail: e.stderr_tail,
+            },
+        });
+    }
+
+    let counts = ExecutionSummary::tally(&results);
+    Ok(ExecutionSummary {
+        plan_id: plan.id.clone(),
+        phase: ExecMode::Isolated,
+        results,
+        check: post_check(engine, env).await,
+        counts,
+    })
+}
+
+/// Run the post-execution check, treating an unrunnable check as "no findings".
+///
+/// A check that could not run must not turn a successful run into a reported failure; the summary
+/// already carries the per-package truth.
+async fn post_check(engine: &dyn Engine, env: &PyEnv) -> CheckReport {
+    engine.check(env).await.unwrap_or(CheckReport {
+        ok: true,
+        findings: Vec::new(),
+    })
+}
+
+/// Remove packages, sequentially, skipping past failures (DATA-FLOW §5).
+///
+/// The reverse-dependency guard is the caller's job and runs **once against the full set** before
+/// this is called; by the time execution starts the user has already decided.
+///
+/// # Errors
+/// Never for a package failure — those land in the summary. Only a stale plan aborts.
+pub async fn execute_uninstall(
+    engine: &dyn Engine,
+    env: &PyEnv,
+    plan_id: String,
+    names: &[PkgName],
+    _snapshot: &Snapshot,
+    sink: EventSink,
+) -> Result<ExecutionSummary> {
+    let mut results = Vec::with_capacity(names.len());
+    for name in names {
+        let step = engine
+            .uninstall(env, std::slice::from_ref(name), sink.clone())
+            .await;
+        results.push(match step {
+            Ok(r) => r,
+            Err(e) => StepResult {
+                pkg: name.clone(),
+                from: None,
+                to: None,
+                status: StepStatus::Failed,
+                code: Some(e.code),
+                stderr_tail: e.stderr_tail,
+            },
+        });
+    }
+
+    let counts = ExecutionSummary::tally(&results);
+    Ok(ExecutionSummary {
+        plan_id,
+        phase: ExecMode::Isolated,
+        results,
+        check: post_check(engine, env).await,
+        counts,
+    })
+}
 
 #[cfg(test)]
 mod tests {

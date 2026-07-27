@@ -85,6 +85,14 @@ pub trait Engine: Send + Sync {
     /// `pip check` / `uv pip check`, normalized.
     async fn check(&self, env: &PyEnv) -> Result<CheckReport>;
 
+    /// Capture the environment as a freeze document, for snapshots.
+    ///
+    /// The two engines do not capture the same thing: pip is invoked with `--all` so pip and
+    /// setuptools are included, while uv has no such flag and omits them (DATA-FLOW §7). A
+    /// snapshot therefore records which engine produced it, and a rollback must be planned
+    /// against that same understanding — which is why [`crate::snapshot::Meta`] stores the engine.
+    async fn freeze(&self, env: &PyEnv) -> Result<String>;
+
     /// Upgrade pip inside `env`. The uv adapter returns an `Unsupported` error — DATA-FLOW §7
     /// says pip upkeep is surfaced only when pip is the active engine or present in the env.
     async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult>;
@@ -129,6 +137,90 @@ pub fn plan_requirements(req: &PlanRequest, installed: &[crate::model::Dist]) ->
             version: d.version.clone(),
         })
         .collect()
+}
+
+/// The package a step is about, when a step covers exactly one.
+///
+/// Phase A installs the whole set at once, so its progress lines belong to no single package;
+/// Phase B is per-package and its lines do. The console drawer uses this to draw section markers
+/// (UI-SPEC §3).
+#[must_use]
+pub fn single_pkg(specs: &[PinnedSpec]) -> Option<PkgName> {
+    match specs {
+        [only] => Some(only.name.clone()),
+        _ => None,
+    }
+}
+
+/// Build the [`StepResult`] for a finished install.
+///
+/// Failure is recorded, **not raised**. ARCHITECTURE §8 and the owner requirement behind it: a
+/// failed package must not stop the batch, so this returns an `Ok` carrying a `Failed` status and
+/// the classified code. The only thing that aborts a run is a snapshot failure.
+#[must_use]
+pub fn step_result(specs: &[PinnedSpec], out: &crate::exec::Output) -> StepResult {
+    use crate::model::StepStatus;
+
+    let pkg = single_pkg(specs).unwrap_or_else(|| {
+        // A batch step is reported against the first package purely so the row has a name; the
+        // summary shows Phase A as one line regardless.
+        specs.first().map_or_else(
+            || PkgName::parse("batch").unwrap_or_else(|_| unreachable!("literal is valid")),
+            |s| s.name.clone(),
+        )
+    });
+
+    if out.ok() {
+        StepResult {
+            pkg,
+            from: None,
+            to: specs.first().map(|s| s.version.clone()),
+            status: StepStatus::Ok,
+            code: None,
+            stderr_tail: None,
+        }
+    } else {
+        let err = crate::errors::PdError::from_engine_stderr(&out.stderr);
+        StepResult {
+            pkg,
+            from: None,
+            to: specs.first().map(|s| s.version.clone()),
+            status: StepStatus::Failed,
+            code: Some(err.code),
+            stderr_tail: err.stderr_tail,
+        }
+    }
+}
+
+/// Build the [`StepResult`] for a finished removal. Same skip-and-continue rule as installs.
+#[must_use]
+pub fn removal_result(names: &[PkgName], out: &crate::exec::Output) -> StepResult {
+    use crate::model::StepStatus;
+
+    let pkg = names.first().cloned().unwrap_or_else(|| {
+        PkgName::parse("batch").unwrap_or_else(|_| unreachable!("literal is valid"))
+    });
+
+    if out.ok() {
+        StepResult {
+            pkg,
+            from: None,
+            to: None,
+            status: StepStatus::Ok,
+            code: None,
+            stderr_tail: None,
+        }
+    } else {
+        let err = crate::errors::PdError::from_engine_stderr(&out.stderr);
+        StepResult {
+            pkg,
+            from: None,
+            to: None,
+            status: StepStatus::Failed,
+            code: Some(err.code),
+            stderr_tail: err.stderr_tail,
+        }
+    }
 }
 
 #[cfg(test)]

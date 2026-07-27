@@ -25,7 +25,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, EventSink};
+use super::{Engine, EventSink, single_pkg};
 
 /// Drives uv as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -153,21 +153,45 @@ impl Engine for UvEngine {
 
     async fn install(
         &self,
-        _env: &PyEnv,
-        _specs: &[PinnedSpec],
-        _mode: ExecMode,
-        _sink: EventSink,
+        env: &PyEnv,
+        specs: &[PinnedSpec],
+        mode: ExecMode,
+        sink: EventSink,
     ) -> Result<StepResult> {
-        todo!("M1: two-phase execution per ARCHITECTURE §8")
+        let python = env.interpreter.display().to_string();
+        let mut argv = vec![
+            "pip".to_owned(),
+            "install".to_owned(),
+            "--python".to_owned(),
+            python,
+        ];
+        argv.extend(specs.iter().map(PinnedSpec::to_requirement));
+        let out = Command::new("uv")
+            .args(argv)
+            .run_streaming(&sink, 0, single_pkg(specs), mode)
+            .await?;
+        Ok(super::step_result(specs, &out))
     }
 
     async fn uninstall(
         &self,
-        _env: &PyEnv,
-        _names: &[PkgName],
-        _sink: EventSink,
+        env: &PyEnv,
+        names: &[PkgName],
+        sink: EventSink,
     ) -> Result<StepResult> {
-        todo!("M1: `uv pip uninstall`, sequential, skip-and-continue")
+        let python = env.interpreter.display().to_string();
+        let mut argv = vec![
+            "pip".to_owned(),
+            "uninstall".to_owned(),
+            "--python".to_owned(),
+            python,
+        ];
+        argv.extend(names.iter().map(ToString::to_string));
+        let out = Command::new("uv")
+            .args(argv)
+            .run_streaming(&sink, 0, names.first().cloned(), ExecMode::Isolated)
+            .await?;
+        Ok(super::removal_result(names, &out))
     }
 
     async fn check(&self, env: &PyEnv) -> Result<CheckReport> {
@@ -184,6 +208,18 @@ impl Engine for UvEngine {
         // uv reports findings on stderr where pip uses stdout, so both are given to the parser.
         let combined = [out.stdout.as_str(), out.stderr.as_str()].join("\n");
         Ok(super::parse::check_text(&combined, out.ok()))
+    }
+
+    async fn freeze(&self, env: &PyEnv) -> Result<String> {
+        let python = env.interpreter.display().to_string();
+        let out = Command::new("uv")
+            .args(Self::argv_freeze(&python))
+            .run()
+            .await?;
+        if !out.ok() {
+            return Err(out.into_error());
+        }
+        Ok(out.stdout)
     }
 
     async fn upgrade_pip(&self, _env: &PyEnv) -> Result<StepResult> {

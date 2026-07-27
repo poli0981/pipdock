@@ -10,6 +10,7 @@ use pipdock_core::engine::{Engine, pip::PipEngine, uv::UvEngine};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::model::{EngineId, EnvSource, PyEnv};
+use pipdock_core::snapshot;
 
 use crate::{EngineArg, Exit, GlobalOpts};
 
@@ -285,6 +286,122 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
     } else {
         Exit::PartialFailure
     })
+}
+
+/// The app data root, `%LOCALAPPDATA%\PipDock` (ARCHITECTURE §6).
+#[must_use]
+pub fn app_data_dir() -> PathBuf {
+    std::env::var_os("LOCALAPPDATA")
+        .map(PathBuf::from)
+        .unwrap_or_else(std::env::temp_dir)
+        .join(pipdock_core::APP_DATA_DIR_NAME)
+}
+
+/// `pipdock snapshot list`
+///
+/// # Errors
+/// Propagates environment failures.
+pub async fn snapshot_list(opts: &GlobalOpts) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let hash = envs::env_hash(&env.interpreter);
+    let metas = snapshot::list(&app_data_dir(), &hash)?;
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&metas).unwrap_or_default()
+        );
+    } else if metas.is_empty() {
+        println!("no snapshots for this environment");
+    } else {
+        for m in &metas {
+            let trigger = match &m.trigger {
+                snapshot::Trigger::Plan { plan_id } => format!("plan {plan_id}"),
+                snapshot::Trigger::Rollback { restoring } => format!("rollback of {restoring}"),
+                snapshot::Trigger::Manual => "manual".to_owned(),
+            };
+            println!(
+                "{:<24} {:>4} pkgs  {:<6} {}",
+                m.id,
+                m.package_count,
+                m.engine.as_str(),
+                trigger
+            );
+        }
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock snapshot create`
+///
+/// # Errors
+/// `PD-SNP-001` when the snapshot cannot be written.
+pub async fn snapshot_create(opts: &GlobalOpts) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let engine = engine_for(opts);
+    let freeze = engine.freeze(&env).await?;
+    let hash = envs::env_hash(&env.interpreter);
+
+    let snap = snapshot::create(
+        &app_data_dir(),
+        &hash,
+        freeze,
+        snapshot::Trigger::Manual,
+        engine.id(),
+        jiff::Timestamp::now(),
+    )?;
+
+    println!(
+        "snapshot {} written ({} packages)",
+        snap.meta.id, snap.meta.package_count
+    );
+    Ok(Exit::Success)
+}
+
+/// `pipdock snapshot diff <id>`
+///
+/// # Errors
+/// `PD-SNP-002` when the snapshot does not exist.
+pub async fn snapshot_diff(opts: &GlobalOpts, id: &str) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let engine = engine_for(opts);
+    let hash = envs::env_hash(&env.interpreter);
+
+    let snap = snapshot::load(&app_data_dir(), &hash, id)?;
+    let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
+    let d = snapshot::diff(&current, &snap.entries());
+
+    if opts.json {
+        println!("{}", serde_json::to_string_pretty(&d).unwrap_or_default());
+        return Ok(Exit::Success);
+    }
+
+    if d.is_empty() {
+        println!("environment matches snapshot {}", snap.meta.id);
+        return Ok(Exit::Success);
+    }
+    for s in &d.added {
+        println!("+ {} {}   (not in snapshot)", s.name, s.version);
+    }
+    for s in &d.removed {
+        println!("- {} {}   (in snapshot, not installed)", s.name, s.version);
+    }
+    for c in &d.changed {
+        println!("~ {} {} -> {} (snapshot)", c.name, c.current, c.snapshot);
+    }
+
+    // Honesty about what a rollback could not put back — the same reason PD-SNP-002 exists.
+    let stuck = snapshot::unrestorable_lines(&snap.freeze);
+    if !stuck.is_empty() {
+        println!(
+            "\n{} entr(y/ies) cannot be restored from an index:",
+            stuck.len()
+        );
+        for line in &stuck {
+            println!("  {line}");
+        }
+    }
+    Ok(Exit::Success)
 }
 
 /// `pipdock engine [pip|uv]`

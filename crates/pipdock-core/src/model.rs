@@ -176,7 +176,7 @@ pub struct Spec {
 }
 
 /// A resolved, exact `name==version` pair. Only these reach a mutating engine command.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
 pub struct PinnedSpec {
     /// Normalized distribution name.
     pub name: PkgName,
