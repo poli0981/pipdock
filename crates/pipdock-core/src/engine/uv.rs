@@ -44,9 +44,12 @@ impl UvEngine {
         ]
     }
 
-    /// argv for `uv pip install -U --dry-run --python <py> [specs…]`.
+    /// argv for `uv pip install -U --dry-run --python <py> [requirements…]`.
+    ///
+    /// `requirements` comes from [`super::plan_argv_specs`] and carries all three groups: bare
+    /// names to move, explicit installs, and the pinned guard set.
     #[must_use]
-    pub fn argv_dry_run(python: &str, specs: &[PinnedSpec]) -> Vec<String> {
+    pub fn argv_dry_run(python: &str, requirements: &[String]) -> Vec<String> {
         let mut argv = vec![
             "pip".into(),
             "install".into(),
@@ -55,7 +58,7 @@ impl UvEngine {
             "--python".into(),
             python.into(),
         ];
-        argv.extend(specs.iter().map(PinnedSpec::to_requirement));
+        argv.extend(requirements.iter().cloned());
         argv
     }
 
@@ -140,10 +143,10 @@ impl Engine for UvEngine {
         // SP-1: without the installed set restated, uv plans an upgrade that breaks installed
         // dependents and exits 0. Identical requirement to pip's adapter.
         let installed = self.list_installed(env).await?;
-        let specs = super::plan_requirements(req, &installed);
+        let requirements = super::plan_argv_specs(req, &installed);
         let python = env.interpreter.display().to_string();
         let out = Command::new("uv")
-            .args(Self::argv_dry_run(&python, &specs))
+            .args(Self::argv_dry_run(&python, &requirements))
             .run()
             .await?;
         // uv exits non-zero on an unsatisfiable set, but its message is the most useful thing it

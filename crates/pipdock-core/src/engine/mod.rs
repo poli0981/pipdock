@@ -139,6 +139,35 @@ pub fn plan_requirements(req: &PlanRequest, installed: &[crate::model::Dist]) ->
         .collect()
 }
 
+/// The complete requirement list a dry-run resolve is given.
+///
+/// Three groups, and **all three are required**:
+///
+/// 1. the packages the user wants moved, as **bare names**, so `-U` is free to take them anywhere;
+/// 2. the packages the user wants installed, with whatever specifier they gave;
+/// 3. the guard set from [`plan_requirements`], pinned to current versions.
+///
+/// Omitting group 1 is not a small mistake: the engine is then asked to upgrade nothing, reports
+/// no changes, and every package the user selected looks "held back" for no discoverable reason.
+/// Omitting group 3 is the SP-1 failure — the resolver breaks installed dependents at exit 0.
+#[must_use]
+pub fn plan_argv_specs(req: &PlanRequest, installed: &[crate::model::Dist]) -> Vec<String> {
+    let mut out: Vec<String> = req.upgrades.iter().map(ToString::to_string).collect();
+
+    out.extend(req.installs.iter().map(|s| match &s.version_req {
+        Some(v) if v.starts_with(['=', '<', '>', '!', '~']) => format!("{}{v}", s.name),
+        Some(v) => format!("{}=={v}", s.name),
+        None => s.name.to_string(),
+    }));
+
+    out.extend(
+        plan_requirements(req, installed)
+            .iter()
+            .map(PinnedSpec::to_requirement),
+    );
+    out
+}
+
 /// The package a step is about, when a step covers exactly one.
 ///
 /// Phase A installs the whole set at once, so its progress lines belong to no single package;
@@ -287,6 +316,89 @@ mod tests {
             strategy: Strategy::Compatible,
         };
         assert!(plan_requirements(&req, &installed).is_empty());
+    }
+
+    #[test]
+    fn the_resolve_command_asks_for_the_upgrades_as_well_as_the_guards() {
+        // Regression: an earlier version passed only the guard set, so the engine was asked to
+        // upgrade nothing. It reported no changes, and every selected package then looked "held
+        // back" with no discoverable cause — the feature appeared to work and told users nothing.
+        let installed = [
+            dist("httpx", "0.23.0"),
+            dist("httpcore", "0.15.0"),
+            dist("h11", "0.12.0"),
+        ];
+        let req = PlanRequest {
+            upgrades: vec![PkgName::parse("httpcore").unwrap()],
+            installs: Vec::new(),
+            strategy: Strategy::Compatible,
+        };
+
+        let argv = plan_argv_specs(&req, &installed);
+
+        assert!(
+            argv.contains(&"httpcore".to_owned()),
+            "the package being upgraded must be asked for, unpinned: {argv:?}"
+        );
+        assert!(
+            argv.contains(&"httpx==0.23.0".to_owned()),
+            "guards still present"
+        );
+        assert!(argv.contains(&"h11==0.12.0".to_owned()));
+        assert!(
+            !argv.iter().any(|a| a.starts_with("httpcore==")),
+            "the upgrade target must not also be pinned: {argv:?}"
+        );
+    }
+
+    #[test]
+    fn updating_everything_still_asks_for_something() {
+        // With --all every package is moving, so the guard set is empty. If only guards were
+        // passed the command would carry no requirements at all.
+        let installed = [dist("a", "1.0"), dist("b", "2.0")];
+        let req = PlanRequest {
+            upgrades: vec![PkgName::parse("a").unwrap(), PkgName::parse("b").unwrap()],
+            installs: Vec::new(),
+            strategy: Strategy::Compatible,
+        };
+
+        assert!(
+            plan_requirements(&req, &installed).is_empty(),
+            "no guards, as expected"
+        );
+        assert_eq!(plan_argv_specs(&req, &installed), ["a", "b"]);
+    }
+
+    #[test]
+    fn install_specifiers_are_passed_through_intact() {
+        let req = PlanRequest {
+            upgrades: Vec::new(),
+            installs: vec![
+                crate::model::Spec {
+                    name: PkgName::parse("httpx").unwrap(),
+                    version_req: Some("0.28.1".into()),
+                },
+                crate::model::Spec {
+                    name: PkgName::parse("idna").unwrap(),
+                    version_req: None,
+                },
+                crate::model::Spec {
+                    name: PkgName::parse("certifi").unwrap(),
+                    version_req: Some(">=2025".into()),
+                },
+            ],
+            strategy: Strategy::Compatible,
+        };
+        let argv = plan_argv_specs(&req, &[]);
+        assert!(
+            argv.contains(&"httpx==0.28.1".to_owned()),
+            "bare version becomes =="
+        );
+        assert!(argv.contains(&"idna".to_owned()));
+        assert!(
+            argv.contains(&"certifi>=2025".to_owned()),
+            "an operator is kept as given"
+        );
     }
 
     #[test]

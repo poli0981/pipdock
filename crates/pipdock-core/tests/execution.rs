@@ -25,7 +25,7 @@ use pipdock_core::model::{
 use pipdock_core::plan::{
     AcceptedPlan, Change, ChangeKind, ExecutionSummary, PlanRequest, ResolutionReport, execute,
 };
-use pipdock_core::snapshot::{self, Trigger};
+use pipdock_core::snapshot::{self, SnapshotProof, Trigger};
 
 /// One recorded install invocation: the packages it covered, and which phase made it.
 type Call = (Vec<String>, ExecMode);
@@ -220,9 +220,17 @@ async fn run(engine: &FakeEngine, packages: &[(&str, &str)]) -> ExecutionSummary
     let _ = std::fs::remove_dir_all(&dir);
     let snap = snapshot_for(&dir);
     let plan = AcceptedPlan::accept(report(packages), "envhash01".to_owned(), &[], now());
-    let summary = execute(engine, &env(), &plan, &snap, &[], now(), sink())
-        .await
-        .expect("execute");
+    let summary = execute(
+        engine,
+        &env(),
+        &plan,
+        SnapshotProof::Taken(&snap),
+        &[],
+        now(),
+        sink(),
+    )
+    .await
+    .expect("execute");
     let _ = std::fs::remove_dir_all(&dir);
     summary
 }
@@ -337,7 +345,7 @@ async fn a_stale_preview_is_refused() {
         &FakeEngine::new(&[]),
         &env(),
         &plan,
-        &snap,
+        SnapshotProof::Taken(&snap),
         &[],
         later,
         sink(),
@@ -372,7 +380,7 @@ async fn a_preview_made_before_the_environment_changed_is_refused() {
         &FakeEngine::new(&[]),
         &env(),
         &plan,
-        &snap,
+        SnapshotProof::Taken(&snap),
         &drifted,
         now(),
         sink(),

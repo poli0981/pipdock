@@ -80,6 +80,40 @@ impl Snapshot {
     }
 }
 
+/// Evidence that DATA-FLOW §9.2 was satisfied, presented to [`crate::plan::execute`].
+///
+/// The rule is "no mutating engine call without a successful snapshot write", and CLI-SPEC §2
+/// documents exactly one escape: `--no-snapshot`, for CI images. Modelling that escape as
+/// `Option<&Snapshot>` would make forgetting a snapshot indistinguishable from deliberately
+/// waiving one, so it is a named variant instead. Every waiver is greppable, and the name says
+/// what the caller is asserting.
+#[derive(Debug, Clone, Copy)]
+pub enum SnapshotProof<'a> {
+    /// A snapshot was written and the environment can be restored from it.
+    Taken(&'a Snapshot),
+    /// The caller asserts this environment is disposable — a CI container that is thrown away —
+    /// so there is nothing to roll back to and nothing to protect. **Never appropriate for a
+    /// user's machine.**
+    WaivedForDisposableEnvironment,
+}
+
+impl SnapshotProof<'_> {
+    /// The snapshot id, when there is one, for the summary and the log.
+    #[must_use]
+    pub fn id(&self) -> Option<&str> {
+        match self {
+            Self::Taken(s) => Some(&s.meta.id),
+            Self::WaivedForDisposableEnvironment => None,
+        }
+    }
+
+    /// True when the user has no way back from what is about to happen.
+    #[must_use]
+    pub fn is_waived(&self) -> bool {
+        matches!(self, Self::WaivedForDisposableEnvironment)
+    }
+}
+
 /// Parse a `pip freeze` / `uv pip freeze` document.
 ///
 /// Only `name==version` lines are kept. Editable installs (`-e .`), direct URLs

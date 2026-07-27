@@ -4,13 +4,15 @@
 //! own**. Anything here that starts making a decision belongs in the core instead, so the GUI
 //! inherits it (PRD G5: GUI and CLI never diverge).
 
+use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
 use pipdock_core::engine::{Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::graph::ReverseDeps;
-use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
+use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, Spec, StepStatus};
+use pipdock_core::plan::{PlanRequest, Strategy};
 use pipdock_core::store::Store;
 use pipdock_core::{pins, plan, snapshot};
 
@@ -406,6 +408,372 @@ pub async fn snapshot_diff(opts: &GlobalOpts, id: &str) -> Result<Exit> {
     Ok(Exit::Success)
 }
 
+/// `pipdock update [--all | <pkg...>]` and `pipdock install <spec...>`.
+///
+/// The full DATA-FLOW §3 tail, shared by both: resolve → derive held-back → decide → re-resolve
+/// → confirm → snapshot → two-phase execute → post-check → summary.
+///
+/// # Errors
+/// `PD-SNP-001` when the pre-execution snapshot fails, in which case **nothing is executed**;
+/// otherwise propagates environment and engine failures. Per-package failures are not errors —
+/// they appear in the summary.
+pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let engine = engine_for(opts);
+    let env_hash = envs::env_hash(&env.interpreter);
+
+    // DATA-FLOW §2: PEP 668 environments are blocked at step zero, before any engine command.
+    if env.externally_managed {
+        return Err(PdError::new(
+            Code::EnvExternallyManaged,
+            "this Python is externally managed (PEP 668). Use a virtual environment; \
+             the override lives in Settings and is discouraged",
+        ));
+    }
+
+    let probed = envs::probe(&env.interpreter, env.source).await?;
+    let graph = ReverseDeps::build(&probed.dists);
+    let outdated = engine.list_outdated(&env).await?;
+
+    let store = Store::open(&app_data_dir())?;
+    let pin_list = pins::list(&store, &env_hash)?;
+
+    let mut req = match &intent {
+        Intent::Update {
+            all,
+            pkgs,
+            except,
+            force_latest,
+        } => {
+            let candidates: Vec<PkgName> = if *all {
+                outdated.iter().map(|o| o.name.clone()).collect()
+            } else {
+                pkgs.iter()
+                    .map(|p| PkgName::parse(p))
+                    .collect::<Result<_>>()?
+            };
+
+            // Ad-hoc exclusions sit on top of pins (CLI-SPEC §3).
+            let excluded: BTreeSet<PkgName> = except
+                .iter()
+                .map(|p| PkgName::parse(p))
+                .collect::<Result<_>>()?;
+            let candidates: Vec<PkgName> = candidates
+                .into_iter()
+                .filter(|c| !excluded.contains(c))
+                .collect();
+
+            // DATA-FLOW §9.5. Nothing here can put a pinned package into `upgrades`.
+            let filtered = pins::filter_upgrades(&candidates, &pin_list, &BTreeSet::new());
+            if filtered.excluded_count() > 0 && !opts.json {
+                println!(
+                    "{} pinned package(s) excluded: {}",
+                    filtered.excluded_count(),
+                    filtered
+                        .excluded
+                        .iter()
+                        .map(|p| p.pkg.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                );
+            }
+
+            PlanRequest {
+                upgrades: filtered.allowed,
+                installs: Vec::new(),
+                strategy: if *force_latest {
+                    Strategy::ForceLatest {
+                        overrides: Vec::new(),
+                    }
+                } else {
+                    Strategy::Compatible
+                },
+            }
+        }
+        Intent::Install { specs } => PlanRequest {
+            upgrades: Vec::new(),
+            installs: specs
+                .iter()
+                .map(|raw| {
+                    let (name, version_req) = match raw.split_once("==") {
+                        Some((n, v)) => (n, Some(v.to_owned())),
+                        None => (raw.as_str(), None),
+                    };
+                    PkgName::parse(name).map(|name| Spec { name, version_req })
+                })
+                .collect::<Result<_>>()?,
+            strategy: Strategy::Compatible,
+        },
+    };
+
+    if req.upgrades.is_empty() && req.installs.is_empty() {
+        println!("nothing to do");
+        return Ok(Exit::Success);
+    }
+
+    // Resolve / decide / re-resolve. DATA-FLOW §3 caps this at MAX_CONFLICT_ROUNDS so a user
+    // cannot ping-pong between choices forever.
+    let force_everything = matches!(
+        intent,
+        Intent::Update {
+            force_latest: true,
+            ..
+        }
+    );
+    let mut report;
+    let mut round = 0_u8;
+    loop {
+        report = engine.resolve(&env, &req).await?;
+        plan::derive_held_back(&mut report, &req.upgrades, &outdated, &graph);
+
+        if report.is_clean() || round >= plan::MAX_CONFLICT_ROUNDS {
+            break;
+        }
+
+        let decisions = decide(&report, force_everything, opts);
+        if decisions
+            .values()
+            .all(|d| *d == plan::Decision::KeepCompatible)
+        {
+            break;
+        }
+        req = plan::apply_decisions(&req, &decisions);
+        round += 1;
+
+        if req.upgrades.is_empty() && req.installs.is_empty() {
+            // Every candidate was skipped, so there is no plan left to confirm.
+            println!("every package was skipped; nothing to do");
+            return Ok(Exit::PlanAborted);
+        }
+    }
+
+    print_preview(opts, &report);
+
+    if dry_run {
+        return Ok(Exit::Success);
+    }
+    if report.changes.is_empty() {
+        println!("no changes to apply");
+        return Ok(Exit::Success);
+    }
+    if !opts.yes && !confirm(&report) {
+        println!("aborted");
+        return Ok(Exit::PlanAborted);
+    }
+
+    // DATA-FLOW §9.2: the snapshot comes before anything is touched, and its failure aborts.
+    let plan_id = format!("update-{env_hash:.8}");
+    let taken = if opts.no_snapshot {
+        // CLI-SPEC §2 documents this for CI images only, and requires the warning.
+        eprintln!(
+            "warning: --no-snapshot given. If this goes wrong there is no way back — \
+             only use it on a disposable environment."
+        );
+        None
+    } else {
+        let snap = snapshot::create(
+            &app_data_dir(),
+            &env_hash,
+            engine.freeze(&env).await?,
+            snapshot::Trigger::Plan {
+                plan_id: plan_id.clone(),
+            },
+            engine.id(),
+            jiff::Timestamp::now(),
+        )?;
+        println!("snapshot {} written", snap.meta.id);
+        Some(snap)
+    };
+    let proof = taken.as_ref().map_or(
+        snapshot::SnapshotProof::WaivedForDisposableEnvironment,
+        snapshot::SnapshotProof::Taken,
+    );
+
+    let accepted =
+        plan::AcceptedPlan::accept(report, env_hash, &probed.dists, jiff::Timestamp::now());
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
+    let quiet = opts.quiet;
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if !quiet {
+                eprintln!("{}", event.line);
+            }
+        }
+    });
+
+    let summary = plan::execute(
+        engine.as_ref(),
+        &env,
+        &accepted,
+        proof,
+        &probed.dists,
+        jiff::Timestamp::now(),
+        tx,
+    )
+    .await?;
+
+    print_summary(opts, &summary);
+    Ok(if summary.counts.failed > 0 {
+        Exit::PartialFailure
+    } else {
+        Exit::Success
+    })
+}
+
+/// What the user asked for, before it becomes a `PlanRequest`.
+#[derive(Debug)]
+pub enum Intent {
+    /// `pipdock update`
+    Update {
+        /// Every outdated package.
+        all: bool,
+        /// Specific packages.
+        pkgs: Vec<String>,
+        /// Ad-hoc exclusions on top of pins.
+        except: Vec<String>,
+        /// `--strategy latest`.
+        force_latest: bool,
+    },
+    /// `pipdock install`
+    Install {
+        /// `name` or `name==version`.
+        specs: Vec<String>,
+    },
+}
+
+/// Decide what to do about each package needing a decision.
+///
+/// CLI-SPEC §4: on a TTY the user is prompted per package; with `--yes` or off a TTY the defaults
+/// apply, and those defaults **never force**.
+fn decide(
+    report: &plan::ResolutionReport,
+    force_everything: bool,
+    opts: &GlobalOpts,
+) -> BTreeMap<PkgName, plan::Decision> {
+    let interactive = !opts.yes && std::io::IsTerminal::is_terminal(&std::io::stdin());
+
+    let mut out = BTreeMap::new();
+    for held in &report.held_back {
+        let decision = if interactive {
+            prompt_decision(held)
+        } else {
+            plan::default_decision(false, force_everything)
+        };
+        out.insert(held.pkg.clone(), decision);
+    }
+    if let Some(detail) = &report.impossible {
+        for pkg in &detail.packages {
+            let decision = plan::default_decision(true, false);
+            out.insert(pkg.clone(), decision);
+        }
+    }
+    out
+}
+
+/// The per-package prompt from CLI-SPEC §4.
+fn prompt_decision(held: &plan::HeldBack) -> plan::Decision {
+    use std::io::Write as _;
+
+    println!(
+        "\n{}  held back at {} (latest {})",
+        held.pkg, held.resolved, held.latest
+    );
+    for blocker in &held.blockers {
+        println!("  — {}", blocker.constraint);
+    }
+    print!("  [C]ompatible (default)   [S]kip   [F]orce latest: ");
+    let _ = std::io::stdout().flush();
+
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        return plan::Decision::KeepCompatible;
+    }
+    match line.trim().to_ascii_lowercase().as_str() {
+        "s" => plan::Decision::Skip,
+        "f" => {
+            // DISCLAIMER §2: forcing is an expert action and the user is told what it costs.
+            let breaks: Vec<String> = held
+                .blockers
+                .iter()
+                .filter_map(|b| b.by.as_ref().map(ToString::to_string))
+                .collect();
+            if !breaks.is_empty() {
+                println!("  this will break: {}", breaks.join(", "));
+            }
+            plan::Decision::ForceLatest
+        }
+        _ => plan::Decision::KeepCompatible,
+    }
+}
+
+/// Render the preview (UI-SPEC §4's three groups, in text).
+fn print_preview(opts: &GlobalOpts, report: &plan::ResolutionReport) {
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(report).unwrap_or_default()
+        );
+        return;
+    }
+
+    let upgrades: Vec<_> = report.changes.iter().filter(|c| c.from.is_some()).collect();
+    let fresh: Vec<_> = report.changes.iter().filter(|c| c.from.is_none()).collect();
+
+    if !upgrades.is_empty() {
+        println!("\nWill upgrade:");
+        for c in upgrades {
+            let from = c.from.as_ref().map(ToString::to_string).unwrap_or_default();
+            println!("  {:<32} {} -> {}", c.name, from, c.to);
+        }
+    }
+    if !fresh.is_empty() {
+        println!("\nNew:");
+        for c in fresh {
+            println!("  {:<32} {}", c.name, c.to);
+        }
+    }
+    if !report.held_back.is_empty() {
+        println!("\nNeeds decision — held back:");
+        for h in &report.held_back {
+            println!("  {:<32} {} (latest {})", h.pkg, h.resolved, h.latest);
+            for b in &h.blockers {
+                println!("      {}", b.constraint);
+            }
+            if h.blockers.is_empty() {
+                // ARCHITECTURE §3: no culprit is invented, and the row says so plainly rather
+                // than looking like a rendering bug.
+                println!("      (nothing installed explains this)");
+            }
+        }
+    }
+    if let Some(detail) = &report.impossible {
+        println!("\nImpossible:");
+        println!("  {}", detail.explanation);
+    }
+    if report.changes.is_empty() && report.held_back.is_empty() {
+        println!("\nno changes");
+    }
+}
+
+/// Ask before touching anything (DATA-FLOW §3's Confirm step).
+fn confirm(report: &plan::ResolutionReport) -> bool {
+    use std::io::Write as _;
+
+    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        // Off a TTY without --yes, refusing is the safe answer: nothing is there to confirm.
+        eprintln!("error[PD-RES-002]: not a terminal; pass --yes to apply without confirming");
+        return false;
+    }
+    print!("\nApply {} change(s)? [y/N]: ", report.changes.len());
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        return false;
+    }
+    matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
 /// `pipdock pin add|remove|list`
 ///
 /// # Errors
@@ -569,7 +937,7 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
         &env,
         snap.meta.id.clone(),
         &names,
-        &snap,
+        snapshot::SnapshotProof::Taken(&snap),
         tx,
     )
     .await?;

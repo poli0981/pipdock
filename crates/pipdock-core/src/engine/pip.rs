@@ -45,18 +45,26 @@ impl PipEngine {
     }
 
     /// argv for the dry-run resolve, whose JSON report goes to stdout.
+    ///
+    /// `requirements` comes from [`super::plan_argv_specs`] and carries all three groups: bare
+    /// names to move, explicit installs, and the pinned guard set.
     #[must_use]
-    pub fn argv_dry_run(specs: &[PinnedSpec]) -> Vec<String> {
+    pub fn argv_dry_run(requirements: &[String]) -> Vec<String> {
         let mut argv = vec![
             "-m".into(),
             "pip".into(),
             "install".into(),
+            // -U is load-bearing, and its absence is silent: without it pip sees an installed
+            // package as already satisfying the requirement, plans nothing, and every selected
+            // package is then reported held back at its current version for no visible reason.
+            // DATA-FLOW §7 specifies `install -U --dry-run --quiet --report -`.
+            "-U".into(),
             "--dry-run".into(),
             "--quiet".into(),
             "--report".into(),
             "-".into(),
         ];
-        argv.extend(specs.iter().map(PinnedSpec::to_requirement));
+        argv.extend(requirements.iter().cloned());
         argv
     }
 
@@ -126,9 +134,9 @@ impl Engine for PipEngine {
         // SP-1: the installed set must be restated or the resolver ignores it and plans an
         // upgrade that breaks installed dependents. The caller assembles that set into `req`.
         let installed = self.list_installed(env).await?;
-        let specs = super::plan_requirements(req, &installed);
+        let requirements = super::plan_argv_specs(req, &installed);
         let out = Command::python(&env.interpreter)
-            .args(Self::argv_dry_run(&specs))
+            .args(Self::argv_dry_run(&requirements))
             .run()
             .await?;
         if !out.ok() {
@@ -220,6 +228,9 @@ mod tests {
 
     #[test]
     fn dry_run_argv_matches_the_documented_command() {
+        // DATA-FLOW §7 verbatim. An earlier version of this test omitted -U and still claimed to
+        // match the document, which is how a silent planning failure passed CI: pip treated every
+        // installed package as already satisfied and planned nothing at all.
         let argv = PipEngine::argv_dry_run(&[]);
         assert_eq!(
             argv,
@@ -227,6 +238,7 @@ mod tests {
                 "-m",
                 "pip",
                 "install",
+                "-U",
                 "--dry-run",
                 "--quiet",
                 "--report",
@@ -248,7 +260,8 @@ mod tests {
                 version: Version("2.32.3".into()),
             },
         ];
-        let argv = PipEngine::argv_dry_run(&specs);
+        let requirements: Vec<String> = specs.iter().map(PinnedSpec::to_requirement).collect();
+        let argv = PipEngine::argv_dry_run(&requirements);
         assert_eq!(
             &argv[argv.len() - 2..],
             ["httpx==0.28.1", "requests==2.32.3"]

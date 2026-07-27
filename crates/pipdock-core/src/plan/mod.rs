@@ -2,12 +2,18 @@
 //!
 //! See `docs/DATA-FLOW.md` §3 for the state machine and §9 for the invariants this module owns.
 
+pub mod preview;
+
+pub use preview::{
+    Decision, ForcedPlan, apply_decisions, default_decision, derive_held_back, forced_requirements,
+};
+
 use crate::engine::{Engine, EventSink};
 use crate::errors::{Code, PdError, Result};
 use crate::model::{
     CheckReport, ExecMode, PinnedSpec, PkgName, PyEnv, Spec, StepResult, StepStatus, Version,
 };
-use crate::snapshot::Snapshot;
+use crate::snapshot::SnapshotProof;
 
 /// How aggressively to resolve conflicts.
 #[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -329,10 +335,11 @@ pub fn fingerprint(installed: &[crate::model::Dist]) -> String {
 ///
 /// # Why the signature looks like this
 ///
-/// `plan: &AcceptedPlan` and `_snapshot: &Snapshot` are the enforcement of DATA-FLOW §9.1 and
-/// §9.2. Neither can be conjured: an `AcceptedPlan` only exists once a report was confirmed, and a
-/// `Snapshot` only exists once one was successfully written. A caller that skipped either step
-/// cannot produce the arguments, so the invariants hold by construction rather than by review.
+/// `plan: &AcceptedPlan` and `_snapshot: SnapshotProof` are the enforcement of DATA-FLOW §9.1 and
+/// §9.2. An `AcceptedPlan` only exists once a report was confirmed, and a `SnapshotProof` is
+/// either a real `Snapshot` — which only exists once one was successfully written — or a named
+/// waiver that says out loud what it is giving up. A caller that skipped a step cannot quietly
+/// pass `None`; it has to state the exception, which makes every one of them greppable.
 ///
 /// # Errors
 /// `PD-RES-002` when the plan is stale or the environment drifted. Per-package failures are
@@ -341,7 +348,7 @@ pub async fn execute(
     engine: &dyn Engine,
     env: &PyEnv,
     plan: &AcceptedPlan,
-    _snapshot: &Snapshot,
+    _snapshot: SnapshotProof<'_>,
     installed_now: &[crate::model::Dist],
     now: jiff::Timestamp,
     sink: EventSink,
@@ -447,7 +454,7 @@ pub async fn execute_uninstall(
     env: &PyEnv,
     plan_id: String,
     names: &[PkgName],
-    _snapshot: &Snapshot,
+    _snapshot: SnapshotProof<'_>,
     sink: EventSink,
 ) -> Result<ExecutionSummary> {
     let mut results = Vec::with_capacity(names.len());
