@@ -61,6 +61,19 @@ Verified against real environments, not only unit tests:
 - **The SP-5 tangle env** — the exit criterion names a real numpy/scipy/pandas environment. The httpx/httpcore construction proved the mechanism; the large-environment run is still owed, and is the natural first dogfooding step.
 - **Settings beyond engine choice** — locale, thresholds and the PEP 668 override land with the GUI in M2.
 
+### Where to pick up
+
+Pushed to `main` and green: **CI / Rust, CI / Node and CodeQL all pass** on the published commit. Three configuration bugs were fixed getting there, each recorded in its own commit message: caller workflows must grant *at least* what the callee declares (a `startup_failure` with no logs), `cargo audit` was pinned to a toolchain too old to build itself, and its informational advisories needed scoping rather than silencing.
+
+Immediate, in rough order:
+
+1. **Close the two Dependabot PRs that would break the build** — TypeScript 7 and rusqlite 0.40. Both are the holds listed in ARCHITECTURE §10, and their CI already fails. The `actions/setup-*` bumps are fine to merge.
+2. **Let `ci-integration.yml` run.** It has never executed: it triggers on PRs touching engine/plan/snapshot/graph paths, or nightly. Watch the first run rather than assuming it passes — it is the only thing standing behind the L2 exit criterion.
+3. **Repo settings** — branch protection, secrets, and the updater keypair, per RELEASE-CI §5. None of these are committable and all are owner-only.
+4. **Dogfood on a real environment** — the SP-5 numpy/scipy/pandas tangle, which is both the outstanding M1 exit criterion and the first honest test of the held-back sentences at scale.
+
+Then M2. The core carries everything the GUI needs; `ui/src/ipc` fixes the command names, the design tokens and EN/VI catalogs are scaffolded, and the shell renders.
+
 ## Phase 2 — M2 "GUI shell + core flows" (~3–4 weeks)
 
 Tauri app, design tokens, Environments/Installed/Updates/Search/Pins screens, preview + 3-way conflict UX, console drawer, summary sheet, snapshots UI, legal gate, EN/VI catalogs, settings. **Exit:** all UI-SPEC click budgets met by manual count; L3 green; VI sweep clean.

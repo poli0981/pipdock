@@ -139,5 +139,9 @@ Zustand stores: `useEnvStore`, `usePlanStore`, `useIndexStore`, `useSettingsStor
 | Managed Pythons | 3.10 – 3.14 (3.9 is EOL) |
 | Windows | 10 (1809+) / 11; WebView2 Evergreen assumed present; `longPathAware` manifest enabled |
 | rusqlite | **held at 0.37** (`libsqlite3-sys` 0.35). 0.40 pulls `libsqlite3-sys` 0.38.1, whose build script uses the unstable `cfg_select!` and therefore does not compile on stable Rust 1.94.1. Revisit when the toolchain advances. |
+| TypeScript | **held at 6.0.x.** 7.x is latest, but `typescript-eslint` peers on `>=4.8.4 <6.1.0`; taking 7 breaks `npm run lint`. Revisit when typescript-eslint supports TS 7. |
+| ESLint | **10.x, with `eslint-plugin-react` deliberately absent.** That plugin caps at ESLint 9, which drags in a `minimatch`/`brace-expansion` chain carrying six high-severity advisories and would fail `npm audit` in CI. The one rule it was wanted for — no hardcoded JSX strings (I18N §1) — is a local rule in `eslint.config.js`, which also implements the documented allowlist precisely. |
+
+**Dependabot will keep proposing the held versions.** Each hold above is a compile or lint failure, not a preference, so those PRs are closed rather than merged until the stated condition changes. `cargo audit` informational advisories are handled separately in `.cargo/audit.toml` (SECURITY §7).
 
 Dependabot + `cargo audit` + `npm audit` in CI keep this table honest (RELEASE-CI.md §2).
