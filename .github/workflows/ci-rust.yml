@@ -61,12 +61,19 @@ jobs:
     name: cargo audit
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    env:
+      # The action builds cargo-audit from source, and rust-toolchain.toml would otherwise pin
+      # that build to PipDock's toolchain. cargo-audit's own dependency tree already requires a
+      # newer rustc than we pin (kstring needs 1.96), so the audit failed to compile rather than
+      # finding anything. It only reads Cargo.lock, so building it with stable is correct — the
+      # pin exists to make *PipDock* reproducible, not its tooling.
+      RUSTUP_TOOLCHAIN: stable
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
       # RustSec advisories against the committed Cargo.lock. Split from the Windows job because
-      # it needs no toolchain pin and no target build — it is a lockfile scan.
+      # it needs no target build — it is a lockfile scan.
       - name: Audit
         uses: rustsec/audit-check@v2
         with:

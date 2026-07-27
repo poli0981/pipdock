@@ -18,9 +18,14 @@ on:
     # Weekly, offset off the hour to avoid the top-of-hour scheduling pileup.
     - cron: '37 4 * * 1'
 
+# A caller cannot grant a called workflow less than its jobs declare, or the run is rejected before
+# it starts. reusable-codeql.yml's analyze job asks for `packages: read` to fetch internal CodeQL
+# packs, so omitting it here produced a startup_failure with no logs to explain it — the same
+# permissions trap RELEASE-CI.md §1 records, from the other direction.
 permissions:
   actions: read
   contents: read
+  packages: read
   security-events: write
 
 jobs:

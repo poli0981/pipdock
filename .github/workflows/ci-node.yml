@@ -14,8 +14,13 @@ on:
   push:
     branches: [main]
 
+# The reusable declares a Pages-deploy job needing `pages: write` and `id-token: write`. It is
+# skipped here (`deploy-pages: false`), but permissions are validated at startup regardless of
+# `if:`, so a caller that grants less than the callee declares is rejected before it runs.
 permissions:
   contents: read
+  pages: write
+  id-token: write
 
 concurrency:
   group: ci-node-${{ github.ref }}
