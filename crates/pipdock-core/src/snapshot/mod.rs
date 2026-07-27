@@ -22,7 +22,9 @@ use crate::model::{EngineId, PinnedSpec, PkgName, Version};
 pub const SNAPSHOT_DIR: &str = "snapshots";
 
 /// What caused a snapshot to be taken. Shown as the trigger label on the timeline (UI-SPEC §4).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Trigger {
     /// Taken automatically before a plan executed.
@@ -41,7 +43,7 @@ pub enum Trigger {
 }
 
 /// The `.meta.json` sidecar (ARCHITECTURE §6).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Meta {
     /// Snapshot id, which is also its filename stem.
     pub id: String,
@@ -157,7 +159,9 @@ pub fn unrestorable_lines(text: &str) -> Vec<String> {
 }
 
 /// One package whose version differs between two states.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct ChangedEntry {
     /// The package.
     pub name: PkgName,
@@ -168,7 +172,9 @@ pub struct ChangedEntry {
 }
 
 /// The difference between two environment states.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Diff {
     /// Present now, absent in the snapshot.
     pub added: Vec<PinnedSpec>,
@@ -226,7 +232,9 @@ pub fn diff(current: &BTreeMap<PkgName, Version>, snapshot: &BTreeMap<PkgName, V
 }
 
 /// The operations that would restore a snapshot.
-#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct RollbackPlan {
     /// Packages to remove: present now, absent in the snapshot.
     pub uninstall: Vec<PkgName>,
@@ -239,6 +247,12 @@ impl RollbackPlan {
     #[must_use]
     pub fn is_empty(&self) -> bool {
         self.uninstall.is_empty() && self.install.is_empty()
+    }
+
+    /// How many operations restoring the snapshot would take.
+    #[must_use]
+    pub fn len(&self) -> usize {
+        self.uninstall.len() + self.install.len()
     }
 }
 

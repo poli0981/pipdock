@@ -81,7 +81,9 @@ fn is_subsequence(needle: &str, haystack: &str) -> bool {
 }
 
 /// One search result.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Hit {
     /// The normalized name, which is what every other module keys on.
     pub name: PkgName,
@@ -93,7 +95,16 @@ pub struct Hit {
 
 /// How a hit matched, in ranking order.
 #[derive(
-    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum MatchKind {
@@ -243,7 +254,7 @@ impl NameIndex {
 }
 
 /// What a refresh did.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct RefreshReport {
     /// Projects ingested.
     pub projects: usize,
@@ -372,7 +383,7 @@ pub fn is_stale(last: Option<jiff::Timestamp>, now: jiff::Timestamp) -> bool {
 }
 
 /// Cached PyPI metadata for one package (ARCHITECTURE §5).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct PackageMeta {
     /// Normalized name.
     pub name: String,
@@ -389,7 +400,9 @@ pub struct PackageMeta {
 }
 
 /// How fresh a metadata answer is, so the UI can badge it (UI-SPEC §7).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Freshness {
     /// Fetched just now.

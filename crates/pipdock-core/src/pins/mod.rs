@@ -15,7 +15,9 @@ use crate::model::{PinnedSpec, PkgName, Version};
 use crate::store::Store;
 
 /// How a pin constrains a package.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum PinMode {
     /// Excluded from bulk updates. The user can still update it deliberately, one package at a
@@ -39,7 +41,9 @@ impl PinMode {
 }
 
 /// A pin with the reason the user gave for it.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct Pin {
     /// The pinned package.
     pub pkg: PkgName,

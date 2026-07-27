@@ -1,0 +1,202 @@
+# TESTING L2 — engine integration against disposable venvs.
+#
+# Project-local and Windows-only: the whole point is exercising the real pip and uv against real
+# environments on the platform PipDock ships for. It is heavier than L1, so it runs only on PRs
+# touching the code it covers, plus nightly.
+#
+# The weekly job is the early-warning system RELEASE-CI.md §2 and TESTING L1 describe: it captures
+# fixtures against the *latest* pip and uv, so an output-shape change surfaces as a failed job
+# rather than as PD-ENG-003 on a user's machine.
+
+name: CI / Integration
+
+on:
+  pull_request:
+    paths:
+      - 'crates/pipdock-core/src/engine/**'
+      - 'crates/pipdock-core/src/plan/**'
+      - 'crates/pipdock-core/src/snapshot/**'
+      - 'crates/pipdock-core/src/graph/**'
+      - 'crates/pipdock-core/src/envs/**'
+      - 'crates/pipdock-core/tests/**'
+      - 'spikes/capture.py'
+      - '.github/workflows/ci-integration.yml'
+  schedule:
+    # Nightly, and the fixture-drift check weekly on Mondays (see the job condition below).
+    - cron: '17 3 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-integration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # Spike SP-2: pip's --report crashes with UnicodeEncodeError on Windows under cp1252, and it is
+  # data-dependent. The core sets this per child process; setting it here too means a bare `pip`
+  # in a workflow step cannot reintroduce the failure.
+  PYTHONIOENCODING: utf-8
+  PYTHONUTF8: '1'
+
+jobs:
+  disposable-venvs:
+    name: Real engines, throwaway venvs
+    runs-on: windows-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        # The version floor PipDock supports and the newest it claims to (ARCHITECTURE §10).
+        python: ['3.10', '3.14']
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python ${{ matrix.python }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python }}
+
+      - name: Install uv
+        # Into its own venv rather than onto PATH globally, mirroring how the spikes pin several
+        # uv versions side by side.
+        run: |
+          python -m venv .uvtools
+          .uvtools\Scripts\python.exe -m pip install --quiet uv
+          echo "$PWD\.uvtools\Scripts" >> $env:GITHUB_PATH
+        shell: pwsh
+
+      - name: Cache cargo
+        uses: actions/cache@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-integ-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-integ-
+
+      - name: Show versions
+        run: |
+          python --version
+          python -m pip --version
+          uv --version
+          cargo --version
+
+      - name: Unit and fixture tests
+        run: cargo test --workspace --locked
+
+      - name: Build the CLI
+        run: cargo build --locked -p pipdock-cli
+
+      # An end-to-end pass over the real product, in the order a user would hit it. Each step is
+      # a claim the docs make; a failure here means the claim stopped being true.
+      - name: End-to-end — discovery and inspection
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m venv .itest
+          .\target\debug\pipdock.exe env list
+          .\target\debug\pipdock.exe doctor --env .itest
+          .\target\debug\pipdock.exe list --env .itest --json
+
+      - name: End-to-end — the SP-1 conflict is still reported
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .itest\Scripts\python.exe -m pip install --quiet "httpx==0.23.0"
+          # httpx 0.23.0 requires httpcore<0.16, so httpcore must NOT reach its 1.x latest.
+          $out = .\target\debug\pipdock.exe update httpcore --env .itest --dry-run --yes 2>&1 | Out-String
+          Write-Host $out
+          if ($out -notmatch 'held back') {
+            throw "the held-back conflict was not reported — see spikes/README.md SP-1"
+          }
+          if ($out -notmatch 'httpx') {
+            throw "the blocker was not attributed to httpx"
+          }
+
+      - name: End-to-end — update, snapshot, rollback
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\target\debug\pipdock.exe snapshot create --env .itest
+          .\target\debug\pipdock.exe update --all --env .itest --yes
+          if ($LASTEXITCODE -ne 0) { throw "update --all failed" }
+          .\target\debug\pipdock.exe snapshot rollback latest --env .itest --yes
+          if ($LASTEXITCODE -ne 0) { throw "rollback failed" }
+          # PRD §6's rollback metric: the environment must match the snapshot exactly.
+          $diff = .\target\debug\pipdock.exe snapshot diff latest --env .itest 2>&1 | Out-String
+          Write-Host $diff
+          if ($diff -notmatch 'matches snapshot') { throw "rollback left the environment different" }
+
+      - name: End-to-end — the uninstall guard refuses to break things
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          .itest\Scripts\python.exe -m pip install --quiet requests
+          .\target\debug\pipdock.exe uninstall urllib3 --env .itest
+          # CLI-SPEC §7: a guard trip exits non-zero so `||` works in scripts.
+          if ($LASTEXITCODE -eq 0) { throw "the guard did not refuse to break requests" }
+
+      - name: End-to-end — exit codes match CLI-SPEC §5
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Continue'
+          .\target\debug\pipdock.exe list --env C:\definitely\not\here 2>$null
+          if ($LASTEXITCODE -ne 3) { throw "a missing environment should exit 3, got $LASTEXITCODE" }
+          .\target\debug\pipdock.exe doctor --env .itest > $null
+          if ($LASTEXITCODE -ne 0) { throw "doctor on a healthy env should exit 0, got $LASTEXITCODE" }
+
+      - name: End-to-end — the JSON contracts are real
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($t in @('ResolutionReport', 'ExecutionSummary', 'Dist', 'Code')) {
+            .\target\debug\pipdock.exe schema $t | ConvertFrom-Json | Out-Null
+          }
+          .\target\debug\pipdock.exe list --env .itest --json | ConvertFrom-Json | Out-Null
+
+  fixture-drift:
+    name: Re-capture against the latest engines
+    # Weekly rather than nightly: it hits PyPI hard enough that daily would be rude, and engine
+    # releases are not a daily event.
+    if: github.event_name == 'schedule' && github.event.schedule == '17 3 * * *' && github.run_attempt == 1
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+
+      - name: Install the newest uv
+        run: |
+          python -m venv .uvtools
+          .uvtools\Scripts\python.exe -m pip install --quiet --upgrade pip uv
+        shell: pwsh
+
+      - name: Re-capture fixtures
+        shell: pwsh
+        run: |
+          python spikes\capture.py --engine pip
+          python spikes\capture.py --engine uv --uv-exe .uvtools\Scripts\uv.exe
+
+      # A diff means an engine changed its output. That is exactly the PD-ENG-003 situation the
+      # adapters degrade into, and catching it here is what stops a user meeting it first.
+      - name: Fail if the captured shapes moved
+        shell: pwsh
+        run: |
+          git diff --stat -- crates/pipdock-core/tests/fixtures
+          if (git status --porcelain -- crates/pipdock-core/tests/fixtures) {
+            git diff -- crates/pipdock-core/tests/fixtures
+            throw "engine output changed — review the diff, update the adapters, commit the new fixtures"
+          }
+
+      - name: Parsers still agree with the new captures
+        run: cargo test --workspace --locked

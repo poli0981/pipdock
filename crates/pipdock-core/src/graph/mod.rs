@@ -257,7 +257,9 @@ impl ReverseDeps {
 /// this is a core value-add rather than a nicety. It is computed once against the full set,
 /// because removing A and B together is fine when only B depends on A — asking per package would
 /// raise a warning the user cannot act on.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct GuardReport {
     /// The set the user asked to remove.
     pub removing: Vec<PkgName>,

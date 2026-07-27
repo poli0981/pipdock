@@ -169,6 +169,89 @@ impl Store {
     }
 }
 
+/// A remembered environment (ARCHITECTURE §6, PRD P0-1 "recents persisted").
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct RecentEnv {
+    /// Identity, case-folded (SP-6).
+    pub env_hash: String,
+    /// Where its interpreter lives.
+    pub interpreter: String,
+    /// RFC 3339, for ordering the recents list.
+    pub last_used: String,
+    /// Whether this is the starred default.
+    pub is_default: bool,
+}
+
+impl Store {
+    /// Record that an environment was used, and optionally make it the default.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the write fails.
+    pub fn remember_env(
+        &self,
+        env_hash: &str,
+        interpreter: &str,
+        now: &str,
+        make_default: bool,
+    ) -> Result<()> {
+        let err = |e: rusqlite::Error| PdError::new(Code::IntUnexpected, format!("env store: {e}"));
+
+        if make_default {
+            // Exactly one default, so clear the previous star before setting the new one.
+            self.conn
+                .execute("UPDATE envs SET is_default = 0", [])
+                .map_err(err)?;
+        }
+        self.conn
+            .execute(
+                "INSERT INTO envs (env_hash, interpreter, last_used, is_default)
+                 VALUES (?1, ?2, ?3, ?4)
+                 ON CONFLICT (env_hash) DO UPDATE SET
+                    interpreter = excluded.interpreter,
+                    last_used = excluded.last_used,
+                    is_default = MAX(envs.is_default, excluded.is_default)",
+                rusqlite::params![env_hash, interpreter, now, i32::from(make_default)],
+            )
+            .map_err(err)?;
+        Ok(())
+    }
+
+    /// Recently used environments, newest first.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the read fails.
+    pub fn recent_envs(&self) -> Result<Vec<RecentEnv>> {
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT env_hash, interpreter, last_used, is_default
+                 FROM envs ORDER BY is_default DESC, last_used DESC",
+            )
+            .map_err(|e| PdError::new(Code::IntUnexpected, format!("env store: {e}")))?;
+
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(RecentEnv {
+                    env_hash: r.get(0)?,
+                    interpreter: r.get(1)?,
+                    last_used: r.get(2)?,
+                    is_default: r.get::<_, i32>(3)? != 0,
+                })
+            })
+            .map_err(|e| PdError::new(Code::IntUnexpected, format!("env store: {e}")))?;
+
+        Ok(rows.filter_map(std::result::Result::ok).collect())
+    }
+
+    /// The starred default environment, if one has been set.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the read fails.
+    pub fn default_env(&self) -> Result<Option<RecentEnv>> {
+        Ok(self.recent_envs()?.into_iter().find(|e| e.is_default))
+    }
+}
+
 /// Default app data root, `%LOCALAPPDATA%\PipDock` (ARCHITECTURE §6).
 #[must_use]
 pub fn default_app_data() -> PathBuf {

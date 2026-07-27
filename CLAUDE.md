@@ -59,6 +59,19 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-Phase 0. No feature code yet — spikes SP-1..SP-6 in `docs/ROADMAP.md` must be answered first,
-especially **SP-1** (whether `uv pip install --dry-run` output is rich enough to build a
-`ResolutionReport`), which is the go/no-go for shipping both engines in v1.0.
+**M1 substantially complete.** The CLI works against real environments: every P0 command except
+`health` (which belongs to M3). See `docs/ROADMAP.md` Phase 1 for what is verified, what changed
+during implementation, and what is still owed — notably TESTING L2 has never actually run in CI,
+and the L4 golden-output tests are not written.
+
+Next is M2, the Tauri GUI. The core already carries everything it needs; the shell, design tokens
+and locale catalogs are scaffolded and the IPC command names are fixed in `ui/src/ipc`.
+
+## Things that look like bugs but are not
+
+- `probe.py` reporting fewer packages than `pip list` on a **non-venv** Python is the documented
+  `-I` trade-off; `hidden_user_site` is non-null exactly then.
+- `snapshot diff` showing entries a rollback cannot restore (editable installs, direct URLs) is
+  deliberate: they are excluded from the pin set and reported separately rather than dropped.
+- `pipdock engine uv` failing when uv is not on PATH is intentional — storing a preference that
+  cannot be honoured just moves the failure to the next command.

@@ -27,8 +27,80 @@ pub fn engine_for(opts: &GlobalOpts) -> Box<dyn Engine> {
     match opts.engine {
         Some(EngineArg::Uv) => Box::new(UvEngine),
         Some(EngineArg::Pip) => Box::new(PipEngine),
-        None => Box::new(PipEngine),
+        // No flag: use what the user configured. Falling back to pip rather than probing for uv
+        // here keeps a read-only command from silently changing behaviour based on PATH; first-run
+        // uv detection belongs to Settings, where the choice is shown and can be changed.
+        None => match configured_engine() {
+            Some(EngineId::Uv) => Box::new(UvEngine),
+            _ => Box::new(PipEngine),
+        },
     }
+}
+
+/// `kv` key holding the configured engine.
+const KEY_ENGINE: &str = "settings.engine";
+
+/// The engine the user configured, if any. A store that cannot be opened is not worth failing a
+/// command over — the default is safe.
+fn configured_engine() -> Option<EngineId> {
+    let store = Store::open(&app_data_dir()).ok()?;
+    match store.get(KEY_ENGINE).ok()??.as_str() {
+        "uv" => Some(EngineId::Uv),
+        "pip" => Some(EngineId::Pip),
+        _ => None,
+    }
+}
+
+/// `pipdock engine <pip|uv>` — set the configured engine.
+///
+/// # Errors
+/// `PD-ENG-001` when the chosen engine is not actually available, because storing a preference
+/// that cannot be honoured just moves the failure to the next command.
+pub async fn engine_set(opts: &GlobalOpts, engine: EngineArg) -> Result<Exit> {
+    let id = match engine {
+        EngineArg::Pip => EngineId::Pip,
+        EngineArg::Uv => EngineId::Uv,
+    };
+
+    // Availability is checked against the selected environment when there is one; uv is a
+    // standalone binary, so it can be checked without one.
+    let info = match select_env(opts).await {
+        Ok(env) => match id {
+            EngineId::Pip => PipEngine.info(&env).await,
+            EngineId::Uv => UvEngine.info(&env).await,
+        },
+        Err(e) if id == EngineId::Uv => {
+            let env = PyEnv {
+                interpreter: PathBuf::new(),
+                prefix: PathBuf::new(),
+                python_version: String::new(),
+                externally_managed: false,
+                hidden_user_site: None,
+                source: EnvSource::Manual,
+            };
+            let _ = e;
+            UvEngine.info(&env).await
+        }
+        Err(e) => return Err(e),
+    };
+
+    if !info.available {
+        return Err(PdError::new(
+            Code::EngNotFound,
+            format!(
+                "{} is not available here, so it has not been set as the engine",
+                id.as_str()
+            ),
+        ));
+    }
+
+    Store::open(&app_data_dir())?.set(KEY_ENGINE, id.as_str())?;
+    println!(
+        "engine set to {} {}",
+        id.as_str(),
+        info.version.unwrap_or_default()
+    );
+    Ok(Exit::Success)
 }
 
 /// Map a catalog code onto the exit code CLI-SPEC §5 assigns it.
@@ -766,6 +838,286 @@ fn confirm(report: &plan::ResolutionReport) -> bool {
         return false;
     }
     print!("\nApply {} change(s)? [y/N]: ", report.changes.len());
+    let _ = std::io::stdout().flush();
+    let mut line = String::new();
+    if std::io::stdin().read_line(&mut line).is_err() {
+        return false;
+    }
+    matches!(line.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+/// `pipdock schema <type>`
+///
+/// # Errors
+/// `PD-PKG-002` when the type is not one of the exported ones.
+pub fn schema(type_name: &str) -> Result<Exit> {
+    let schema = plan::json_schema(type_name)?;
+    println!(
+        "{}",
+        serde_json::to_string_pretty(&schema).unwrap_or_default()
+    );
+    Ok(Exit::Success)
+}
+
+/// `pipdock env use <path>`
+///
+/// # Errors
+/// `PD-ENV-001` when the path is not a usable interpreter — chosen deliberately over accepting it
+/// silently, because a default that does not work fails on every later command instead of this one.
+pub async fn env_use(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
+    let interpreter = interpreter_in(path);
+    let probed = envs::probe(&interpreter, EnvSource::Manual).await?;
+    let store = Store::open(&app_data_dir())?;
+
+    store.remember_env(
+        &envs::env_hash(&interpreter),
+        &interpreter.display().to_string(),
+        &jiff::Timestamp::now().to_string(),
+        true,
+    )?;
+
+    if !opts.quiet {
+        println!(
+            "default environment set: {} (Python {})",
+            interpreter.display(),
+            probed.env.python_version
+        );
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock pip-upgrade`
+///
+/// # Errors
+/// `PD-ENG-001` when uv is the active engine, which cannot upgrade pip (DATA-FLOW §7).
+pub async fn pip_upgrade(opts: &GlobalOpts) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let engine = engine_for(opts);
+
+    let before = PipEngine.info(&env).await;
+    engine.upgrade_pip(&env).await?;
+    let after = PipEngine.info(&env).await;
+
+    println!(
+        "pip {} -> {}",
+        before.version.unwrap_or_else(|| "?".into()),
+        after.version.unwrap_or_else(|| "?".into())
+    );
+    Ok(Exit::Success)
+}
+
+/// `pipdock snapshot rollback <id|latest>`
+///
+/// DATA-FLOW §8: diff, plan the minimal operations, **snapshot the current state first** because a
+/// rollback is itself reversible, then execute two-phase.
+///
+/// # Errors
+/// `PD-SNP-002` when the snapshot does not exist; `PD-SNP-001` when the pre-rollback snapshot
+/// cannot be written, in which case nothing is executed.
+pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
+    let env = select_env(opts).await?;
+    let engine = engine_for(opts);
+    let env_hash = envs::env_hash(&env.interpreter);
+    let app_data = app_data_dir();
+
+    let target = snapshot::load(&app_data, &env_hash, id)?;
+    let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
+    let diff = snapshot::diff(&current, &target.entries());
+    let restore = snapshot::rollback_plan(&diff);
+
+    if restore.is_empty() {
+        println!("environment already matches snapshot {}", target.meta.id);
+        return Ok(Exit::Success);
+    }
+
+    println!("Rolling back to {}:", target.meta.id);
+    for name in &restore.uninstall {
+        println!("  remove  {name}");
+    }
+    for spec in &restore.install {
+        println!("  restore {} {}", spec.name, spec.version);
+    }
+
+    // Honesty about what cannot come back, rather than reporting a success that is not one.
+    let stuck = snapshot::unrestorable_lines(&target.freeze);
+    if !stuck.is_empty() {
+        println!(
+            "\nwarning[PD-SNP-002]: {} entr(y/ies) in this snapshot cannot be restored from an \
+             index and will be left as they are:",
+            stuck.len()
+        );
+        for line in &stuck {
+            println!("  {line}");
+        }
+    }
+
+    if !opts.yes && !confirm_text(&format!("Apply {} operation(s)?", restore.len())) {
+        println!("aborted");
+        return Ok(Exit::PlanAborted);
+    }
+
+    // A rollback is itself reversible (DATA-FLOW §8), so the state being left behind is captured
+    // before it is replaced.
+    let pre = snapshot::create(
+        &app_data,
+        &env_hash,
+        engine.freeze(&env).await?,
+        snapshot::Trigger::Rollback {
+            restoring: target.meta.id.clone(),
+        },
+        engine.id(),
+        jiff::Timestamp::now(),
+    )?;
+    println!("snapshot {} written before rolling back", pre.meta.id);
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
+    let quiet = opts.quiet;
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if !quiet {
+                eprintln!("{}", event.line);
+            }
+        }
+    });
+
+    let mut results = Vec::new();
+    if !restore.uninstall.is_empty() {
+        let summary = plan::execute_uninstall(
+            engine.as_ref(),
+            &env,
+            pre.meta.id.clone(),
+            &restore.uninstall,
+            snapshot::SnapshotProof::Taken(&pre),
+            tx.clone(),
+        )
+        .await?;
+        results.extend(summary.results);
+    }
+
+    for spec in &restore.install {
+        let step = engine
+            .install(
+                &env,
+                std::slice::from_ref(spec),
+                pipdock_core::model::ExecMode::Isolated,
+                tx.clone(),
+            )
+            .await;
+        results.push(step.unwrap_or_else(|e| pipdock_core::model::StepResult {
+            pkg: spec.name.clone(),
+            from: None,
+            to: Some(spec.version.clone()),
+            status: StepStatus::Failed,
+            code: Some(e.code),
+            stderr_tail: e.stderr_tail,
+        }));
+    }
+
+    let counts = plan::ExecutionSummary::tally(&results);
+    let summary = plan::ExecutionSummary {
+        plan_id: pre.meta.id.clone(),
+        phase: pipdock_core::model::ExecMode::Isolated,
+        results,
+        check: engine
+            .check(&env)
+            .await
+            .unwrap_or(pipdock_core::model::CheckReport {
+                ok: true,
+                findings: Vec::new(),
+            }),
+        counts,
+    };
+
+    print_summary(opts, &summary);
+    Ok(if summary.counts.failed > 0 {
+        Exit::PartialFailure
+    } else {
+        Exit::Success
+    })
+}
+
+/// `pipdock self report-bug`
+///
+/// ERROR-CATALOG §4: builds a prefilled GitHub issue URL and prints it. **Nothing is ever sent
+/// automatically** — the user reviews the form in their browser. This is the entire telemetry
+/// story (PRIVACY-POLICY §4).
+///
+/// # Errors
+/// Never; environment details that cannot be read are simply left blank.
+pub async fn report_bug(opts: &GlobalOpts) -> Result<Exit> {
+    let env = select_env(opts).await.ok();
+    let engine = engine_for(opts);
+
+    let python = env
+        .as_ref()
+        .map(|e| e.python_version.clone())
+        .unwrap_or_default();
+    let engine_version = match &env {
+        Some(e) => engine.info(e).await.version.unwrap_or_default(),
+        None => String::new(),
+    };
+
+    let mut url = format!(
+        "https://github.com/poli0981/pipdock/issues/new?template=bug_report.yml\
+         &pd-version={}&os={}&engine={}",
+        urlencode(env!("CARGO_PKG_VERSION")),
+        urlencode(&os_description()),
+        urlencode(engine.id().as_str()),
+    );
+    if !python.is_empty() {
+        url.push_str(&format!(
+            "&python={}",
+            urlencode(&format!(
+                "Python {python} · {} {engine_version}",
+                engine.id().as_str()
+            ))
+        ));
+    }
+
+    println!("{url}");
+    if !opts.quiet {
+        eprintln!(
+            "\nOpen that in a browser to review the prefilled issue. Nothing is sent until you \
+             submit it yourself.\nCheck the log excerpt for paths or names you would rather not \
+             make public."
+        );
+    }
+    Ok(Exit::Success)
+}
+
+/// Percent-encode a query-string value.
+///
+/// Hand-rolled rather than pulling a dependency for one call site: the alphabet is small and the
+/// consequence of getting it wrong is a broken link, not a security hole.
+fn urlencode(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len());
+    for byte in raw.bytes() {
+        match byte {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
+                out.push(byte as char);
+            }
+            b' ' => out.push('+'),
+            _ => out.push_str(&format!("%{byte:02X}")),
+        }
+    }
+    out
+}
+
+fn os_description() -> String {
+    // The issue template asks for a Windows version; without a dependency the best honest answer
+    // is the target family plus whatever the OS tells us for free.
+    std::env::var("OS").unwrap_or_else(|_| std::env::consts::OS.to_owned())
+}
+
+/// A yes/no prompt that refuses off a TTY.
+fn confirm_text(question: &str) -> bool {
+    use std::io::Write as _;
+
+    if !std::io::IsTerminal::is_terminal(&std::io::stdin()) {
+        eprintln!("error[PD-RES-002]: not a terminal; pass --yes to proceed without confirming");
+        return false;
+    }
+    print!("\n{question} [y/N]: ");
     let _ = std::io::stdout().flush();
     let mut line = String::new();
     if std::io::stdin().read_line(&mut line).is_err() {

@@ -13,7 +13,17 @@
 use std::fmt;
 
 /// Catalog area: the `<AREA>` in `PD-<AREA>-<NNN>`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 #[serde(rename_all = "UPPERCASE")]
 pub enum Area {
     /// Environment discovery, probing, PEP 668.
@@ -44,7 +54,17 @@ pub enum Area {
 ///
 /// `docs/TESTING.md` §2 requires at least one captured stderr fixture per variant before ship;
 /// the test that enforces "no code without fixture" lives beside the classifiers.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 #[non_exhaustive]
 pub enum Code {
     // -- PD-ENV: environment ------------------------------------------------

@@ -8,7 +8,17 @@ use std::path::PathBuf;
 use crate::errors::{Code, PdError, Result};
 
 /// Which resolver PipDock is driving.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum EngineId {
     /// `<python> -m pip …`
@@ -29,7 +39,7 @@ impl EngineId {
 }
 
 /// Availability and version of an engine for a given environment.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct EngineInfo {
     /// Which engine this describes.
     pub id: EngineId,
@@ -40,7 +50,9 @@ pub struct EngineInfo {
 }
 
 /// How an environment was discovered. Surfaced as the source chip in the Environments screen.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum EnvSource {
     /// PEP 514 registry entry.
@@ -56,7 +68,7 @@ pub enum EnvSource {
 }
 
 /// A Python environment PipDock can act on.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct PyEnv {
     /// Canonicalized path to the interpreter. Never a shell string — see SECURITY §2.
     pub interpreter: PathBuf,
@@ -92,7 +104,16 @@ impl PyEnv {
 /// Constructing one is the *only* way a package name reaches an argv array, which is what makes
 /// SECURITY §2's "validated before it reaches argv" claim structural rather than aspirational.
 #[derive(
-    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
 )]
 #[serde(transparent)]
 pub struct PkgName(String);
@@ -165,7 +186,9 @@ pub fn normalize_name(raw: &str) -> String {
 }
 
 /// A version string as the engine reported it. Never reshaped or localized (I18N §2).
-#[derive(Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, Hash, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(transparent)]
 pub struct Version(pub String);
 
@@ -176,7 +199,7 @@ impl std::fmt::Display for Version {
 }
 
 /// What the user asked for: a name, optionally constrained.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Spec {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -185,7 +208,9 @@ pub struct Spec {
 }
 
 /// A resolved, exact `name==version` pair. Only these reach a mutating engine command.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct PinnedSpec {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -202,7 +227,7 @@ impl PinnedSpec {
 }
 
 /// An installed distribution, as read by `probe.py` or `<engine> list`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Dist {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -217,7 +242,7 @@ pub struct Dist {
 }
 
 /// An installed distribution with a newer release available.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct OutdatedDist {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -228,7 +253,9 @@ pub struct OutdatedDist {
 }
 
 /// Which of the two execution phases produced a result (ARCHITECTURE §8).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum ExecMode {
     /// Phase A: one engine invocation for the whole pinned set.
@@ -238,7 +265,9 @@ pub enum ExecMode {
 }
 
 /// Outcome of a single package's step.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "lowercase")]
 pub enum StepStatus {
     /// Applied successfully.
@@ -250,7 +279,7 @@ pub enum StepStatus {
 }
 
 /// One row of the summary report (DATA-FLOW §6).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct StepResult {
     /// Normalized distribution name.
     pub pkg: PkgName,
@@ -271,7 +300,7 @@ pub struct StepResult {
 }
 
 /// One unsatisfied requirement reported by `pip check` / `uv pip check`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct CheckFinding {
     /// The distribution whose requirement is unsatisfied.
     pub pkg: PkgName,
@@ -280,7 +309,7 @@ pub struct CheckFinding {
 }
 
 /// Post-execution environment verification.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct CheckReport {
     /// True when the engine reported no broken requirements.
     pub ok: bool,

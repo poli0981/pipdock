@@ -28,9 +28,38 @@ The entire architecture stands on assumptions that must be verified on a real ma
 | SP-5 | **Held-back attribution accuracy** | On a real numpy/scipy/pandas pin tangle: does graph-based blocker attribution match reality? | Preview sentences verified by hand against the tangle; ambiguity fallback path exercised. |
 | SP-6 | **Windows env discovery sweep** | PEP 514 registry + `py -0p` + Microsoft Store Python + uv-managed on a real machine; Store-Python aliasing quirks. | Discovery module design note updated; Store Python either supported or explicitly detected-and-explained. |
 
-## Phase 1 — M1 "Core + CLI" (~3–4 weeks)
+## Phase 1 — M1 "Core + CLI" — **substantially complete 2026-07-27**
 
 Engine trait + both adapters (per SP-1 outcome), probe.py, discovery, index cache + search, plan/resolve/execute two-phase, snapshots, pins, guard graph, error catalog, CLI over all of it. **Exit:** TESTING L1+L2+L4 green in CI; `pipdock update --all` survives the SP-5 tangle env with correct summary; dogfood on Kokone's own bot venvs begins.
+
+### What works
+
+Every P0 CLI command except `health`: `env list|use`, `list [--outdated]`, `search`, `info`, `install`, `update`, `uninstall`, `pin add|remove|list`, `snapshot list|create|diff|rollback`, `doctor`, `pip-upgrade`, `engine [pip|uv]`, `index refresh`, `schema`, `self report-bug`. 173 tests; `cargo fmt`, `clippy -D warnings` and `npm audit` clean.
+
+Verified against real environments, not only unit tests:
+
+- the held-back conflict from SP-1 is reported and attributed — `httpcore 0.15.0 (latest 1.0.9)` / `httpx 0.23.0 requires httpcore <0.16.0,>=0.15.0` — which **no engine produces**;
+- `update --all` resolves the same tangle to latest, applies it, and leaves `pip check` clean;
+- `snapshot rollback` restores an environment exactly (PRD §6's "env diff vs snapshot = ∅");
+- the uninstall guard refuses to break `requests` and exits non-zero, per CLI-SPEC §7;
+- exit codes match CLI-SPEC §5.
+
+### Findings that changed the design
+
+| | |
+|---|---|
+| `plan_requirements` | Every resolve restates the installed set, or both engines break installed dependents at exit 0 (SP-1). |
+| `-U` in the dry-run argv | Without it pip plans nothing and every package looks held back for no reason. The unit test had encoded the omission instead of the document. |
+| Search ranking | Tiered, not score-ordered, and ranked by selection rather than a full sort: 90.5 ms → 16.5 ms against a 50 ms budget. |
+| `SnapshotProof` | `--no-snapshot` is a named waiver, not an `Option`, so forgetting a snapshot cannot look like deliberately waiving one. |
+
+### Not yet done
+
+- **`health`** — belongs to M3 with the tools venv (CODE-HEALTH-SPEC).
+- **TESTING L2 in CI** — `ci-integration.yml` is written but has never run; it needs a push to GitHub and the repo settings from RELEASE-CI §5.
+- **TESTING L4** — `assert_cmd` is a dependency and the clap surface is covered, but the golden-output tests per command are not written.
+- **The SP-5 tangle env** — the exit criterion names a real numpy/scipy/pandas environment. The httpx/httpcore construction proved the mechanism; the large-environment run is still owed, and is the natural first dogfooding step.
+- **Settings beyond engine choice** — locale, thresholds and the PEP 668 override land with the GUI in M2.
 
 ## Phase 2 — M2 "GUI shell + core flows" (~3–4 weeks)
 

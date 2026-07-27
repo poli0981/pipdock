@@ -75,7 +75,9 @@ pub fn derive_held_back(
 }
 
 /// What the user chose for one package that needs a decision (DATA-FLOW §3, CLI-SPEC §4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Decision {
     /// Accept the resolver's compatible version. The safe default, and the one that needs no

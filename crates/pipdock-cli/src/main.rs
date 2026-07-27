@@ -306,6 +306,9 @@ async fn main() -> ExitCode {
         Command::List { outdated } => run::list(&cli.global, *outdated).await,
         Command::Doctor => run::doctor(&cli.global).await,
         Command::Engine { engine: None } => run::engine_status(&cli.global).await,
+        Command::Engine {
+            engine: Some(engine),
+        } => run::engine_set(&cli.global, *engine).await,
         Command::Update {
             pkgs,
             all,
@@ -335,6 +338,13 @@ async fn main() -> ExitCode {
             )
             .await
         }
+        Command::Schema { type_name } => run::schema(type_name),
+        Command::Env(EnvCommand::Use { path }) => run::env_use(&cli.global, path).await,
+        Command::PipUpgrade => run::pip_upgrade(&cli.global).await,
+        Command::Snapshot(SnapshotCommand::Rollback { id }) => {
+            run::snapshot_rollback(&cli.global, id).await
+        }
+        Command::Selfx(SelfCommand::ReportBug) => run::report_bug(&cli.global).await,
         Command::Search { query, limit } => run::search(&cli.global, query, *limit).await,
         Command::Info { pkg } => run::info(&cli.global, pkg).await,
         Command::Index(IndexCommand::Refresh) => run::index_refresh(&cli.global).await,
@@ -350,16 +360,12 @@ async fn main() -> ExitCode {
             run::snapshot_diff(&cli.global, id).await
         }
 
-        // Everything below needs the planner, snapshots or the index, none of which are wired
-        // yet. Reporting that honestly beats a stub that appears to work — this is a tool whose
-        // whole promise is that it tells you what it is about to do.
-        other => {
+        // The last unimplemented command. Health belongs to M3 with the Code Health tools
+        // environment, and saying which milestone it arrives in beats a stub that appears to
+        // work — this is a tool whose whole promise is telling you what it is about to do.
+        Command::Health { .. } => {
             eprintln!(
-                "error[PD-INT-001]: `{}` is not implemented yet.\n\
-                 Working today: env list, list [--outdated], doctor, engine,
-                 update, install, search, info, index refresh,
-                 pin add|remove|list, uninstall, snapshot list|create|diff.",
-                command_name(other)
+                "error[PD-INT-001]: `health` arrives in M3, with the Code Health tools                  environment. See docs/CODE-HEALTH-SPEC.md."
             );
             Ok(Exit::Internal)
         }
@@ -386,27 +392,6 @@ async fn main() -> ExitCode {
             }
             run::exit_for(e.code).into()
         }
-    }
-}
-
-fn command_name(cmd: &Command) -> &'static str {
-    match cmd {
-        Command::Env(_) => "env",
-        Command::List { .. } => "list",
-        Command::Search { .. } => "search",
-        Command::Info { .. } => "info",
-        Command::Install { .. } => "install",
-        Command::Update { .. } => "update",
-        Command::Uninstall { .. } => "uninstall",
-        Command::Pin(_) => "pin",
-        Command::Snapshot(_) => "snapshot",
-        Command::Doctor => "doctor",
-        Command::Health { .. } => "health",
-        Command::PipUpgrade => "pip-upgrade",
-        Command::Engine { .. } => "engine",
-        Command::Index(_) => "index",
-        Command::Schema { .. } => "schema",
-        Command::Selfx(_) => "self",
     }
 }
 

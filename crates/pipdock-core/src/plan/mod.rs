@@ -16,7 +16,9 @@ use crate::model::{
 use crate::snapshot::SnapshotProof;
 
 /// How aggressively to resolve conflicts.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum Strategy {
     /// Accept whatever the resolver can satisfy. The safe default; `[C]ompatible` in the CLI.
@@ -31,7 +33,7 @@ pub enum Strategy {
 }
 
 /// The user's intent, before the engine has said anything about it.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct PlanRequest {
     /// Already-installed packages the user selected for upgrade.
     #[serde(default)]
@@ -44,7 +46,9 @@ pub struct PlanRequest {
 }
 
 /// Which section of the preview a change belongs to (UI-SPEC §4).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum ChangeKind {
     /// An installed package moving to a newer version.
@@ -58,7 +62,7 @@ pub enum ChangeKind {
 }
 
 /// One line of the preview diff.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Change {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -76,7 +80,7 @@ pub struct Change {
 /// ARCHITECTURE §3: the engine's report says *what* was held back; *who* is responsible comes from
 /// cross-referencing the reverse-dependency graph with each blocker's `Requires-Dist` constraint.
 /// **If attribution is ambiguous, show the constraint without a culprit rather than guessing.**
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct Blocker {
     /// The package imposing the constraint, absent when attribution is ambiguous.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -86,7 +90,7 @@ pub struct Blocker {
 }
 
 /// A package the resolver could not take all the way to `latest`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct HeldBack {
     /// Normalized distribution name.
     pub pkg: PkgName,
@@ -100,7 +104,7 @@ pub struct HeldBack {
 }
 
 /// A `ResolutionImpossible` outcome and whatever detail the engine gave (`PD-RES-001`).
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ImpossibleDetail {
     /// Packages involved in the unsatisfiable set.
     #[serde(default)]
@@ -118,7 +122,7 @@ pub struct ImpossibleDetail {
 /// The exact field set is **provisional until spike SP-1** confirms uv's output is rich enough to
 /// populate `held_back.blockers`. If it is not, SP-1's go/no-go says v1.0 ships pip-primary with uv
 /// behind a beta flag.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ResolutionReport {
     /// Everything that would change if the user confirms.
     #[serde(default)]
@@ -155,7 +159,17 @@ impl ResolutionReport {
 }
 
 /// Aggregate counts rendered as "13 successful, 2 failed, 1 skipped" (DATA-FLOW §6).
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    Default,
+    PartialEq,
+    Eq,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
 pub struct Counts {
     /// Steps that applied.
     pub ok: usize,
@@ -166,7 +180,7 @@ pub struct Counts {
 }
 
 /// The end-of-run report shown in the summary sheet and emitted by `--json`.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ExecutionSummary {
     /// Correlates the summary with its snapshot and log ring buffer.
     pub plan_id: String,
@@ -201,6 +215,70 @@ impl ExecutionSummary {
         counts
     }
 }
+
+/// The types `--json` emits, exposed as JSON Schema so scripts can pin against them.
+///
+/// CLI-SPEC §6: *"schema documented by `pipdock schema <type>` which prints the JSON Schema
+/// generated from the Rust types, so scripts can pin against it."* Generated rather than
+/// hand-written, because a hand-written schema drifts from the struct the moment a field is added
+/// and then lies to every script depending on it.
+///
+/// # Errors
+/// `PD-PKG-002` when the name is not one of the exported types; the message lists them.
+pub fn json_schema(type_name: &str) -> Result<serde_json::Value> {
+    macro_rules! schema_for {
+        ($($name:literal => $ty:ty),* $(,)?) => {
+            match type_name {
+                $($name => serde_json::to_value(schemars::schema_for!($ty))
+                    .map_err(|e| PdError::new(Code::IntUnexpected, format!("schema: {e}"))),)*
+                _ => Err(PdError::new(
+                    Code::PkgNotFound,
+                    format!(
+                        "unknown type {type_name:?}; known types: {}",
+                        SCHEMA_TYPES.join(", ")
+                    ),
+                )),
+            }
+        };
+    }
+
+    schema_for! {
+        "Dist" => crate::model::Dist,
+        "OutdatedDist" => crate::model::OutdatedDist,
+        "PyEnv" => crate::model::PyEnv,
+        "CheckReport" => crate::model::CheckReport,
+        "StepResult" => crate::model::StepResult,
+        "PlanRequest" => PlanRequest,
+        "ResolutionReport" => ResolutionReport,
+        "ExecutionSummary" => ExecutionSummary,
+        "Pin" => crate::pins::Pin,
+        "GuardReport" => crate::graph::GuardReport,
+        "Diff" => crate::snapshot::Diff,
+        "SnapshotMeta" => crate::snapshot::Meta,
+        "Hit" => crate::index::Hit,
+        "PackageMeta" => crate::index::PackageMeta,
+        "Code" => crate::errors::Code,
+    }
+}
+
+/// Every type [`json_schema`] can produce, for help text and tests.
+pub const SCHEMA_TYPES: &[&str] = &[
+    "Dist",
+    "OutdatedDist",
+    "PyEnv",
+    "CheckReport",
+    "StepResult",
+    "PlanRequest",
+    "ResolutionReport",
+    "ExecutionSummary",
+    "Pin",
+    "GuardReport",
+    "Diff",
+    "SnapshotMeta",
+    "Hit",
+    "PackageMeta",
+    "Code",
+];
 
 /// DATA-FLOW §9.3: a report older than this is refused by [`execute`] and must be re-resolved.
 pub const PLAN_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(10 * 60);
@@ -499,6 +577,22 @@ mod tests {
             code: None,
             stderr_tail: None,
         }
+    }
+
+    #[test]
+    fn every_advertised_schema_type_resolves() {
+        // CLI-SPEC §6 promises scripts can pin against these. A name in the list that does not
+        // resolve would be a promise broken at the moment someone relied on it.
+        for name in SCHEMA_TYPES {
+            let schema = json_schema(name).unwrap_or_else(|e| panic!("{name}: {e}"));
+            assert!(schema.is_object(), "{name} produced {schema}");
+        }
+        let err = json_schema("NotAType").expect_err("unknown type must fail");
+        assert_eq!(err.code, Code::PkgNotFound);
+        assert!(
+            err.message.contains("ResolutionReport"),
+            "the message must list the options"
+        );
     }
 
     #[test]
