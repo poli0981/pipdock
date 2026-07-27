@@ -1,0 +1,20 @@
+# NOTE: later rules win, so the general default comes first and the overrides follow.
+
+# Repository default: normalise to LF in the blob, check out per platform.
+* text=auto
+
+# Windows-only scripts keep CRLF on checkout.
+*.ps1 text eol=crlf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# Shell scripts must keep LF even on Windows or they will not run.
+*.sh text eol=lf
+
+# Engine-output fixtures must be preserved byte-for-byte.
+#
+# pip and uv emit CRLF on Windows. Normalising those to LF in the blob would test the adapter
+# parsers against line endings that never occur in production — a parser mishandling a trailing
+# \r would pass CI and fail on every real Windows machine. docs/TESTING.md §1 makes adapter
+# parsing the thing that must never regress, so: no normalisation, no diffing.
+crates/pipdock-core/tests/fixtures/** -text -diff
