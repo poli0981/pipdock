@@ -149,7 +149,10 @@ pub fn check(requires_python: Option<&str>, env_version: &PyVersion) -> Compatib
 }
 
 /// `Some(true|false)` when the clause was understood, `None` when it was not.
-fn satisfies_clause(clause: &str, env: &PyVersion) -> Option<bool> {
+///
+/// Shared with [`crate::graph::markers`], which evaluates the `python_version` half of a PEP 508
+/// environment marker against the same operator set.
+pub(crate) fn satisfies_clause(clause: &str, env: &PyVersion) -> Option<bool> {
     use std::cmp::Ordering::{Equal, Greater, Less};
 
     // Longest operators first: `>=` must not be read as `>`.
