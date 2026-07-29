@@ -56,6 +56,9 @@ class Scenario:
     expects_by_engine: dict[str, str | None] = field(default_factory=dict)
     #: Set False only to capture what happens WITHOUT the UTF-8 mitigation (see SAFE_ENV).
     utf8_io: bool = True
+    #: False when the scenario depends on the host, so a re-capture elsewhere would silently
+    #: replace the evidence with something else. Skipped unless named in `--only`.
+    reproducible: bool = True
     #: Extra argv inserted before the requirements, e.g. an unreachable index URL.
     extra_args: list[str] = field(default_factory=list)
 
@@ -105,6 +108,12 @@ SCENARIOS: list[Scenario] = [
         seed=["idna==3.4"],
         target=["idna"],
         utf8_io=False,
+        # The crash needs a cp1252 console. A GitHub runner's is already UTF-8, so re-capturing
+        # there does not reproduce it -- it records an ordinary successful report and quietly
+        # destroys the only evidence of the SP-2 blocker. Capture this one by hand on a machine
+        # with a legacy code page: `py -3.12 spikes/capture.py --engine pip --only
+        # report-encoding-crash`.
+        reproducible=False,
         question=(
             "Evidence for the pip --report UnicodeEncodeError on Windows/cp1252. Kept as a "
             "fixture so a regression in the UTF-8 mitigation is recognisable."
@@ -310,7 +319,15 @@ def capture(engine: str, scenario: Scenario, uv_exe: Path | None, out_root: Path
 # Any drive-absolute Windows path, in both the raw form engines print to a console and the
 # backslash-escaped form they emit inside JSON. Stops at quotes and whitespace so a path
 # embedded in a JSON string cannot swallow the closing quote.
-_ABS_PATH = re.compile(r'[A-Za-z]:(?:\\\\[^\\/:*?"<>|\r\n]+)+|[A-Za-z]:(?:\\[^\\/:*?"<>|\r\n]+)+')
+#
+# The lookbehind is load-bearing. Without it the drive letter can start mid-word, and pip's
+# --report JSON embeds package descriptions where "Some things HTTP Core does do:\n\n* ..."
+# reads as drive `o:` followed by `\n` path segments -- the match then eats the rest of the
+# description. Requiring a non-alphanumeric before the letter is what tells a path from prose.
+_ABS_PATH = re.compile(
+    r'(?<![A-Za-z0-9])[A-Za-z]:(?:\\\\[^\\/:*?"<>|\r\n]+)+'
+    r'|(?<![A-Za-z0-9])[A-Za-z]:(?:\\[^\\/:*?"<>|\r\n]+)+'
+)
 
 
 def redact(text: str, work: Path) -> str:
@@ -357,7 +374,18 @@ def redact(text: str, work: Path) -> str:
     # uv times every phase — "Resolved 3 packages in 775ms", "Checked 8 packages in 1ms". The
     # counts are signal and stay; the durations are never the same twice. Safe to drop: the uv
     # adapter only tests `text.contains("Resolved ")` and reads the +/- lines (engine/parse.rs).
-    return re.sub(r"\bin \d+(?:\.\d+)?(?:ms|µs|us|s)\b", "in <DURATION>", text)
+    text = re.sub(r"\bin \d+(?:\.\d+)?(?:ms|µs|us|s)\b", "in <DURATION>", text)
+
+    # pip's --report JSON echoes the PEP 508 environment markers, which include the host OS:
+    # "platform_release": "11" on a dev machine versus "2025Server" on the runner, and a
+    # "platform_version" build number that moves with every Windows update. That is machine
+    # identity, not engine behaviour. The interpreter version markers are deliberately left
+    # alone -- those can genuinely change a resolution, so a diff there is worth a human look.
+    return re.sub(
+        r'"(platform_release|platform_version)": "[^"]*"',
+        r'"\1": "<OS>"',
+        text,
+    )
 
 
 def engine_version(engine: str, python: Path, uv_exe: Path | None) -> str:
@@ -395,6 +423,14 @@ def main() -> int:
         parser.error("--uv-exe is required with --engine uv")
 
     selected = [s for s in SCENARIOS if not args.only or s.name in args.only]
+    # Host-dependent scenarios run only when asked for by name. Sweeping them up in a bulk
+    # re-capture would overwrite evidence that the current machine cannot produce.
+    if not args.only:
+        for s in selected:
+            if not s.reproducible:
+                print(f"[{args.engine}] {s.name} — skipped, host-dependent; use --only to force")
+        selected = [s for s in selected if s.reproducible]
+
     summaries = []
     for scenario in selected:
         print(f"[{args.engine}] {scenario.name} …", flush=True)
