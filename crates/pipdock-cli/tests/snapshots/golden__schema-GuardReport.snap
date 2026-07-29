@@ -29,7 +29,7 @@ expression: out
       },
       "type": "array"
     },
-    "with_dependents": {
+    "withDependents": {
       "description": "The removal set expanded to include everything that depends on it, transitively — the\n\"remove dependents too\" option.",
       "items": {
         "$ref": "#/$defs/PkgName"
@@ -40,7 +40,7 @@ expression: out
   "required": [
     "removing",
     "breaks",
-    "with_dependents"
+    "withDependents"
   ],
   "title": "GuardReport",
   "type": "object"

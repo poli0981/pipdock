@@ -69,6 +69,7 @@ pub enum EnvSource {
 
 /// A Python environment PipDock can act on.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct PyEnv {
     /// Canonicalized path to the interpreter. Never a shell string — see SECURITY §2.
     pub interpreter: PathBuf,
@@ -200,6 +201,7 @@ impl std::fmt::Display for Version {
 
 /// What the user asked for: a name, optionally constrained.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Spec {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -228,6 +230,7 @@ impl PinnedSpec {
 
 /// An installed distribution, as read by `probe.py` or `<engine> list`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Dist {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -280,6 +283,7 @@ pub enum StepStatus {
 
 /// One row of the summary report (DATA-FLOW §6).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct StepResult {
     /// Normalized distribution name.
     pub pkg: PkgName,

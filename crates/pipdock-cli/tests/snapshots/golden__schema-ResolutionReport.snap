@@ -159,7 +159,7 @@ expression: out
       },
       "type": "array"
     },
-    "held_back": {
+    "heldBack": {
       "default": [],
       "description": "Packages that could not reach `latest`, with attribution.",
       "items": {

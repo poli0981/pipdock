@@ -47,152 +47,152 @@ expression: out
       "description": "Every code PipDock can surface at v1 launch.\n\n`docs/TESTING.md` §2 requires at least one captured stderr fixture per variant before ship;\nthe test that enforces \"no code without fixture\" lives beside the classifiers.",
       "oneOf": [
         {
-          "const": "EnvInterpreterMissing",
+          "const": "PD-ENV-001",
           "description": "Interpreter path missing or not executable — the env was deleted or moved.",
           "type": "string"
         },
         {
-          "const": "EnvExternallyManaged",
+          "const": "PD-ENV-002",
           "description": "PEP 668 `EXTERNALLY-MANAGED` marker present; mutation blocked by default.",
           "type": "string"
         },
         {
-          "const": "EnvProbeFailed",
+          "const": "PD-ENV-003",
           "description": "`probe.py` exited non-zero or produced unparseable output.",
           "type": "string"
         },
         {
-          "const": "EngNotFound",
+          "const": "PD-ENG-001",
           "description": "pip or uv binary not found.",
           "type": "string"
         },
         {
-          "const": "EngPipTooOld",
+          "const": "PD-ENG-002",
           "description": "pip older than 22.2, which predates `--dry-run --report`.",
           "type": "string"
         },
         {
-          "const": "EngUvShapeUnknown",
+          "const": "PD-ENG-003",
           "description": "uv emitted a shape the adapter does not recognize (uv newer than PipDock).",
           "type": "string"
         },
         {
-          "const": "EngUnclassified",
+          "const": "PD-ENG-999",
           "description": "Fallback for engine failures no classifier matched. Always last.",
           "type": "string"
         },
         {
-          "const": "ResImpossible",
+          "const": "PD-RES-001",
           "description": "`ResolutionImpossible` or the uv equivalent: constraints cannot be satisfied.",
           "type": "string"
         },
         {
-          "const": "ResPlanStale",
+          "const": "PD-RES-002",
           "description": "Plan older than 10 minutes, or the env's probe hash changed since the preview.",
           "type": "string"
         },
         {
-          "const": "BldMsvcMissing",
+          "const": "PD-BLD-001",
           "description": "MSVC build tools required but absent.",
           "type": "string"
         },
         {
-          "const": "BldBackendFailed",
+          "const": "PD-BLD-002",
           "description": "Build backend failed (`pyproject.toml` error, `metadata-generation-failed`).",
           "type": "string"
         },
         {
-          "const": "BldWheelFailed",
+          "const": "PD-BLD-003",
           "description": "Generic sdist wheel-build failure.",
           "type": "string"
         },
         {
-          "const": "PkgRequiresPython",
+          "const": "PD-PKG-001",
           "description": "No matching distribution, and metadata shows a requires-python mismatch.",
           "type": "string"
         },
         {
-          "const": "PkgNotFound",
+          "const": "PD-PKG-002",
           "description": "No matching distribution: name or version typo, or the release is gone.",
           "type": "string"
         },
         {
-          "const": "PkgYanked",
+          "const": "PD-PKG-003",
           "description": "The requested release was yanked.",
           "type": "string"
         },
         {
-          "const": "PkgHashMismatch",
+          "const": "PD-PKG-004",
           "description": "Downloaded artifact failed hash verification.",
           "type": "string"
         },
         {
-          "const": "NetUnreachable",
+          "const": "PD-NET-001",
           "description": "Timeout, connection aborted, or DNS failure.",
           "type": "string"
         },
         {
-          "const": "NetTlsFailure",
+          "const": "PD-NET-002",
           "description": "TLS/SSL verification failed — typically proxy or AV interception.",
           "type": "string"
         },
         {
-          "const": "NetIndexRefreshFailed",
+          "const": "PD-NET-010",
           "description": "PEP 691 index refresh failed; the stale index stays searchable.",
           "type": "string"
         },
         {
-          "const": "NetToolsBootstrapFailed",
+          "const": "PD-NET-011",
           "description": "Code Health tools-venv bootstrap could not reach PyPI.",
           "type": "string"
         },
         {
-          "const": "PrmSitePackagesReadOnly",
+          "const": "PD-PRM-001",
           "description": "`PermissionError` writing site-packages (admin-owned Python).",
           "type": "string"
         },
         {
-          "const": "PrmFileLocked",
+          "const": "PD-PRM-002",
           "description": "File locked by a running process (`WinError 32`).",
           "type": "string"
         },
         {
-          "const": "SnpWriteFailed",
+          "const": "PD-SNP-001",
           "description": "Snapshot write failed before execution. **The plan is aborted; nothing runs.**",
           "type": "string"
         },
         {
-          "const": "SnpTargetUnavailable",
+          "const": "PD-SNP-002",
           "description": "A release needed to restore a snapshot is no longer available on PyPI.",
           "type": "string"
         },
         {
-          "const": "SysPathTooLong",
+          "const": "PD-SYS-001",
           "description": "`MAX_PATH` exceeded without the long-path opt-in.",
           "type": "string"
         },
         {
-          "const": "SysDiskFull",
+          "const": "PD-SYS-002",
           "description": "Disk full.",
           "type": "string"
         },
         {
-          "const": "HltToolMissing",
+          "const": "PD-HLT-001",
           "description": "A Code Health tool is missing from the tools venv.",
           "type": "string"
         },
         {
-          "const": "HltToolFailed",
+          "const": "PD-HLT-002",
           "description": "A Code Health tool exited non-zero.",
           "type": "string"
         },
         {
-          "const": "HltTimeout",
+          "const": "PD-HLT-003",
           "description": "A Code Health tool exceeded its watchdog timeout; partial report shown.",
           "type": "string"
         },
         {
-          "const": "IntUnexpected",
+          "const": "PD-INT-001",
           "description": "A PipDock bug: panic or unexpected state.",
           "type": "string"
         }
@@ -279,7 +279,7 @@ expression: out
           "$ref": "#/$defs/StepStatus",
           "description": "Whether it applied."
         },
-        "stderr_tail": {
+        "stderrTail": {
           "description": "Tail of the engine's stderr for the failure detail pane.",
           "type": [
             "string",
@@ -344,7 +344,7 @@ expression: out
       "$ref": "#/$defs/ExecMode",
       "description": "Which phase produced these results."
     },
-    "plan_id": {
+    "planId": {
       "description": "Correlates the summary with its snapshot and log ring buffer.",
       "type": "string"
     },
@@ -358,7 +358,7 @@ expression: out
     }
   },
   "required": [
-    "plan_id",
+    "planId",
     "phase",
     "check",
     "counts"

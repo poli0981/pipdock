@@ -297,6 +297,7 @@ impl ReverseDeps {
 #[derive(
     Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
+#[serde(rename_all = "camelCase")]
 pub struct GuardReport {
     /// The set the user asked to remove.
     pub removing: Vec<PkgName>,

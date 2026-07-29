@@ -69,84 +69,114 @@ pub enum Area {
 pub enum Code {
     // -- PD-ENV: environment ------------------------------------------------
     /// Interpreter path missing or not executable — the env was deleted or moved.
+    #[serde(rename = "PD-ENV-001")]
     EnvInterpreterMissing,
     /// PEP 668 `EXTERNALLY-MANAGED` marker present; mutation blocked by default.
+    #[serde(rename = "PD-ENV-002")]
     EnvExternallyManaged,
     /// `probe.py` exited non-zero or produced unparseable output.
+    #[serde(rename = "PD-ENV-003")]
     EnvProbeFailed,
 
     // -- PD-ENG: engine -----------------------------------------------------
     /// pip or uv binary not found.
+    #[serde(rename = "PD-ENG-001")]
     EngNotFound,
     /// pip older than 22.2, which predates `--dry-run --report`.
+    #[serde(rename = "PD-ENG-002")]
     EngPipTooOld,
     /// uv emitted a shape the adapter does not recognize (uv newer than PipDock).
+    #[serde(rename = "PD-ENG-003")]
     EngUvShapeUnknown,
     /// Fallback for engine failures no classifier matched. Always last.
+    #[serde(rename = "PD-ENG-999")]
     EngUnclassified,
 
     // -- PD-RES: resolution -------------------------------------------------
     /// `ResolutionImpossible` or the uv equivalent: constraints cannot be satisfied.
+    #[serde(rename = "PD-RES-001")]
     ResImpossible,
     /// Plan older than 10 minutes, or the env's probe hash changed since the preview.
+    #[serde(rename = "PD-RES-002")]
     ResPlanStale,
 
     // -- PD-BLD: build ------------------------------------------------------
     /// MSVC build tools required but absent.
+    #[serde(rename = "PD-BLD-001")]
     BldMsvcMissing,
     /// Build backend failed (`pyproject.toml` error, `metadata-generation-failed`).
+    #[serde(rename = "PD-BLD-002")]
     BldBackendFailed,
     /// Generic sdist wheel-build failure.
+    #[serde(rename = "PD-BLD-003")]
     BldWheelFailed,
 
     // -- PD-PKG: package & index -------------------------------------------
     /// No matching distribution, and metadata shows a requires-python mismatch.
+    #[serde(rename = "PD-PKG-001")]
     PkgRequiresPython,
     /// No matching distribution: name or version typo, or the release is gone.
+    #[serde(rename = "PD-PKG-002")]
     PkgNotFound,
     /// The requested release was yanked.
+    #[serde(rename = "PD-PKG-003")]
     PkgYanked,
     /// Downloaded artifact failed hash verification.
+    #[serde(rename = "PD-PKG-004")]
     PkgHashMismatch,
 
     // -- PD-NET: network ----------------------------------------------------
     /// Timeout, connection aborted, or DNS failure.
+    #[serde(rename = "PD-NET-001")]
     NetUnreachable,
     /// TLS/SSL verification failed — typically proxy or AV interception.
+    #[serde(rename = "PD-NET-002")]
     NetTlsFailure,
     /// PEP 691 index refresh failed; the stale index stays searchable.
+    #[serde(rename = "PD-NET-010")]
     NetIndexRefreshFailed,
     /// Code Health tools-venv bootstrap could not reach PyPI.
+    #[serde(rename = "PD-NET-011")]
     NetToolsBootstrapFailed,
 
     // -- PD-PRM: permissions ------------------------------------------------
     /// `PermissionError` writing site-packages (admin-owned Python).
+    #[serde(rename = "PD-PRM-001")]
     PrmSitePackagesReadOnly,
     /// File locked by a running process (`WinError 32`).
+    #[serde(rename = "PD-PRM-002")]
     PrmFileLocked,
 
     // -- PD-SNP: snapshot ---------------------------------------------------
     /// Snapshot write failed before execution. **The plan is aborted; nothing runs.**
+    #[serde(rename = "PD-SNP-001")]
     SnpWriteFailed,
     /// A release needed to restore a snapshot is no longer available on PyPI.
+    #[serde(rename = "PD-SNP-002")]
     SnpTargetUnavailable,
 
     // -- PD-SYS: system -----------------------------------------------------
     /// `MAX_PATH` exceeded without the long-path opt-in.
+    #[serde(rename = "PD-SYS-001")]
     SysPathTooLong,
     /// Disk full.
+    #[serde(rename = "PD-SYS-002")]
     SysDiskFull,
 
     // -- PD-HLT: code health ------------------------------------------------
     /// A Code Health tool is missing from the tools venv.
+    #[serde(rename = "PD-HLT-001")]
     HltToolMissing,
     /// A Code Health tool exited non-zero.
+    #[serde(rename = "PD-HLT-002")]
     HltToolFailed,
     /// A Code Health tool exceeded its watchdog timeout; partial report shown.
+    #[serde(rename = "PD-HLT-003")]
     HltTimeout,
 
     // -- PD-INT: internal ---------------------------------------------------
     /// A PipDock bug: panic or unexpected state.
+    #[serde(rename = "PD-INT-001")]
     IntUnexpected,
 }
 
@@ -617,5 +647,50 @@ mod tests {
                 rule.code
             );
         }
+    }
+
+    #[test]
+    fn a_code_serializes_as_its_catalog_code() {
+        // ERROR-CATALOG §3 and DATA-FLOW §6 both show `"code": "PD-BLD-002"`, and
+        // ui/src/ipc/index.ts declares the same. Deriving Serialize without the renames emitted
+        // the Rust variant name instead, so the GUI would have had to translate a private
+        // spelling of the catalog back into the public one.
+        //
+        // The renames are duplication -- as_str already holds this mapping -- so this test is
+        // what stops the two drifting. Adding a variant without a rename fails here.
+        for code in Code::ALL {
+            let wire = serde_json::to_value(code).expect("Code serializes");
+            assert_eq!(
+                wire,
+                serde_json::json!(code.as_str()),
+                "{code:?} serializes as {wire} but as_str() says {}",
+                code.as_str()
+            );
+        }
+    }
+
+    #[test]
+    fn a_catalog_code_round_trips() {
+        // The shared L1/L3 fixtures are read back into Rust types, so Deserialize has to accept
+        // what Serialize produced.
+        for code in Code::ALL {
+            let json = serde_json::to_string(code).expect("serializes");
+            let back: Code = serde_json::from_str(&json).expect("deserializes");
+            assert_eq!(back, *code);
+        }
+    }
+
+    #[test]
+    fn every_documented_code_has_exactly_one_variant() {
+        // Rust has 30, docs/ERROR-CATALOG.md tabulates 28 (it folds PD-HLT-001..003 into one
+        // row) and CLAUDE.md used to say 25. Pin the number so the next person adding a code has
+        // to notice the docs exist.
+        assert_eq!(Code::ALL.len(), 30);
+        let wire: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
+        assert_eq!(
+            wire.len(),
+            Code::ALL.len(),
+            "two variants share a wire code"
+        );
     }
 }

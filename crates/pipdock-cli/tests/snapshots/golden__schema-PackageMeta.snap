@@ -6,7 +6,7 @@ expression: out
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "Cached PyPI metadata for one package (ARCHITECTURE §5).",
   "properties": {
-    "home_page": {
+    "homePage": {
       "description": "Project home page, when declared.",
       "type": [
         "string",
@@ -24,7 +24,7 @@ expression: out
       "description": "Normalized name.",
       "type": "string"
     },
-    "requires_python": {
+    "requiresPython": {
       "description": "`Requires-Python` specifier.",
       "type": [
         "string",

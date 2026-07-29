@@ -20,7 +20,7 @@ expression: out
       "$ref": "#/$defs/PkgName",
       "description": "Normalized distribution name."
     },
-    "requires_dist": {
+    "requiresDist": {
       "default": [],
       "description": "Raw `Requires-Dist` entries. The reverse-dependency graph is built from these.",
       "items": {
@@ -28,7 +28,7 @@ expression: out
       },
       "type": "array"
     },
-    "requires_python": {
+    "requiresPython": {
       "default": null,
       "description": "Raw `Requires-Python` specifier, when declared.",
       "type": [

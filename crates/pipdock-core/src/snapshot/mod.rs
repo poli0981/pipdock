@@ -25,11 +25,14 @@ pub const SNAPSHOT_DIR: &str = "snapshots";
 #[derive(
     Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
 )]
-#[serde(rename_all = "kebab-case")]
+// `rename_all` renames the *variants*; the fields inside a struct variant need
+// `rename_all_fields`, which is why `plan_id` escaped the first camelCase pass.
+#[serde(rename_all = "kebab-case", rename_all_fields = "camelCase")]
 pub enum Trigger {
     /// Taken automatically before a plan executed.
     Plan {
         /// The plan's id, so a summary and its snapshot can be tied together.
+        #[serde(alias = "plan_id")]
         plan_id: String,
     },
     /// Taken automatically before a rollback, because a rollback is itself reversible
@@ -43,11 +46,19 @@ pub enum Trigger {
 }
 
 /// The `.meta.json` sidecar (ARCHITECTURE §6).
+///
+/// This type serves twice: it is the on-disk sidecar *and* what `snapshot list --json` emits, so
+/// it is in `SCHEMA_TYPES`. The camelCase spelling is the wire contract, and the `alias`
+/// attributes are what keep sidecars written before that change readable — a snapshot that no
+/// longer parses is a rollback the user silently cannot perform, which is the one failure this
+/// module exists to prevent. Removable once no pre-1.0 snapshot can plausibly still be on disk.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct Meta {
     /// Snapshot id, which is also its filename stem.
     pub id: String,
     /// When it was taken, RFC 3339.
+    #[serde(alias = "created_at")]
     pub created_at: String,
     /// Why it was taken.
     pub trigger: Trigger,
@@ -58,8 +69,10 @@ pub struct Meta {
     /// uninstalled".
     pub engine: EngineId,
     /// How many distributions the freeze recorded.
+    #[serde(alias = "package_count")]
     pub package_count: usize,
     /// PipDock's version, so an old snapshot can be interpreted by a newer build.
+    #[serde(alias = "app_version")]
     pub app_version: String,
 }
 
@@ -561,6 +574,42 @@ mod tests {
                 .expect("list")
                 .is_empty()
         );
+    }
+
+    #[test]
+    fn a_sidecar_written_before_the_camel_case_change_still_loads() {
+        // Verbatim bytes from a real sidecar in %LOCALAPPDATA%\PipDock, written 2026-07-27.
+        // Renaming these fields for the IPC contract without aliases would make every existing
+        // snapshot unparseable — the timeline would come up empty and the rollback the user was
+        // relying on would simply not be offered. Silent, and exactly what this module exists to
+        // prevent.
+        let old = r#"{
+          "id": "20260727T132209-1328615Z",
+          "created_at": "2026-07-27T13:22:09.1328615Z",
+          "trigger": { "plan": { "plan_id": "update-06643fb3" } },
+          "engine": "pip",
+          "package_count": 1,
+          "app_version": "0.1.0"
+        }"#;
+
+        let meta: Meta = serde_json::from_str(old).expect("a pre-rename sidecar still parses");
+        assert_eq!(meta.id, "20260727T132209-1328615Z");
+        assert_eq!(meta.package_count, 1);
+        assert_eq!(meta.app_version, "0.1.0");
+        assert_eq!(meta.created_at, "2026-07-27T13:22:09.1328615Z");
+        assert_eq!(
+            meta.trigger,
+            Trigger::Plan {
+                plan_id: "update-06643fb3".to_owned()
+            }
+        );
+
+        // New writes use the wire spelling, and those round-trip too.
+        let fresh = serde_json::to_string(&meta).expect("serializes");
+        assert!(fresh.contains(r#""createdAt""#), "{fresh}");
+        assert!(fresh.contains(r#""planId""#), "{fresh}");
+        assert!(!fresh.contains("created_at"), "{fresh}");
+        serde_json::from_str::<Meta>(&fresh).expect("the new spelling round-trips");
     }
 
     #[test]
