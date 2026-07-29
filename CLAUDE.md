@@ -77,6 +77,12 @@ Zustand stores and 2 of 14 locale catalogs exist.
   deliberate: they are excluded from the pin set and reported separately rather than dropped.
 - `pipdock engine uv` failing when uv is not on PATH is intentional — storing a preference that
   cannot be honoured just moves the failure to the next command.
+- **The app has no self-update and no `tauri-plugin-updater`.** Removed on purpose (SECURITY §5):
+  a self-updater is a standing remote-code-execution path into a tool that already runs
+  subprocesses against the user's interpreters, and it has to be defended forever — a key that
+  must never leak, an endpoint that must never be spoofable. Tauri makes adding it back a
+  three-line change, so this is written down. Users get new builds from GitHub Releases and
+  verify `SHA256SUMS.txt`. Do not reintroduce it without an explicit owner decision.
 - Fixtures under `tests/fixtures/{pip,uv}/` are **not** literal engine bytes: `spikes/capture.py`
   redacts absolute paths, object addresses, progress bars and uv's timings. Without that they
   differ on every run and every machine, so the weekly drift job could never go green — and pip's

@@ -109,7 +109,7 @@ Done 2026-07-29, closing out M1's CI debt:
 
 Immediate, in rough order:
 
-1. **Repo settings** — branch protection, secrets, and the updater keypair, per RELEASE-CI §5. None of these are committable and all are owner-only. Note `updater:default` is currently granted to a plugin whose `pubkey` is still the placeholder, so it cannot verify anything.
+1. **Repo settings** — branch protection, the Discord webhook secrets, and CodeQL/Discussions, per RELEASE-CI §5. None of these are committable and all are owner-only. The updater keypair that used to be on this list is gone: PipDock no longer updates itself (SECURITY §5).
 
 **M1 is otherwise closed.** Everything else on this list is done, and Stage 1 of M2 — the IPC bridge — is the next piece of work.
 
@@ -146,7 +146,7 @@ Tools venv, deptry/vulture/ruff runners + report UI + gated fix, pip upkeep, bug
 
 ## Phase 4 — RC → v1.0 (~1–2 weeks)
 
-Release pipeline live (signing, updater, checksums), manual charter executed, docs/README screenshots, legal files public, updater tested from RC→GA. **Exit:** RELEASE-CI §5 checklist fully checked; v1.0.0 published + notify fan-out.
+Release pipeline live (bundling, checksums), manual charter executed, docs/README screenshots, legal files public, a clean install of the RC verified on a machine that has never run PipDock. **Exit:** RELEASE-CI §5 checklist fully checked; v1.0.0 published + notify fan-out.
 
 ## Post-1.0 (P1 wave)
 

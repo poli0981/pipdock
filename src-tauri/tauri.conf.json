@@ -36,13 +36,5 @@
     "windows": {
       "allowDowngrades": false
     }
-  },
-  "plugins": {
-    "updater": {
-      "endpoints": [
-        "https://github.com/poli0981/pipdock/releases/latest/download/latest.json"
-      ],
-      "pubkey": "REPLACE_AT_FIRST_RELEASE_WITH_TAURI_SIGNING_PUBLIC_KEY"
-    }
   }
 }
