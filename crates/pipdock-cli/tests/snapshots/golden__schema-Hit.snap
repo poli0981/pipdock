@@ -1,0 +1,55 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "MatchKind": {
+      "description": "How a hit matched, in ranking order.",
+      "oneOf": [
+        {
+          "const": "exact",
+          "description": "The query is the name.",
+          "type": "string"
+        },
+        {
+          "const": "prefix",
+          "description": "The name starts with the query.",
+          "type": "string"
+        },
+        {
+          "const": "fuzzy",
+          "description": "The query appears in the name, in order but not contiguously.",
+          "type": "string"
+        }
+      ]
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One search result.",
+  "properties": {
+    "display": {
+      "description": "The name as PyPI spells it, for display.",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/MatchKind",
+      "description": "Why it ranked where it did. Exposed so the UI can group exact and prefix matches visually."
+    },
+    "name": {
+      "$ref": "#/$defs/PkgName",
+      "description": "The normalized name, which is what every other module keys on."
+    }
+  },
+  "required": [
+    "name",
+    "display",
+    "kind"
+  ],
+  "title": "Hit",
+  "type": "object"
+}

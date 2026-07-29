@@ -1,0 +1,63 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: "stdout_of(&[cmd, \"--help\"])"
+---
+Update packages
+
+Usage: pipdock update [OPTIONS] [PKGS]...
+
+Arguments:
+  [PKGS]...
+          Packages to update; omit and pass `--all` for everything
+
+Options:
+      --all
+          Update every outdated package (pins still apply)
+
+      --env <PATH>
+          Interpreter or environment directory. Defaults to the last used env, else an auto-detected `.venv` in the working directory
+
+      --engine <ENGINE>
+          Override the configured engine for this invocation
+
+          Possible values:
+          - pip: `<python> -m pip`
+          - uv:  `uv pip --python <python>`
+
+      --strategy <STRATEGY>
+          Conflict strategy
+
+          Possible values:
+          - compatible: Accept the resolver's compatible version. The safe default
+          - latest:     Force the latest version. Off a TTY this requires an explicit acknowledgement
+          
+          [default: compatible]
+
+      --except <PKG,...>
+          Ad-hoc exclusions on top of the pin list
+
+      --json
+          Machine-readable output; NDJSON for streaming commands
+
+      --dry-run
+          Print the resolution report and exit without changing anything
+
+  -y, --yes
+          Assume defaults on all prompts. Conflicts resolve to *skip*, never *force*
+
+      --quiet
+          Reduce log output
+
+      --verbose
+          Increase log output
+
+      --log-file <PATH>
+          Tee logs to a file
+
+      --no-snapshot
+          DANGEROUS: skip the pre-batch snapshot. CI images only; prints a warning.
+          
+          This is the sole documented escape from DATA-FLOW §9.2, and it exists because a throwaway CI container has nothing to roll back to.
+
+  -h, --help
+          Print help (see a summary with '-h')

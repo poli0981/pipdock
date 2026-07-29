@@ -1,0 +1,47 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What the uninstall guard found.\n\nRationale from DATA-FLOW §5: bare `pip uninstall` performs **no** dependency check at all, so\nthis is a core value-add rather than a nicety. It is computed once against the full set,\nbecause removing A and B together is fine when only B depends on A — asking per package would\nraise a warning the user cannot act on.",
+  "properties": {
+    "breaks": {
+      "additionalProperties": {
+        "items": {
+          "$ref": "#/$defs/PkgName"
+        },
+        "type": "array"
+      },
+      "description": "For each package that has them, the installed packages that would break.",
+      "type": "object"
+    },
+    "removing": {
+      "description": "The set the user asked to remove.",
+      "items": {
+        "$ref": "#/$defs/PkgName"
+      },
+      "type": "array"
+    },
+    "with_dependents": {
+      "description": "The removal set expanded to include everything that depends on it, transitively — the\n\"remove dependents too\" option.",
+      "items": {
+        "$ref": "#/$defs/PkgName"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "removing",
+    "breaks",
+    "with_dependents"
+  ],
+  "title": "GuardReport",
+  "type": "object"
+}

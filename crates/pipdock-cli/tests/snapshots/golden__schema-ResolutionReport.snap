@@ -1,0 +1,191 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "Blocker": {
+      "description": "The package responsible for holding another one back.\n\nARCHITECTURE §3: the engine's report says *what* was held back; *who* is responsible comes from\ncross-referencing the reverse-dependency graph with each blocker's `Requires-Dist` constraint.\n**If attribution is ambiguous, show the constraint without a culprit rather than guessing.**",
+      "properties": {
+        "by": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PkgName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The package imposing the constraint, absent when attribution is ambiguous."
+        },
+        "constraint": {
+          "description": "The constraint text, e.g. `\"requests<2.31\"`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "constraint"
+      ],
+      "type": "object"
+    },
+    "Change": {
+      "description": "One line of the preview diff.",
+      "properties": {
+        "from": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Version"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Version before, absent for a fresh install."
+        },
+        "kind": {
+          "$ref": "#/$defs/ChangeKind",
+          "description": "Which preview section this belongs in."
+        },
+        "name": {
+          "$ref": "#/$defs/PkgName",
+          "description": "Normalized distribution name."
+        },
+        "to": {
+          "$ref": "#/$defs/Version",
+          "description": "Version the resolver chose."
+        }
+      },
+      "required": [
+        "name",
+        "to",
+        "kind"
+      ],
+      "type": "object"
+    },
+    "ChangeKind": {
+      "description": "Which section of the preview a change belongs to (UI-SPEC §4).",
+      "oneOf": [
+        {
+          "const": "upgrade",
+          "description": "An installed package moving to a newer version.",
+          "type": "string"
+        },
+        {
+          "const": "new-dependency",
+          "description": "A package pulled in to satisfy something else.",
+          "type": "string"
+        },
+        {
+          "const": "new-install",
+          "description": "A package the user explicitly asked to install.",
+          "type": "string"
+        },
+        {
+          "const": "downgrade",
+          "description": "A package moving to an older version to satisfy a constraint.",
+          "type": "string"
+        }
+      ]
+    },
+    "HeldBack": {
+      "description": "A package the resolver could not take all the way to `latest`.",
+      "properties": {
+        "blockers": {
+          "default": [],
+          "description": "Why it could not go further. Empty means the engine gave no attributable reason.",
+          "items": {
+            "$ref": "#/$defs/Blocker"
+          },
+          "type": "array"
+        },
+        "latest": {
+          "$ref": "#/$defs/Version",
+          "description": "The version the index offers."
+        },
+        "pkg": {
+          "$ref": "#/$defs/PkgName",
+          "description": "Normalized distribution name."
+        },
+        "resolved": {
+          "$ref": "#/$defs/Version",
+          "description": "The version the resolver settled on."
+        }
+      },
+      "required": [
+        "pkg",
+        "resolved",
+        "latest"
+      ],
+      "type": "object"
+    },
+    "ImpossibleDetail": {
+      "description": "A `ResolutionImpossible` outcome and whatever detail the engine gave (`PD-RES-001`).",
+      "properties": {
+        "explanation": {
+          "description": "The engine's own explanation, verbatim.",
+          "type": "string"
+        },
+        "packages": {
+          "default": [],
+          "description": "Packages involved in the unsatisfiable set.",
+          "items": {
+            "$ref": "#/$defs/PkgName"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "explanation"
+      ],
+      "type": "object"
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "Version": {
+      "description": "A version string as the engine reported it. Never reshaped or localized (I18N §2).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The normalized dry-run result.\n\n**Both adapters must emit this same shape** — that is the whole point of the `Engine` trait\n(ARCHITECTURE §3). The pip adapter fills it from `--dry-run --report` JSON; the uv adapter from\nuv's text plan output.\n\nThe exact field set is **provisional until spike SP-1** confirms uv's output is rich enough to\npopulate `held_back.blockers`. If it is not, SP-1's go/no-go says v1.0 ships pip-primary with uv\nbehind a beta flag.",
+  "properties": {
+    "changes": {
+      "default": [],
+      "description": "Everything that would change if the user confirms.",
+      "items": {
+        "$ref": "#/$defs/Change"
+      },
+      "type": "array"
+    },
+    "held_back": {
+      "default": [],
+      "description": "Packages that could not reach `latest`, with attribution.",
+      "items": {
+        "$ref": "#/$defs/HeldBack"
+      },
+      "type": "array"
+    },
+    "impossible": {
+      "anyOf": [
+        {
+          "$ref": "#/$defs/ImpossibleDetail"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "description": "Present when the whole resolution failed."
+    },
+    "raw": {
+      "description": "The engine's untouched output, kept for the log and for bug reports.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "raw"
+  ],
+  "title": "ResolutionReport",
+  "type": "object"
+}

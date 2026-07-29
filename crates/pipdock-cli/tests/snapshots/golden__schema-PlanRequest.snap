@@ -1,0 +1,96 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "Spec": {
+      "description": "What the user asked for: a name, optionally constrained.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/PkgName",
+          "description": "Normalized distribution name."
+        },
+        "version_req": {
+          "description": "PEP 440 specifier such as `\">=2,<3\"`, or `None` for \"latest\".",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name"
+      ],
+      "type": "object"
+    },
+    "Strategy": {
+      "description": "How aggressively to resolve conflicts.",
+      "oneOf": [
+        {
+          "const": "compatible",
+          "description": "Accept whatever the resolver can satisfy. The safe default; `[C]ompatible` in the CLI.",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Force the latest version of the listed packages even though it violates another\npackage's requirement. The UI must name what breaks before this is selectable\n(UI-SPEC §4, DISCLAIMER §2).",
+          "properties": {
+            "force-latest": {
+              "properties": {
+                "overrides": {
+                  "description": "Only these packages are forced; everything else stays `Compatible`.",
+                  "items": {
+                    "$ref": "#/$defs/PkgName"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": [
+                "overrides"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "force-latest"
+          ],
+          "type": "object"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The user's intent, before the engine has said anything about it.",
+  "properties": {
+    "installs": {
+      "default": [],
+      "description": "New packages queued in the dock bay.",
+      "items": {
+        "$ref": "#/$defs/Spec"
+      },
+      "type": "array"
+    },
+    "strategy": {
+      "$ref": "#/$defs/Strategy",
+      "description": "Conflict-handling strategy."
+    },
+    "upgrades": {
+      "default": [],
+      "description": "Already-installed packages the user selected for upgrade.",
+      "items": {
+        "$ref": "#/$defs/PkgName"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "strategy"
+  ],
+  "title": "PlanRequest",
+  "type": "object"
+}

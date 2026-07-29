@@ -1,0 +1,50 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "Version": {
+      "description": "A version string as the engine reported it. Never reshaped or localized (I18N §2).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "An installed distribution, as read by `probe.py` or `<engine> list`.",
+  "properties": {
+    "name": {
+      "$ref": "#/$defs/PkgName",
+      "description": "Normalized distribution name."
+    },
+    "requires_dist": {
+      "default": [],
+      "description": "Raw `Requires-Dist` entries. The reverse-dependency graph is built from these.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "requires_python": {
+      "default": null,
+      "description": "Raw `Requires-Python` specifier, when declared.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "$ref": "#/$defs/Version",
+      "description": "Installed version."
+    }
+  },
+  "required": [
+    "name",
+    "version"
+  ],
+  "title": "Dist",
+  "type": "object"
+}

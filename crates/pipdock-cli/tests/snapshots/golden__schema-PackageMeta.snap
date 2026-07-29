@@ -1,0 +1,54 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Cached PyPI metadata for one package (ARCHITECTURE §5).",
+  "properties": {
+    "home_page": {
+      "description": "Project home page, when declared.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "license": {
+      "description": "License text or identifier.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "name": {
+      "description": "Normalized name.",
+      "type": "string"
+    },
+    "requires_python": {
+      "description": "`Requires-Python` specifier.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "summary": {
+      "description": "One-line description.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "version": {
+      "description": "Newest release.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "name"
+  ],
+  "title": "PackageMeta",
+  "type": "object"
+}

@@ -1,0 +1,41 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: "stdout_of(&[cmd, \"--help\"])"
+---
+Upgrade pip inside the selected environment
+
+Usage: pipdock pip-upgrade [OPTIONS]
+
+Options:
+      --env <PATH>
+          Interpreter or environment directory. Defaults to the last used env, else an auto-detected `.venv` in the working directory
+
+      --engine <ENGINE>
+          Override the configured engine for this invocation
+
+          Possible values:
+          - pip: `<python> -m pip`
+          - uv:  `uv pip --python <python>`
+
+      --json
+          Machine-readable output; NDJSON for streaming commands
+
+  -y, --yes
+          Assume defaults on all prompts. Conflicts resolve to *skip*, never *force*
+
+      --quiet
+          Reduce log output
+
+      --verbose
+          Increase log output
+
+      --log-file <PATH>
+          Tee logs to a file
+
+      --no-snapshot
+          DANGEROUS: skip the pre-batch snapshot. CI images only; prints a warning.
+          
+          This is the sole documented escape from DATA-FLOW §9.2, and it exists because a throwaway CI container has nothing to roll back to.
+
+  -h, --help
+          Print help (see a summary with '-h')

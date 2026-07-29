@@ -1,0 +1,73 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "PinMode": {
+      "description": "How a pin constrains a package.",
+      "oneOf": [
+        {
+          "const": "exclude",
+          "description": "Excluded from bulk updates. The user can still update it deliberately, one package at a\ntime — a pin is \"do not sweep this up\", not \"never touch this\".",
+          "type": "string"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Held at an exact version: excluded from bulk updates *and* restated at this version in\nevery plan, so the resolver treats it as fixed.",
+          "properties": {
+            "hold": {
+              "properties": {
+                "version": {
+                  "$ref": "#/$defs/Version",
+                  "description": "The version to hold at."
+                }
+              },
+              "required": [
+                "version"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "hold"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "Version": {
+      "description": "A version string as the engine reported it. Never reshaped or localized (I18N §2).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A pin with the reason the user gave for it.",
+  "properties": {
+    "mode": {
+      "$ref": "#/$defs/PinMode",
+      "description": "How it is constrained."
+    },
+    "pkg": {
+      "$ref": "#/$defs/PkgName",
+      "description": "The pinned package."
+    },
+    "reason": {
+      "description": "Free-text justification shown in the Pins screen.\n\nWorth storing even though nothing reads it programmatically: a pin without a reason\nbecomes a mystery the user is afraid to remove, and so stays forever.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "pkg",
+    "mode"
+  ],
+  "title": "Pin",
+  "type": "object"
+}

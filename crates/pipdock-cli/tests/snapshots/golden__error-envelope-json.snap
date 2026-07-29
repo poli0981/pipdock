@@ -1,0 +1,5 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{"code":"PD-ENV-001","message":"no interpreter at C:/definitely/not/here","stderrTail":null}

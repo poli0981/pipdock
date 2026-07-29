@@ -1,0 +1,5 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: err
+---
+error[PD-ENV-001]: no interpreter at C:/definitely/not/here
