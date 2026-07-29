@@ -56,10 +56,22 @@ Verified against real environments, not only unit tests:
 ### Not yet done
 
 - **`health`** — belongs to M3 with the tools venv (CODE-HEALTH-SPEC).
-- **TESTING L2 in CI** — `ci-integration.yml` is written but has never run; it needs a push to GitHub and the repo settings from RELEASE-CI §5.
+- **TESTING L2 in CI** — ~~has never run~~. It ran nightly on 2026-07-28 and 2026-07-29 and failed both times, for two causes that were diagnosed and fixed on 2026-07-29 (see *L2's first runs* below). Re-verify with `gh workflow run ci-integration.yml`.
 - **TESTING L4** — `assert_cmd` is a dependency and the clap surface is covered, but the golden-output tests per command are not written.
 - **The SP-5 tangle env** — the exit criterion names a real numpy/scipy/pandas environment. The httpx/httpcore construction proved the mechanism; the large-environment run is still owed, and is the natural first dogfooding step.
 - **Settings beyond engine choice** — locale, thresholds and the PEP 668 override land with the GUI in M2.
+
+### L2's first runs — what actually failed (2026-07-29)
+
+The job ran and failed three times. Neither cause was a product bug; both were in the test harness, and both are fixed.
+
+**1. The rollback assertion targeted the wrong snapshot.** The step did `snapshot create` → `update --all` → `snapshot rollback latest` → `snapshot diff latest`, asserting the prose `matches snapshot`. But `latest` moves twice during that flow: `update --all` writes a `Trigger::Plan` snapshot before mutating, and `snapshot rollback` writes a `Trigger::Rollback` one before restoring (DATA-FLOW §8 — rollback is itself reversible). So the final `diff latest` compared the restored environment against the *pre-rollback* state and correctly reported every package as changed. The rollback itself had worked. Fixed by pinning the id from `snapshot list --json` immediately after `create`, and asserting structurally on `diff --json` rather than on prose.
+
+**2. `fixture-drift` could never have gone green.** `spikes/capture.py` built each scenario in a `mkdtemp` directory whose name carries a random suffix, and `redact()` replaced only the temp *root* — so the suffix survived into every committed sidecar, and every re-capture differed. Four further sources of churn were found underneath it: pip's `[notice] To update, run: <venv>\Scripts\python.exe` (which also leaked the capturing user's home directory into a public repo), CPython object addresses in urllib3 retry warnings, pip's download progress bar with its transfer rate, and uv's per-phase timings (`Resolved 3 packages in 775ms`). Fixed by redacting all of them in `capture.py`, splitting the sidecar into `meta.json` (contract, gated) and `capture-provenance.json` (versions and argv, excluded from the gate), and capturing cache-free so a warm dev machine and a cold runner agree.
+
+Verified by running both engines' captures twice back to back: **0 of 96 fixture files differ between two identical runs**, and 173 tests stay green.
+
+Two things worth keeping in mind, both recorded in `.gitattributes` and `CLAUDE.md`: `-text` is what preserves the CRLF bytes the fixtures need, and `-diff` — which was also set — only suppressed the textual diff, so the drift job's own diagnostics could report nothing but "Binary files differ". And the weekly drift job's `if:` matched the *nightly* cron, so the PyPI-heavy job the comment says would be "rude" to run daily was running daily; it now has its own `'17 4 * * 1'` entry.
 
 ### Where to pick up
 
@@ -67,16 +79,24 @@ Pushed to `main` and green: **CI / Rust, CI / Node and CodeQL all pass** on the 
 
 Immediate, in rough order:
 
-1. **Close the two Dependabot PRs that would break the build** — TypeScript 7 and rusqlite 0.40. Both are the holds listed in ARCHITECTURE §10, and their CI already fails. The `actions/setup-*` bumps are fine to merge.
-2. **Let `ci-integration.yml` run.** It has never executed: it triggers on PRs touching engine/plan/snapshot/graph paths, or nightly. Watch the first run rather than assuming it passes — it is the only thing standing behind the L2 exit criterion.
+1. **Triage six open Dependabot PRs.** Close #3 (TypeScript 7) and #4 (rusqlite 0.40) — both are the holds listed in ARCHITECTURE §10, and §10's rule is that those are closed rather than merged. #1 and #2 (`actions/setup-python`, `actions/setup-node` 6→7) show a stale `cargo audit` failure predating `566ee27` and need a rebase before their CI means anything. #6 (schemars 1.2.2) should land before M2 starts, since the type-generation strategy rides on schemars output. #5 (@types/node) whenever.
+2. **Re-verify `ci-integration.yml`** with `gh workflow run` on both matrix legs after the fixes above.
 3. **Repo settings** — branch protection, secrets, and the updater keypair, per RELEASE-CI §5. None of these are committable and all are owner-only.
 4. **Dogfood on a real environment** — the SP-5 numpy/scipy/pandas tangle, which is both the outstanding M1 exit criterion and the first honest test of the held-back sentences at scale.
 
 Then M2. The core carries everything the GUI needs; `ui/src/ipc` fixes the command names, the design tokens and EN/VI catalogs are scaffolded, and the shell renders.
 
-## Phase 2 — M2 "GUI shell + core flows" (~3–4 weeks)
+## Phase 2 — M2 "GUI shell + core flows" (~7–8 weeks)
 
 Tauri app, design tokens, Environments/Installed/Updates/Search/Pins screens, preview + 3-way conflict UX, console drawer, summary sheet, snapshots UI, legal gate, EN/VI catalogs, settings. **Exit:** all UI-SPEC click budgets met by manual count; L3 green; VI sweep clean.
+
+The estimate was 3–4 weeks until 2026-07-29, when surveying the code for M2 showed the bridge is scaffolding rather than substance: `ui/src/ipc/index.ts` fixes 26 command **names** with zero wrappers, `src-tauri` registers exactly one command (`app_info`, a smoke test), and 2 of 16 `Pd*` components, 1 of 5 Zustand stores and 2 of 14 locale catalogs exist. Scope is unchanged; the estimate moved to match it.
+
+Three pieces of M2 have no home in the core yet and should be sequenced before the screens:
+
+- **A shared flow layer.** `plan_and_run` (`crates/pipdock-cli/src/run.rs`, ~200 lines) is the whole DATA-FLOW §3 machine and lives only in the CLI — PEP 668 gate, pins filtering, the conflict re-resolve loop, snapshot-or-waive, `AcceptedPlan::accept`, two-phase execute. So do rollback execution and the uninstall guard. The GUI needs all of it, and duplicating it would mean two implementations of the hard invariants.
+- **Cancellation.** Nothing exists: no token, no `child.kill()`. `plan_cancel` is a declared TS name with no Rust counterpart, and `exec.rs`'s 600 s watchdog uses `tokio::time::timeout`, which drops the future — tokio children are not kill-on-drop, so the child outlives it today.
+- **Progress.** `ProgressEvent.step` is hardcoded `0` at all four producer sites, so the console drawer's per-package markers and the live region's "13 of 15" are unimplementable as written; and `scan-progress` has no producer at all.
 
 ## Phase 3 — M3 "Health + polish" (~2 weeks)
 
