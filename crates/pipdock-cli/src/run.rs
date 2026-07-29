@@ -10,9 +10,13 @@ use std::path::{Path, PathBuf};
 use pipdock_core::engine::{Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
+use pipdock_core::flow::{FlowStep, NothingReason, SnapshotPolicy, UpdateFlow};
 use pipdock_core::graph::ReverseDeps;
-use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, Spec, StepStatus};
-use pipdock_core::plan::{PlanRequest, Strategy};
+use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
+
+/// Re-exported so `main.rs` keeps referring to `run::Intent`. It lives in the core now, because
+/// translating what the user asked for into a `PlanRequest` is flow logic the GUI needs too.
+pub use pipdock_core::flow::Intent;
 use pipdock_core::store::Store;
 use pipdock_core::{index, pins, plan, snapshot};
 
@@ -491,102 +495,23 @@ pub async fn snapshot_diff(opts: &GlobalOpts, id: &str) -> Result<Exit> {
 /// they appear in the summary.
 pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> Result<Exit> {
     let env = select_env(opts).await?;
-    let engine = engine_for(opts);
-    let env_hash = envs::env_hash(&env.interpreter);
-
-    // DATA-FLOW §2: PEP 668 environments are blocked at step zero, before any engine command.
-    if env.externally_managed {
-        return Err(PdError::new(
-            Code::EnvExternallyManaged,
-            "this Python is externally managed (PEP 668). Use a virtual environment; \
-             the override lives in Settings and is discouraged",
-        ));
-    }
-
-    let probed = envs::probe(&env.interpreter, env.source).await?;
-    // Built against this interpreter so marker-gated requirements are read correctly: without it
-    // a `python_version < "3.11"` branch is reported as a blocker on 3.12 (SP-5 dogfood).
-    let graph = ReverseDeps::build_for(&probed.dists, &probed.env.python_version);
-    let outdated = engine.list_outdated(&env).await?;
-
     let store = Store::open(&app_data_dir())?;
-    let pin_list = pins::list(&store, &env_hash)?;
 
-    let mut req = match &intent {
-        Intent::Update {
-            all,
-            pkgs,
-            except,
-            force_latest,
-        } => {
-            let candidates: Vec<PkgName> = if *all {
-                outdated.iter().map(|o| o.name.clone()).collect()
-            } else {
-                pkgs.iter()
-                    .map(|p| PkgName::parse(p))
-                    .collect::<Result<_>>()?
-            };
+    let (mut flow, mut step) = UpdateFlow::start(env, engine_for(opts), &intent, &store).await?;
 
-            // Ad-hoc exclusions sit on top of pins (CLI-SPEC §3).
-            let excluded: BTreeSet<PkgName> = except
+    // The flow returns the exclusion as data; the wording is the head's business (I18N §1).
+    if !flow.excluded_pins().is_empty() && !opts.json {
+        println!(
+            "{} pinned package(s) excluded: {}",
+            flow.excluded_pins().len(),
+            flow.excluded_pins()
                 .iter()
-                .map(|p| PkgName::parse(p))
-                .collect::<Result<_>>()?;
-            let candidates: Vec<PkgName> = candidates
-                .into_iter()
-                .filter(|c| !excluded.contains(c))
-                .collect();
-
-            // DATA-FLOW §9.5. Nothing here can put a pinned package into `upgrades`.
-            let filtered = pins::filter_upgrades(&candidates, &pin_list, &BTreeSet::new());
-            if filtered.excluded_count() > 0 && !opts.json {
-                println!(
-                    "{} pinned package(s) excluded: {}",
-                    filtered.excluded_count(),
-                    filtered
-                        .excluded
-                        .iter()
-                        .map(|p| p.pkg.to_string())
-                        .collect::<Vec<_>>()
-                        .join(", ")
-                );
-            }
-
-            PlanRequest {
-                upgrades: filtered.allowed,
-                installs: Vec::new(),
-                strategy: if *force_latest {
-                    Strategy::ForceLatest {
-                        overrides: Vec::new(),
-                    }
-                } else {
-                    Strategy::Compatible
-                },
-            }
-        }
-        Intent::Install { specs } => PlanRequest {
-            upgrades: Vec::new(),
-            installs: specs
-                .iter()
-                .map(|raw| {
-                    let (name, version_req) = match raw.split_once("==") {
-                        Some((n, v)) => (n, Some(v.to_owned())),
-                        None => (raw.as_str(), None),
-                    };
-                    PkgName::parse(name).map(|name| Spec { name, version_req })
-                })
-                .collect::<Result<_>>()?,
-            strategy: Strategy::Compatible,
-        },
-    };
-
-    if req.upgrades.is_empty() && req.installs.is_empty() {
-        println!("nothing to do");
-        return Ok(Exit::Success);
+                .map(|p| p.pkg.to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        );
     }
 
-    // Resolve / decide / re-resolve. DATA-FLOW §3 caps this at MAX_CONFLICT_ROUNDS so a user
-    // cannot ping-pong between choices forever.
     let force_everything = matches!(
         intent,
         Intent::Update {
@@ -594,32 +519,31 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
             ..
         }
     );
-    let mut report;
-    let mut round = 0_u8;
-    loop {
-        report = engine.resolve(&env, &req).await?;
-        plan::derive_held_back(&mut report, &req.upgrades, &outdated, &graph);
 
-        if report.is_clean() || round >= plan::MAX_CONFLICT_ROUNDS {
-            break;
+    // Drive the resolve/decide loop. The cap itself lives in the flow; this only answers.
+    let report = loop {
+        match step {
+            FlowStep::Nothing { reason } => {
+                return Ok(match reason {
+                    NothingReason::NothingToDo => {
+                        println!("nothing to do");
+                        Exit::Success
+                    }
+                    NothingReason::EverythingSkipped => {
+                        println!("every package was skipped; nothing to do");
+                        Exit::PlanAborted
+                    }
+                });
+            }
+            FlowStep::NeedsConfirm { report } | FlowStep::RoundsExhausted { report } => {
+                break report;
+            }
+            FlowStep::NeedsDecisions { ref report, .. } => {
+                let decisions = decide(report, force_everything, opts);
+                step = flow.decide(&decisions).await?;
+            }
         }
-
-        let decisions = decide(&report, force_everything, opts);
-        if decisions
-            .values()
-            .all(|d| *d == plan::Decision::KeepCompatible)
-        {
-            break;
-        }
-        req = plan::apply_decisions(&req, &decisions);
-        round += 1;
-
-        if req.upgrades.is_empty() && req.installs.is_empty() {
-            // Every candidate was skipped, so there is no plan left to confirm.
-            println!("every package was skipped; nothing to do");
-            return Ok(Exit::PlanAborted);
-        }
-    }
+    };
 
     print_preview(opts, &report);
 
@@ -636,35 +560,19 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     }
 
     // DATA-FLOW §9.2: the snapshot comes before anything is touched, and its failure aborts.
-    let plan_id = format!("update-{env_hash:.8}");
-    let taken = if opts.no_snapshot {
+    let policy = if opts.no_snapshot {
         // CLI-SPEC §2 documents this for CI images only, and requires the warning.
         eprintln!(
             "warning: --no-snapshot given. If this goes wrong there is no way back — \
              only use it on a disposable environment."
         );
-        None
+        SnapshotPolicy::Waive
     } else {
-        let snap = snapshot::create(
-            &app_data_dir(),
-            &env_hash,
-            engine.freeze(&env).await?,
-            snapshot::Trigger::Plan {
-                plan_id: plan_id.clone(),
-            },
-            engine.id(),
-            jiff::Timestamp::now(),
-        )?;
-        println!("snapshot {} written", snap.meta.id);
-        Some(snap)
+        SnapshotPolicy::Take
     };
-    let proof = taken.as_ref().map_or(
-        snapshot::SnapshotProof::WaivedForDisposableEnvironment,
-        snapshot::SnapshotProof::Taken,
-    );
-
-    let accepted =
-        plan::AcceptedPlan::accept(report, env_hash, &probed.dists, jiff::Timestamp::now());
+    if let Some(meta) = flow.take_snapshot(policy, &app_data_dir()).await? {
+        println!("snapshot {} written", meta.id);
+    }
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
     let quiet = opts.quiet;
@@ -676,16 +584,7 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
         }
     });
 
-    let summary = plan::execute(
-        engine.as_ref(),
-        &env,
-        &accepted,
-        proof,
-        &probed.dists,
-        jiff::Timestamp::now(),
-        tx,
-    )
-    .await?;
+    let summary = flow.execute(tx).await?;
 
     print_summary(opts, &summary);
     Ok(if summary.counts.failed > 0 {
@@ -693,27 +592,6 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     } else {
         Exit::Success
     })
-}
-
-/// What the user asked for, before it becomes a `PlanRequest`.
-#[derive(Debug)]
-pub enum Intent {
-    /// `pipdock update`
-    Update {
-        /// Every outdated package.
-        all: bool,
-        /// Specific packages.
-        pkgs: Vec<String>,
-        /// Ad-hoc exclusions on top of pins.
-        except: Vec<String>,
-        /// `--strategy latest`.
-        force_latest: bool,
-    },
-    /// `pipdock install`
-    Install {
-        /// `name` or `name==version`.
-        specs: Vec<String>,
-    },
 }
 
 /// Decide what to do about each package needing a decision.
