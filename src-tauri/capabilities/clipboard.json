@@ -1,0 +1,7 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "clipboard",
+  "description": "Copy the full execution log to the clipboard. ERROR-CATALOG §4 has the bug-report dialog put the whole log there while the URL carries only a ~6000-character tail, and says so. WRITE ONLY — allow-read-text is deliberately absent: nothing in PipDock has a reason to read what the user copied, and a tool that runs subprocesses should not be able to.",
+  "windows": ["main"],
+  "permissions": ["clipboard-manager:allow-write-text"]
+}

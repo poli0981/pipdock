@@ -7,19 +7,48 @@ function keyPaths(obj: unknown, prefix = ''): string[] {
   return Object.entries(obj).flatMap(([k, v]) => keyPaths(v, prefix ? `${prefix}.${k}` : k))
 }
 
+/**
+ * Drop i18next's plural suffix, so `status.packages_one` and `status.packages_other` compare as
+ * one key.
+ *
+ * docs/I18N.md §1: **Vietnamese has a single plural form.** A vi catalog therefore carries only
+ * `_other`, and comparing raw key paths would report that correct catalog as incomplete — which
+ * would push whoever hit it into adding a bogus `_one` just to silence the test.
+ */
+function pluralBase(key: string): string {
+  return key.replace(/_(zero|one|two|few|many|other)$/, '')
+}
+
 describe('i18n catalogs', () => {
   it('vi has every key en has', () => {
     // docs/I18N.md §1: a CI script fails the build if vi is missing keys. This is that check.
-    const en = new Set(keyPaths(resources.en.common))
-    const vi = new Set(keyPaths(resources.vi.common))
+    const en = new Set([...keyPaths(resources.en.common)].map(pluralBase))
+    const vi = new Set([...keyPaths(resources.vi.common)].map(pluralBase))
     const missing = [...en].filter((k) => !vi.has(k))
     expect(missing, `vi is missing: ${missing.join(', ')}`).toEqual([])
   })
 
   it('vi has no keys en lacks', () => {
-    const en = new Set(keyPaths(resources.en.common))
-    const extra = [...new Set(keyPaths(resources.vi.common))].filter((k) => !en.has(k))
+    const en = new Set([...keyPaths(resources.en.common)].map(pluralBase))
+    const extra = [...new Set([...keyPaths(resources.vi.common)].map(pluralBase))].filter(
+      (k) => !en.has(k),
+    )
     expect(extra, `vi has orphans: ${extra.join(', ')}`).toEqual([])
+  })
+
+  it('a plural key always has an _other form in every locale', () => {
+    // `_other` is the form every language needs; `_one` is optional. A catalog with only `_one`
+    // renders the key name on any count but 1, which is the failure I18N §1 forbids outright.
+    for (const locale of SUPPORTED_LOCALES) {
+      const keys = keyPaths(resources[locale].common)
+      const plurals = new Set(keys.filter((k) => /_(zero|one|two|few|many|other)$/.test(k)))
+      for (const key of plurals) {
+        expect(
+          plurals.has(`${pluralBase(key)}_other`),
+          `${locale}: ${pluralBase(key)} has no _other form`,
+        ).toBe(true)
+      }
+    }
   })
 
   it('the product name is never translated', () => {

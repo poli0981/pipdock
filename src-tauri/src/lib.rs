@@ -5,6 +5,7 @@
 //! belongs in the core so the CLI gets the same behaviour (G5: GUI and CLI never diverge).
 
 pub mod commands;
+pub mod state;
 
 /// Run the application.
 ///
@@ -17,9 +18,28 @@ pub mod commands;
     reason = "no usable app state exists if the context fails to build"
 )]
 pub fn run() {
+    use tauri::Manager as _;
+
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .invoke_handler(tauri::generate_handler![commands::app_info])
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_clipboard_manager::init())
+        .setup(|app| {
+            // Opening the store is the one startup step that can fail for a reason the user can
+            // act on (a data directory that is not writable). Failing here, before a window is
+            // shown, beats every command failing later with the same cause.
+            app.manage(state::AppState::new()?);
+            Ok(())
+        })
+        .invoke_handler(tauri::generate_handler![
+            commands::app_info,
+            commands::env_scan,
+            commands::env_probe,
+            commands::settings_get,
+            commands::settings_set,
+            commands::legal_consent_get,
+            commands::legal_consent_set,
+        ])
         .run(tauri::generate_context!())
         .expect("error while running PipDock");
 }
