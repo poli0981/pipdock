@@ -56,33 +56,56 @@ Verified against real environments, not only unit tests:
 ### Not yet done
 
 - **`health`** — belongs to M3 with the tools venv (CODE-HEALTH-SPEC).
-- **TESTING L2 in CI** — ~~has never run~~. It ran nightly on 2026-07-28 and 2026-07-29 and failed both times, for two causes that were diagnosed and fixed on 2026-07-29 (see *L2's first runs* below). Re-verify with `gh workflow run ci-integration.yml`.
+- ~~**TESTING L2 in CI**~~ — **done 2026-07-29.** It had run nightly on 07-28 and 07-29 and failed both times; five causes were found and fixed (see *L2's first runs* below). Run `30460248664` on `main` is green on all three jobs, including the fixture-drift re-capture that had never passed.
 - **TESTING L4** — `assert_cmd` is a dependency and the clap surface is covered, but the golden-output tests per command are not written.
 - **The SP-5 tangle env** — the exit criterion names a real numpy/scipy/pandas environment. The httpx/httpcore construction proved the mechanism; the large-environment run is still owed, and is the natural first dogfooding step.
 - **Settings beyond engine choice** — locale, thresholds and the PEP 668 override land with the GUI in M2.
 
 ### L2's first runs — what actually failed (2026-07-29)
 
-The job ran and failed three times. Neither cause was a product bug; both were in the test harness, and both are fixed.
+The job ran and failed three times. **No cause was a product bug** — all five were in the test harness, and all are fixed. Worth reading before touching `capture.py` or the workflow, because most of them look like the product misbehaving.
 
 **1. The rollback assertion targeted the wrong snapshot.** The step did `snapshot create` → `update --all` → `snapshot rollback latest` → `snapshot diff latest`, asserting the prose `matches snapshot`. But `latest` moves twice during that flow: `update --all` writes a `Trigger::Plan` snapshot before mutating, and `snapshot rollback` writes a `Trigger::Rollback` one before restoring (DATA-FLOW §8 — rollback is itself reversible). So the final `diff latest` compared the restored environment against the *pre-rollback* state and correctly reported every package as changed. The rollback itself had worked. Fixed by pinning the id from `snapshot list --json` immediately after `create`, and asserting structurally on `diff --json` rather than on prose.
 
 **2. `fixture-drift` could never have gone green.** `spikes/capture.py` built each scenario in a `mkdtemp` directory whose name carries a random suffix, and `redact()` replaced only the temp *root* — so the suffix survived into every committed sidecar, and every re-capture differed. Four further sources of churn were found underneath it: pip's `[notice] To update, run: <venv>\Scripts\python.exe` (which also leaked the capturing user's home directory into a public repo), CPython object addresses in urllib3 retry warnings, pip's download progress bar with its transfer rate, and uv's per-phase timings (`Resolved 3 packages in 775ms`). Fixed by redacting all of them in `capture.py`, splitting the sidecar into `meta.json` (contract, gated) and `capture-provenance.json` (versions and argv, excluded from the gate), and capturing cache-free so a warm dev machine and a cold runner agree.
 
-Verified by running both engines' captures twice back to back: **0 of 96 fixture files differ between two identical runs**, and 173 tests stay green.
+**3. The guard step failed on the outcome it was asserting.** Fixing the rollback let the job reach the uninstall-guard step, which requires `pipdock uninstall urllib3` to exit non-zero (CLI-SPEC §7). The guard did exactly that — but the runner ends a `pwsh` step with `exit $LASTEXITCODE`, and nothing had reset it. The other seven end-to-end steps were audited; each ends on a command that legitimately exits 0.
 
-Two things worth keeping in mind, both recorded in `.gitattributes` and `CLAUDE.md`: `-text` is what preserves the CRLF bytes the fixtures need, and `-diff` — which was also set — only suppressed the textual diff, so the drift job's own diagnostics could report nothing but "Binary files differ". And the weekly drift job's `if:` matched the *nightly* cron, so the PyPI-heavy job the comment says would be "rude" to run daily was running daily; it now has its own `'17 4 * * 1'` entry.
+**4. The redaction regex ate prose.** With the drift diff finally readable, it showed `Some things HTTP Core does d<PATH>` — pip's `--report` embeds package descriptions, and `does do:\n\n* Sending…` reads as drive `o:` followed by `\n` path segments. A lookbehind requiring a non-alphanumeric before the drive letter is what distinguishes a path from prose.
+
+**5. `report-encoding-crash` cannot be re-captured on CI.** The SP-2 `UnicodeEncodeError` needs a cp1252 console and a runner's is already UTF-8, so re-capturing there recorded an ordinary successful report and destroyed the evidence. Scenarios now carry a `reproducible` flag; host-dependent ones are skipped in bulk runs and stay capturable with `--only`. pip's report also echoes the PEP 508 environment markers, which carry the host OS — normalized, while the *interpreter* version markers are deliberately left alone, since those can change a resolution.
+
+Verified two ways: locally, both engines' captures run twice back to back differ in **0 of 96 files**; on CI, run `30460248664` re-captured against the newest pip and uv and matched the committed fixtures byte for byte.
+
+Two things worth keeping in mind, both recorded in `.gitattributes` and `CLAUDE.md`: `-text` is what preserves the CRLF bytes the fixtures need, and `-diff` — which was also set — only suppressed the textual diff, so the drift job's own diagnostics could report nothing but "Binary files differ". Faults 3–5 were all found *because* that was fixed. And the weekly drift job's `if:` matched the *nightly* cron, so the PyPI-heavy job the comment says would be "rude" to run daily was running daily; it now has its own `'17 4 * * 1'` entry.
 
 ### Where to pick up
 
 Pushed to `main` and green: **CI / Rust, CI / Node and CodeQL all pass** on the published commit. Three configuration bugs were fixed getting there, each recorded in its own commit message: caller workflows must grant *at least* what the callee declares (a `startup_failure` with no logs), `cargo audit` was pinned to a toolchain too old to build itself, and its informational advisories needed scoping rather than silencing.
 
+Done 2026-07-29, closing out M1's CI debt:
+
+- ~~Dependabot triage~~ — six PRs resolved. #3 (TypeScript 7) and #4 (rusqlite 0.40) closed per ARCHITECTURE §10; #1, #2, #5, #6 merged. **No PRs are open.**
+- ~~L2 green~~ — all three jobs, both matrix legs, on `main`.
+- ~~TESTING L4~~ — `tests/golden.rs`, 46 snapshots. See *What L4 covers and what it does not* below.
+
 Immediate, in rough order:
 
-1. **Triage six open Dependabot PRs.** Close #3 (TypeScript 7) and #4 (rusqlite 0.40) — both are the holds listed in ARCHITECTURE §10, and §10's rule is that those are closed rather than merged. #1 and #2 (`actions/setup-python`, `actions/setup-node` 6→7) show a stale `cargo audit` failure predating `566ee27` and need a rebase before their CI means anything. #6 (schemars 1.2.2) should land before M2 starts, since the type-generation strategy rides on schemars output. #5 (@types/node) whenever.
-2. **Re-verify `ci-integration.yml`** with `gh workflow run` on both matrix legs after the fixes above.
-3. **Repo settings** — branch protection, secrets, and the updater keypair, per RELEASE-CI §5. None of these are committable and all are owner-only.
-4. **Dogfood on a real environment** — the SP-5 numpy/scipy/pandas tangle, which is both the outstanding M1 exit criterion and the first honest test of the held-back sentences at scale.
+1. **Repo settings** — branch protection, secrets, and the updater keypair, per RELEASE-CI §5. None of these are committable and all are owner-only. Note `updater:default` is currently granted to a plugin whose `pubkey` is still the placeholder, so it cannot verify anything.
+2. **Dogfood on a real environment** — the SP-5 numpy/scipy/pandas tangle, the last outstanding M1 exit criterion and the first honest test of the held-back sentences at scale. Its real value to M2 is copy input: it is the only way to learn whether those sentences read sensibly at 150+ packages, which feeds `PdPreviewDiff` and `PdConflictRow` directly.
+
+### What L4 covers and what it does not
+
+TESTING §2 asks for goldens "against a mocked core". There is no seam to mock at — `run.rs` builds its engine from the global options and drives a real interpreter, and `print_preview` / `print_summary` are private functions that `println!` rather than return. So `tests/golden.rs` covers what is deterministic without an environment: the clap surface, the exit-code table, the `--json` error envelope, and `schema <T>` for all fifteen `SCHEMA_TYPES`. Preview and summary rendering stays with L2.
+
+Those schema snapshots are also the review surface for M2's wire-format change. They pin two contract bugs as they stand today:
+
+- `ExecutionSummary` serializes `plan_id` / `stderr_tail`, where DATA-FLOW §6 documents `planId` / `stderrTail`
+- `Code` serializes as its Rust variant name (`"EnvInterpreterMissing"`), where ERROR-CATALOG documents `PD-ENV-001`
+
+The error envelope, which `main.rs` hand-builds rather than deriving, already has the documented shape — so the binary currently disagrees with itself across its two `--json` paths. Fixing that is Stage 1 work, and the goldens make it a reviewable diff.
+
+When the flow refactor moves rendering out of the CLI ("the flow never prints"), the preview and summary renderers become pure functions of core types and should gain their own snapshots there.
 
 Then M2. The core carries everything the GUI needs; `ui/src/ipc` fixes the command names, the design tokens and EN/VI catalogs are scaffolded, and the shell renders.
 
