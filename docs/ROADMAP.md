@@ -58,7 +58,7 @@ Verified against real environments, not only unit tests:
 - **`health`** — belongs to M3 with the tools venv (CODE-HEALTH-SPEC).
 - ~~**TESTING L2 in CI**~~ — **done 2026-07-29.** It had run nightly on 07-28 and 07-29 and failed both times; five causes were found and fixed (see *L2's first runs* below). Run `30460248664` on `main` is green on all three jobs, including the fixture-drift re-capture that had never passed.
 - **TESTING L4** — `assert_cmd` is a dependency and the clap surface is covered, but the golden-output tests per command are not written.
-- **The SP-5 tangle env** — the exit criterion names a real numpy/scipy/pandas environment. The httpx/httpcore construction proved the mechanism; the large-environment run is still owed, and is the natural first dogfooding step.
+- ~~**The SP-5 tangle env**~~ — **done 2026-07-29.** A 38-package numpy/scipy/pandas/matplotlib/scikit-learn/statsmodels environment on Python 3.12, with scipy pinned so numpy had to be held back. `update --all` reported *15 successful, 0 failed, 0 skipped*, exited 0, and left `pip check` clean; numpy stayed at 1.26.4, the scipy pin held (invariant 5), and the snapshot was written before any mutation (invariant 2). See *What the dogfood found* below — the answer to SP-5's question was "yes, but the explanation was wrong".
 - **Settings beyond engine choice** — locale, thresholds and the PEP 668 override land with the GUI in M2.
 
 ### L2's first runs — what actually failed (2026-07-29)
@@ -79,6 +79,24 @@ Verified two ways: locally, both engines' captures run twice back to back differ
 
 Two things worth keeping in mind, both recorded in `.gitattributes` and `CLAUDE.md`: `-text` is what preserves the CRLF bytes the fixtures need, and `-diff` — which was also set — only suppressed the textual diff, so the drift job's own diagnostics could report nothing but "Binary files differ". Faults 3–5 were all found *because* that was fixed. And the weekly drift job's `if:` matched the *nightly* cron, so the PyPI-heavy job the comment says would be "rude" to run daily was running daily; it now has its own `'17 4 * * 1'` entry.
 
+### What the dogfood found (2026-07-29)
+
+SP-5 asked whether graph-based blocker attribution matches reality on a real tangle. It does — and at scale it was also **saying things that were not true**. The held-back numpy came with eight constraints, four of which do not apply to Python 3.12:
+
+```text
+  numpy 1.26.4 (latest 2.5.1)
+      pandas 2.1.4 requires numpy <2,>=1.22.4     <- python_version < "3.11"
+      pandas 2.1.4 requires numpy <2,>=1.23.2     <- python_version == "3.11"
+      pandas 2.1.4 requires numpy <2,>=1.26.0     <- the only pandas branch in force
+      statsmodels 0.14.1 requires numpy <2,>=1.22.3   <- python_version == "3.10" and Windows
+```
+
+`Requirement` has always carried its marker, but only `extra ==` was honoured, so every marker-gated branch of a dependency was reported as though it were in force. That is not just noise — telling someone on 3.12 that "pandas requires numpy >=1.22.4" is false, and ERROR-CATALOG's premise is that what PipDock says about a failure can be trusted. The same bug sat under the **uninstall guard**, which would refuse a removal on the strength of a dependent that only needs the package on another Python.
+
+Fixed in `graph/markers.rs`: `python_version` and `python_full_version` are evaluated, with `and`/`or`/parentheses. Platform markers are left alone — they are constants for a Windows-only v1 and reading them would mean plumbing more out of `probe.py` for no present gain. **An unrecognised marker keeps the requirement**, because over-reporting a constraint is noise while dropping one hides the reason a package is stuck. The same environment now reports five constraints, one per package, each genuinely in force.
+
+One thing deliberately *not* changed: blockers are still derived from the installed set, so a package being upgraded by the very same plan can still be named. Here that meant matplotlib, pandas, scikit-learn and statsmodels appeared even though the plan moves all four to numpy-2-compatible versions, leaving pinned scipy as the only real blocker. Narrowing that needs post-plan metadata the preview does not have, and it makes the sentence over-broad rather than false. Worth revisiting when `PdConflictRow` is built.
+
 ### Where to pick up
 
 Pushed to `main` and green: **CI / Rust, CI / Node and CodeQL all pass** on the published commit. Three configuration bugs were fixed getting there, each recorded in its own commit message: caller workflows must grant *at least* what the callee declares (a `startup_failure` with no logs), `cargo audit` was pinned to a toolchain too old to build itself, and its informational advisories needed scoping rather than silencing.
@@ -92,7 +110,8 @@ Done 2026-07-29, closing out M1's CI debt:
 Immediate, in rough order:
 
 1. **Repo settings** — branch protection, secrets, and the updater keypair, per RELEASE-CI §5. None of these are committable and all are owner-only. Note `updater:default` is currently granted to a plugin whose `pubkey` is still the placeholder, so it cannot verify anything.
-2. **Dogfood on a real environment** — the SP-5 numpy/scipy/pandas tangle, the last outstanding M1 exit criterion and the first honest test of the held-back sentences at scale. Its real value to M2 is copy input: it is the only way to learn whether those sentences read sensibly at 150+ packages, which feeds `PdPreviewDiff` and `PdConflictRow` directly.
+
+**M1 is otherwise closed.** Everything else on this list is done, and Stage 1 of M2 — the IPC bridge — is the next piece of work.
 
 ### What L4 covers and what it does not
 

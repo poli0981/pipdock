@@ -21,6 +21,10 @@ use std::collections::{BTreeMap, BTreeSet};
 use crate::model::{Dist, PkgName};
 use crate::plan::Blocker;
 
+pub mod markers;
+
+pub use markers::MarkerEnv;
+
 /// PRD P1-2: default reverse-dependency count at which a pin is suggested. Configurable.
 pub const PIN_SUGGEST_THRESHOLD: usize = 5;
 
@@ -46,6 +50,17 @@ impl Requirement {
         self.marker
             .as_deref()
             .is_some_and(|m| m.contains("extra =="))
+    }
+
+    /// True when this requirement is actually in force in `env`.
+    ///
+    /// Supersedes [`Self::is_extra_only`] for callers that know the interpreter: a requirement
+    /// gated on `python_version == "3.10"` is no more in force on 3.12 than an extra-gated one
+    /// is. With `env` as `None` only the extra rule applies, which is the behaviour every caller
+    /// had before markers were understood.
+    #[must_use]
+    pub fn applies_in(&self, env: Option<&MarkerEnv>) -> bool {
+        markers::applies(self.marker.as_deref(), env)
     }
 
     /// Parse one `Requires-Dist` value.
@@ -98,6 +113,9 @@ pub struct ReverseDeps {
     edges: BTreeMap<PkgName, Vec<(PkgName, Requirement)>>,
     /// Installed versions, so attribution can name `apiclient 1.4` rather than bare `apiclient`.
     versions: BTreeMap<PkgName, String>,
+    /// The interpreter these requirements are read against, when known. `None` disables marker
+    /// evaluation beyond the extra rule.
+    env: Option<MarkerEnv>,
 }
 
 impl ReverseDeps {
@@ -105,6 +123,9 @@ impl ReverseDeps {
     ///
     /// Requirements gated behind an extra are recorded but flagged, so callers can decide: the
     /// uninstall guard ignores them, while pin auto-suggest may still count them.
+    ///
+    /// Prefer [`Self::build_for`] wherever the interpreter is known: without it, requirements
+    /// gated on a different `python_version` are treated as if they were in force.
     #[must_use]
     pub fn build(dists: &[Dist]) -> Self {
         let mut edges: BTreeMap<PkgName, Vec<(PkgName, Requirement)>> = BTreeMap::new();
@@ -128,7 +149,23 @@ impl ReverseDeps {
             }
         }
 
-        Self { edges, versions }
+        Self {
+            edges,
+            versions,
+            env: None,
+        }
+    }
+
+    /// Build the graph and evaluate markers against `python_version`, e.g. `"3.12.10"`.
+    ///
+    /// An unparseable version silently leaves evaluation off rather than guessing — the same
+    /// direction the rest of this module takes when it cannot be sure.
+    #[must_use]
+    pub fn build_for(dists: &[Dist], python_version: &str) -> Self {
+        Self {
+            env: MarkerEnv::from_python_version(python_version),
+            ..Self::build(dists)
+        }
     }
 
     /// Packages that would break if `pkg` were removed.
@@ -141,7 +178,7 @@ impl ReverseDeps {
         let mut out: BTreeSet<PkgName> = BTreeSet::new();
         if let Some(list) = self.edges.get(pkg) {
             for (dependent, req) in list {
-                if !req.is_extra_only() {
+                if req.applies_in(self.env.as_ref()) {
                     out.insert(dependent.clone());
                 }
             }
@@ -193,7 +230,7 @@ impl ReverseDeps {
         };
         let mut out = Vec::new();
         for (dependent, req) in list {
-            if req.constraint.is_empty() || req.is_extra_only() {
+            if req.constraint.is_empty() || !req.applies_in(self.env.as_ref()) {
                 continue;
             }
             if !satisfies(&req.constraint, target) {
@@ -451,6 +488,79 @@ mod tests {
         assert_eq!(
             blockers[0].constraint,
             "httpx 0.23.0 requires httpcore >=0.15.0,<0.16.0"
+        );
+    }
+
+    #[test]
+    fn attribution_ignores_constraints_gated_on_another_python() {
+        // The SP-5 dogfood case, verbatim from the installed metadata. pandas declares one numpy
+        // bound per interpreter and only the 3.12 branch is in force; naming the other two tells
+        // the user something false about their own environment.
+        let dists = [
+            dist("numpy", "1.26.4", &[]),
+            dist(
+                "pandas",
+                "2.1.4",
+                &[
+                    "numpy<2,>=1.22.4; python_version < \"3.11\"",
+                    "numpy<2,>=1.23.2; python_version == \"3.11\"",
+                    "numpy<2,>=1.26.0; python_version >= \"3.12\"",
+                ],
+            ),
+            dist(
+                "statsmodels",
+                "0.14.1",
+                &[
+                    "numpy <2,>=1.18",
+                    "numpy <2,>=1.22.3 ; python_version == \"3.10\" and platform_system == \"Windows\"",
+                ],
+            ),
+        ];
+        let latest = PyVersion::parse("2.5.1").unwrap();
+
+        let g = ReverseDeps::build_for(&dists, "3.12.10");
+        let found = g.blockers_for(&pkg("numpy"), &latest);
+        let named: Vec<&str> = found.iter().map(|b| b.constraint.trim()).collect();
+        assert_eq!(
+            named,
+            [
+                "pandas 2.1.4 requires numpy <2,>=1.26.0",
+                "statsmodels 0.14.1 requires numpy <2,>=1.18",
+            ],
+            "only the branches in force on 3.12 may be named"
+        );
+
+        // Without an interpreter nothing can be ruled out, so every branch is still reported —
+        // noisy, but never hiding the real reason.
+        assert_eq!(g.env.as_ref().map(|_| ()), Some(()));
+        assert_eq!(
+            ReverseDeps::build(&dists)
+                .blockers_for(&pkg("numpy"), &latest)
+                .len(),
+            5
+        );
+    }
+
+    #[test]
+    fn the_guard_ignores_dependents_gated_on_another_python() {
+        // Same bug, other consumer: a dependent that only needs `pkg` on 3.10 would otherwise
+        // make the uninstall guard refuse a removal that breaks nothing on 3.12.
+        let dists = [
+            dist("tomli", "2.0.1", &[]),
+            dist(
+                "build",
+                "1.0.0",
+                &["tomli>=1.1.0; python_version < \"3.11\""],
+            ),
+        ];
+        assert!(
+            ReverseDeps::build_for(&dists, "3.12.10")
+                .dependents_of(&pkg("tomli"))
+                .is_empty()
+        );
+        assert_eq!(
+            ReverseDeps::build_for(&dists, "3.10.13").dependents_of(&pkg("tomli")),
+            [pkg("build")]
         );
     }
 

@@ -504,7 +504,9 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     }
 
     let probed = envs::probe(&env.interpreter, env.source).await?;
-    let graph = ReverseDeps::build(&probed.dists);
+    // Built against this interpreter so marker-gated requirements are read correctly: without it
+    // a `python_version < "3.11"` branch is reported as a blocker on 3.12 (SP-5 dogfood).
+    let graph = ReverseDeps::build_for(&probed.dists, &probed.env.python_version);
     let outdated = engine.list_outdated(&env).await?;
 
     let store = Store::open(&app_data_dir())?;
@@ -1351,7 +1353,7 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
 
     // The graph is built from probe.py, which is the only source carrying requires_dist.
     let probed = envs::probe(&env.interpreter, env.source).await?;
-    let report = ReverseDeps::build(&probed.dists).guard(&names);
+    let report = ReverseDeps::build_for(&probed.dists, &probed.env.python_version).guard(&names);
 
     if !report.is_clear() {
         if opts.json {
