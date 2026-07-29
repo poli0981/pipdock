@@ -19,6 +19,7 @@ use std::time::Duration;
 
 use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
+use tokio_util::sync::CancellationToken;
 
 use crate::engine::{EventSink, ProgressEvent};
 use crate::errors::{Code, PdError, Result};
@@ -26,6 +27,17 @@ use crate::model::{ExecMode, PkgName};
 
 /// Default watchdog. Long resolves on a big environment are normal; hangs are not.
 pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
+
+/// Wait for cancellation, or never, when no token was supplied.
+///
+/// `select!` needs a future in every arm. Without a token the arm has to be one that never
+/// resolves — returning immediately would abort every command that did not ask to be cancellable.
+async fn cancelled(token: Option<&CancellationToken>) {
+    match token {
+        Some(t) => t.cancelled().await,
+        None => std::future::pending().await,
+    }
+}
 
 /// What a finished command produced.
 #[derive(Debug, Clone)]
@@ -65,6 +77,7 @@ pub struct Command {
     cwd: Option<PathBuf>,
     env: HashMap<String, String>,
     timeout: Duration,
+    cancel: Option<CancellationToken>,
 }
 
 impl Command {
@@ -77,6 +90,7 @@ impl Command {
             cwd: None,
             env: HashMap::new(),
             timeout: DEFAULT_TIMEOUT,
+            cancel: None,
         }
     }
 
@@ -131,6 +145,24 @@ impl Command {
         self
     }
 
+    /// Abort when `token` is cancelled (ARCHITECTURE §7's `plan_cancel`).
+    ///
+    /// Without one the command still honours the watchdog; the token just adds a second reason
+    /// to stop early, and both take the same path out.
+    #[must_use]
+    pub fn cancel(mut self, token: CancellationToken) -> Self {
+        self.cancel = Some(token);
+        self
+    }
+
+    /// Why a run ended early. Both arms kill the child on the way out.
+    fn stopped(&self, reason: &str) -> PdError {
+        PdError::new(
+            Code::IntUnexpected,
+            format!("{reason}: {}", self.program.display()),
+        )
+    }
+
     /// The argv this command would run, for logging and for the bug-report ring buffer.
     #[must_use]
     pub fn argv(&self) -> Vec<String> {
@@ -157,6 +189,22 @@ impl Command {
             const CREATE_NO_WINDOW: u32 = 0x0800_0000;
             cmd.creation_flags(CREATE_NO_WINDOW);
         }
+        // Both stop paths below work by dropping the future that owns the child, and a tokio
+        // `Child` does *not* kill on drop by default. Without this the 600 s watchdog left pip
+        // running: the future went away, the process did not. That was a live leak independent
+        // of cancellation, and this is the whole fix for it.
+        //
+        // Known limit, and it is worse than "the grandchild leaks": measured while writing the
+        // tests below, a `cmd.exe /C ping -n 30` cancelled after 200 ms took the full 30 s to
+        // return. Killing the shell does not kill `ping`, and the surviving grandchild holds the
+        // inherited stdout pipe open, so the read never reaches EOF. Cancellation is not just
+        // incomplete there — it does not appear to happen at all.
+        //
+        // Killing a whole tree on Windows needs a Job Object with
+        // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. `python -m pip` spawns build backends and
+        // compilers, so that is a real gap, tracked as follow-up. What this does cover is the
+        // common case — a network-blocked engine, which is the one users actually cancel.
+        cmd.kill_on_drop(true);
         cmd
     }
 
@@ -165,19 +213,15 @@ impl Command {
     /// # Errors
     /// `PD-ENG-001` when the program cannot be spawned, `PD-INT-001` when the watchdog fires.
     pub async fn run(&self) -> Result<Output> {
-        let child = self.build().output();
-        let out = tokio::time::timeout(self.timeout, child)
-            .await
-            .map_err(|_| {
-                PdError::new(
-                    Code::IntUnexpected,
-                    format!(
-                        "timed out after {:?}: {}",
-                        self.timeout,
-                        self.program.display()
-                    ),
-                )
-            })?;
+        let out = tokio::select! {
+            out = self.build().output() => out,
+            () = tokio::time::sleep(self.timeout) => {
+                return Err(self.stopped(&format!("timed out after {:?}", self.timeout)));
+            }
+            () = cancelled(self.cancel.as_ref()) => {
+                return Err(self.stopped("cancelled"));
+            }
+        };
         let out = out.map_err(|e| {
             PdError::new(
                 Code::EngNotFound,
@@ -265,17 +309,15 @@ impl Command {
             (out, err, status)
         };
 
-        let (stdout, stderr, status) =
-            tokio::time::timeout(self.timeout, run).await.map_err(|_| {
-                PdError::new(
-                    Code::IntUnexpected,
-                    format!(
-                        "timed out after {:?}: {}",
-                        self.timeout,
-                        self.program.display()
-                    ),
-                )
-            })?;
+        let (stdout, stderr, status) = tokio::select! {
+            triple = run => triple,
+            () = tokio::time::sleep(self.timeout) => {
+                return Err(self.stopped(&format!("timed out after {:?}", self.timeout)));
+            }
+            () = cancelled(self.cancel.as_ref()) => {
+                return Err(self.stopped("cancelled"));
+            }
+        };
 
         let status = status.map_err(|e| {
             PdError::new(Code::IntUnexpected, format!("waiting on child failed: {e}"))
@@ -379,6 +421,87 @@ mod tests {
             "stdout was {:?}",
             out.stdout
         );
+    }
+
+    /// A command that sleeps far longer than any test should wait.
+    ///
+    /// Spawned **directly**, not through `cmd.exe`. Wrapping it makes the sleeper a grandchild,
+    /// and killing the shell does not kill the grandchild — the run then blocks until the
+    /// grandchild exits on its own. That is exactly the process-tree limitation documented on
+    /// `build()`, and putting it in a test fixture would measure the limitation instead of the
+    /// behaviour under test.
+    fn a_slow_command() -> Command {
+        // `ping -n` is the sleep that exists on every Windows install.
+        Command::new("ping").args(["-n", "30", "127.0.0.1"])
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_command_stops_promptly() {
+        let token = CancellationToken::new();
+        let cmd = a_slow_command().cancel(token.clone());
+
+        let started = std::time::Instant::now();
+        let handle = tokio::spawn(async move { cmd.run().await });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        token.cancel();
+
+        let result = handle.await.expect("task joins");
+        assert!(result.is_err(), "a cancelled run must not report success");
+        assert!(
+            started.elapsed() < Duration::from_secs(10),
+            "cancellation should not wait for the process: took {:?}",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn cancelling_kills_the_child_rather_than_orphaning_it() {
+        // The bug this guards: `tokio::time::timeout` drops the future, and a tokio `Child` does
+        // not kill on drop by default — so the watchdog used to leave pip running. Dropping the
+        // future has to actually end the process.
+        //
+        // Measured by wall clock, which is the observable that actually distinguishes the two
+        // outcomes: a killed child returns in milliseconds, an orphaned one holds its stdout pipe
+        // and the run does not finish until it exits on its own — 30 s here.
+        let token = CancellationToken::new();
+        let cmd = a_slow_command().cancel(token.clone());
+
+        let started = std::time::Instant::now();
+        let handle = tokio::spawn(async move { cmd.run().await });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        token.cancel();
+        let result = handle.await.expect("task joins");
+
+        assert!(result.is_err(), "a cancelled run must not report success");
+        assert!(
+            started.elapsed() < Duration::from_secs(5),
+            "the child outlived cancellation: the run took {:?}, and the command sleeps for 30 s",
+            started.elapsed()
+        );
+    }
+
+    #[tokio::test]
+    async fn the_watchdog_still_fires_without_a_token() {
+        // A command with no token must still be stoppable — the token adds a reason to stop, it
+        // does not become the only one.
+        let cmd = a_slow_command().timeout(Duration::from_millis(300));
+        let err = cmd.run().await.expect_err("must time out");
+        assert_eq!(err.code, Code::IntUnexpected);
+        assert!(err.message.contains("timed out"), "{}", err.message);
+    }
+
+    #[tokio::test]
+    async fn an_untouched_token_does_not_abort_the_command() {
+        // `select!` needs a future in every arm; a token-less arm that resolved immediately
+        // would abort every command that did not opt in.
+        let cmd = Command::new(std::env::var("COMSPEC").unwrap_or_else(|_| "cmd.exe".into()))
+            .args(["/C", "echo", "pipdock"])
+            .cancel(CancellationToken::new());
+        let out = cmd
+            .run()
+            .await
+            .expect("an uncancelled token must not stop it");
+        assert!(out.stdout.contains("pipdock"), "{:?}", out.stdout);
     }
 
     #[tokio::test]
