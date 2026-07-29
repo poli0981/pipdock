@@ -36,7 +36,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::engine::{Engine, EventSink};
+use crate::engine::{Engine, EventSink, ProgressSink};
 use crate::errors::{Code, PdError, Result};
 use crate::graph::ReverseDeps;
 use crate::model::{Dist, OutdatedDist, PkgName, PyEnv, Spec};
@@ -44,6 +44,7 @@ use crate::pins::{self, Pin};
 use crate::plan::{self, Decision, PlanRequest, ResolutionReport, Strategy};
 use crate::snapshot::{self, Snapshot, SnapshotProof};
 use crate::store::Store;
+use tokio_util::sync::CancellationToken;
 
 /// What the user asked for, before it becomes a [`PlanRequest`].
 ///
@@ -145,6 +146,7 @@ pub struct UpdateFlow {
     snapshot: SnapshotState,
     /// Pinned packages kept out of this plan, so the caller can say which and why.
     excluded_pins: Vec<Pin>,
+    cancel: CancellationToken,
 }
 
 impl UpdateFlow {
@@ -193,6 +195,7 @@ impl UpdateFlow {
             plan_id,
             snapshot: SnapshotState::NotTaken,
             excluded_pins,
+            cancel: CancellationToken::new(),
         };
 
         if flow.req.upgrades.is_empty() && flow.req.installs.is_empty() {
@@ -294,8 +297,11 @@ impl UpdateFlow {
     /// something a caller gets to skip by forgetting. `PD-RES-002` when the preview has gone
     /// stale or the environment drifted. Per-package failures are **not** errors; they appear in
     /// the summary with their codes.
-    pub async fn execute(&self, sink: EventSink) -> Result<crate::plan::ExecutionSummary> {
+    pub async fn execute(&self, tx: EventSink) -> Result<crate::plan::ExecutionSummary> {
         let proof = proof_from(&self.snapshot)?;
+        // `total` is corrected inside plan::execute, which is the only place that knows the
+        // pinned-set length.
+        let sink = ProgressSink::new(tx, 0, self.cancel.clone());
 
         let accepted = plan::AcceptedPlan::accept(
             self.report.clone(),
@@ -339,6 +345,20 @@ impl UpdateFlow {
     pub const fn env(&self) -> &PyEnv {
         &self.env
     }
+
+    /// A handle that stops this flow's execution.
+    ///
+    /// Cloneable and safe to hold elsewhere, which is the point: `plan_cancel` arrives on a
+    /// different IPC call while `execute` is still awaited, so it cannot go through `&mut self`.
+    #[must_use]
+    pub fn cancel_handle(&self) -> CancellationToken {
+        self.cancel.clone()
+    }
+
+    /// Stop this flow. Idempotent.
+    pub fn cancel(&self) {
+        self.cancel.cancel();
+    }
 }
 
 /// The uninstall flow (DATA-FLOW §5).
@@ -357,6 +377,7 @@ pub struct UninstallFlow {
     names: Vec<PkgName>,
     plan_id: String,
     snapshot: SnapshotState,
+    cancel: CancellationToken,
 }
 
 impl UninstallFlow {
@@ -389,6 +410,7 @@ impl UninstallFlow {
                 names,
                 plan_id,
                 snapshot: SnapshotState::NotTaken,
+                cancel: CancellationToken::new(),
             },
             report,
         ))
@@ -419,8 +441,9 @@ impl UninstallFlow {
     /// # Errors
     /// `PD-SNP-001` when [`Self::take_snapshot`] has not run. Per-package failures appear in the
     /// summary rather than as errors.
-    pub async fn execute(&self, sink: EventSink) -> Result<crate::plan::ExecutionSummary> {
+    pub async fn execute(&self, tx: EventSink) -> Result<crate::plan::ExecutionSummary> {
         let proof = proof_from(&self.snapshot)?;
+        let sink = ProgressSink::new(tx, self.names.len(), self.cancel.clone());
         // The summary is correlated by the *snapshot* id here, not `plan_id`. That is what the
         // CLI has always emitted, and it is the more useful handle for a removal: the thing a
         // user wants after `uninstall` is the snapshot to roll back to.
@@ -443,6 +466,20 @@ impl UninstallFlow {
     #[must_use]
     pub fn names(&self) -> &[PkgName] {
         &self.names
+    }
+
+    /// A handle that stops this flow's execution.
+    ///
+    /// Cloneable and safe to hold elsewhere, which is the point: `plan_cancel` arrives on a
+    /// different IPC call while `execute` is still awaited, so it cannot go through `&mut self`.
+    #[must_use]
+    pub fn cancel_handle(&self) -> CancellationToken {
+        self.cancel.clone()
+    }
+
+    /// Stop this flow. Idempotent.
+    pub fn cancel(&self) {
+        self.cancel.cancel();
     }
 }
 
@@ -469,6 +506,7 @@ pub struct RollbackFlow {
     restore: snapshot::RollbackPlan,
     /// The state being *replaced*, captured before it is — a rollback is itself reversible.
     pre: SnapshotState,
+    cancel: CancellationToken,
 }
 
 impl RollbackFlow {
@@ -501,6 +539,7 @@ impl RollbackFlow {
                 target_id: target.meta.id,
                 restore,
                 pre: SnapshotState::NotTaken,
+                cancel: CancellationToken::new(),
             },
             preview,
         ))
@@ -531,8 +570,9 @@ impl RollbackFlow {
     /// # Errors
     /// `PD-SNP-001` when [`Self::take_snapshot`] has not run. Per-package failures appear in the
     /// summary rather than as errors.
-    pub async fn execute(&self, sink: EventSink) -> Result<crate::plan::ExecutionSummary> {
+    pub async fn execute(&self, tx: EventSink) -> Result<crate::plan::ExecutionSummary> {
         let proof = proof_from(&self.pre)?;
+        let sink = ProgressSink::new(tx, self.restore.len(), self.cancel.clone());
         let correlation = match &self.pre {
             SnapshotState::Taken(snap) => snap.meta.id.clone(),
             _ => self.target_id.clone(),

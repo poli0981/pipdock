@@ -25,7 +25,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, EventSink, single_pkg};
+use super::{Engine, ProgressSink, single_pkg};
 
 /// Drives uv as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -159,7 +159,7 @@ impl Engine for UvEngine {
         env: &PyEnv,
         specs: &[PinnedSpec],
         mode: ExecMode,
-        sink: EventSink,
+        sink: ProgressSink,
     ) -> Result<StepResult> {
         let python = env.interpreter.display().to_string();
         let mut argv = vec![
@@ -171,7 +171,8 @@ impl Engine for UvEngine {
         argv.extend(specs.iter().map(PinnedSpec::to_requirement));
         let out = Command::new("uv")
             .args(argv)
-            .run_streaming(&sink, 0, single_pkg(specs), mode)
+            .cancel(sink.cancel.clone())
+            .run_streaming(&sink, single_pkg(specs), mode)
             .await?;
         Ok(super::step_result(specs, &out))
     }
@@ -180,7 +181,7 @@ impl Engine for UvEngine {
         &self,
         env: &PyEnv,
         names: &[PkgName],
-        sink: EventSink,
+        sink: ProgressSink,
     ) -> Result<StepResult> {
         let python = env.interpreter.display().to_string();
         let mut argv = vec![
@@ -192,7 +193,8 @@ impl Engine for UvEngine {
         argv.extend(names.iter().map(ToString::to_string));
         let out = Command::new("uv")
             .args(argv)
-            .run_streaming(&sink, 0, names.first().cloned(), ExecMode::Isolated)
+            .cancel(sink.cancel.clone())
+            .run_streaming(&sink, names.first().cloned(), ExecMode::Isolated)
             .await?;
         Ok(super::removal_result(names, &out))
     }

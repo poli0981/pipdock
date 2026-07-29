@@ -19,12 +19,64 @@ use crate::model::{
     StepResult,
 };
 use crate::plan::{PlanRequest, ResolutionReport};
+use tokio_util::sync::CancellationToken;
 
 /// Where live subprocess output goes.
 ///
 /// The GUI forwards these to the `plan-progress` Tauri event feeding the console drawer
 /// (ARCHITECTURE §7); the CLI writes them as NDJSON when `--json` is set (CLI-SPEC §6).
 pub type EventSink = tokio::sync::mpsc::UnboundedSender<ProgressEvent>;
+
+/// Everything one step needs from whoever is driving it.
+///
+/// Replaces a bare [`EventSink`] on the mutating trait methods, because an adapter needs three
+/// things from its caller and passing them separately is how the first two got lost:
+///
+/// * where to send output — the sink;
+/// * **which step this is, and how many there are.** `step` was previously hardcoded to `0` at
+///   all four call sites, since an adapter has no way to know its own index. That made
+///   UI-SPEC §3's per-package section markers and §8's "13 of 15 complete" live region
+///   unimplementable — the data they need was never emitted;
+/// * whether to stop — the cancellation token, which the adapter hands to [`crate::exec::Command`].
+#[derive(Debug, Clone)]
+pub struct ProgressSink {
+    /// Where lines go.
+    pub tx: EventSink,
+    /// Zero-based index of this step within the plan.
+    pub step: usize,
+    /// How many steps the plan has, so a caller can render progress without counting.
+    pub total: usize,
+    /// Tripped by `plan_cancel` (ARCHITECTURE §7).
+    pub cancel: CancellationToken,
+}
+
+impl ProgressSink {
+    /// A sink for a plan of `total` steps, starting at step zero.
+    #[must_use]
+    pub fn new(tx: EventSink, total: usize, cancel: CancellationToken) -> Self {
+        Self {
+            tx,
+            step: 0,
+            total,
+            cancel,
+        }
+    }
+
+    /// The same sink, reporting as step `step`.
+    #[must_use]
+    pub fn at(&self, step: usize) -> Self {
+        Self {
+            step,
+            ..self.clone()
+        }
+    }
+
+    /// True once the plan has been cancelled.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.cancel.is_cancelled()
+    }
+}
 
 /// A line of progress from a running engine command.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
@@ -70,7 +122,7 @@ pub trait Engine: Send + Sync {
         env: &PyEnv,
         specs: &[PinnedSpec],
         mode: ExecMode,
-        sink: EventSink,
+        sink: ProgressSink,
     ) -> Result<StepResult>;
 
     /// Remove packages. Always sequential; the reverse-dependency guard runs once up front
@@ -79,7 +131,7 @@ pub trait Engine: Send + Sync {
         &self,
         env: &PyEnv,
         names: &[PkgName],
-        sink: EventSink,
+        sink: ProgressSink,
     ) -> Result<StepResult>;
 
     /// `pip check` / `uv pip check`, normalized.

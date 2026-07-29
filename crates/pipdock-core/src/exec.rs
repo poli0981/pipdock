@@ -21,7 +21,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio_util::sync::CancellationToken;
 
-use crate::engine::{EventSink, ProgressEvent};
+use crate::engine::{ProgressEvent, ProgressSink};
 use crate::errors::{Code, PdError, Result};
 use crate::model::{ExecMode, PkgName};
 
@@ -244,11 +244,13 @@ impl Command {
     /// As [`Command::run`].
     pub async fn run_streaming(
         &self,
-        sink: &EventSink,
-        step: usize,
+        sink: &ProgressSink,
         pkg: Option<PkgName>,
         phase: ExecMode,
     ) -> Result<Output> {
+        // The step index comes from the caller's sink rather than a parameter: an adapter cannot
+        // know its own position in the plan, which is why every call site used to pass 0.
+        let step = sink.step;
         let mut child = self.build().spawn().map_err(|e| {
             PdError::new(
                 Code::EngNotFound,
@@ -260,7 +262,7 @@ impl Command {
         let stderr = child.stderr.take();
 
         let pump = |reader: Option<tokio::process::ChildStdout>| {
-            let sink = sink.clone();
+            let sink = sink.tx.clone();
             let pkg = pkg.clone();
             async move {
                 let mut buf = String::new();
@@ -283,7 +285,7 @@ impl Command {
             }
         };
         let pump_err = |reader: Option<tokio::process::ChildStderr>| {
-            let sink = sink.clone();
+            let sink = sink.tx.clone();
             let pkg = pkg.clone();
             async move {
                 let mut buf = String::new();
