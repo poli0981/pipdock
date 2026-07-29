@@ -61,15 +61,28 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 complete.** The CLI works against real environments: every P0 command except `health` (which
-belongs to M3). See `docs/ROADMAP.md` Phase 1 for what is verified and what changed during
-implementation. Still owed: the L4 golden-output tests (`assert_cmd` and `insta` are dev-deps and
-currently unused) and the SP-5 numpy/scipy/pandas dogfood.
+**M1 complete. M2 Stage 1 (the IPC bridge) complete 2026-07-30.** The app runs: legal gate →
+Environments → Settings, over real commands. `docs/ROADMAP.md` Phase 2 has the full Stage 1 table
+and says where to pick up — read it before starting a slice.
 
-Next is M2, the Tauri GUI. Read `docs/ROADMAP.md` Phase 2 before starting — the bridge is thinner
-than it looks: `ui/src/ipc/index.ts` fixes 26 command *names* with zero wrappers, `src-tauri`
-registers exactly one command (`app_info`, a smoke test), and 2 of 16 `Pd*` components, 1 of 5
-Zustand stores and 2 of 14 locale catalogs exist.
+Next is **S2** (Installed + Updates, read-only), then **S3** (the mutation spine, the biggest
+slice). Three things are deliberately deferred to the slice that can verify them, and ROADMAP
+Phase 2 lists them: the `plan-progress` lifecycle enum, a Windows Job Object for whole-tree kill,
+and the post-cancel summary copy.
+
+Things worth knowing before you change any of it:
+
+- **`cargo test` fails when `ui/src/ipc/generated.ts` is stale.** Fix with
+  `cargo run -p xtask -- bindings`; the failure names that command and the first differing line.
+- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 46 snapshots) are the CLI's output
+  contract.** A diff there is a real behaviour change — re-bless deliberately, never reflexively.
+  They are what made the `core::flow` refactor provably behaviour-preserving.
+- **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no
+  `SCHEMA_TYPES` property may contain `_`. Both fail at `cargo test`.
+- **Run it, don't just test it.** Every one of the four unplanned bugs found during Stage 1 came
+  from executing against a real environment or a real runner, not from reading code or passing
+  tests: the watchdog that never killed anything, `--json` that never parsed, attribution that
+  told 3.12 users something false, and a drift job that could not go green.
 
 ## Things that look like bugs but are not
 
@@ -95,3 +108,14 @@ Zustand stores and 2 of 14 locale catalogs exist.
 - `meta.json` next to `capture-provenance.json` is a deliberate split. `meta.json` is the contract
   the drift gate watches; provenance records engine/interpreter versions and argv, churns on every
   release, and is excluded from the gate.
+- **`snapshot::Meta` carries `#[serde(alias)]` on its renamed fields.** It is the on-disk
+  `.meta.json` *and* an IPC type; without the aliases every snapshot written before the camelCase
+  change becomes unparseable, and the rollback the user was relying on silently is not offered.
+  Removable only once no pre-1.0 snapshot can still be on disk.
+- **`take_snapshot()` and `execute()` are two calls on purpose**, so the CLI can print the snapshot
+  id before execution and the GUI can draw DATA-FLOW §3's distinct states. The cost is that
+  skipping the snapshot becomes expressible, which is why `flow::proof_from` refuses `NotTaken`
+  with `PD-SNP-001`. Do not "simplify" them back into one.
+- **Fixtures under `tests/fixtures/{pip,uv}/` are not literal engine bytes** — see the redaction
+  note above. Related: `ScanProgress.label` and every path, version and engine id in the UI are
+  data and are never translated (I18N §2).
