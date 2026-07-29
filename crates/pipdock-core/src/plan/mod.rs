@@ -123,7 +123,9 @@ pub struct ImpossibleDetail {
 /// The exact field set is **provisional until spike SP-1** confirms uv's output is rich enough to
 /// populate `held_back.blockers`. If it is not, SP-1's go/no-go says v1.0 ships pip-primary with uv
 /// behind a beta flag.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+// `Default` is an empty plan — no changes, nothing held back. [`UpdateFlow`] starts from one
+// before its first resolve, and `is_clean()` on it is true, which is the honest reading.
+#[derive(Debug, Clone, Default, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ResolutionReport {
     /// Everything that would change if the user confirms.
