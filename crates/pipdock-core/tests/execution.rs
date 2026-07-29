@@ -16,7 +16,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use pipdock_core::engine::{Engine, EventSink};
+use pipdock_core::engine::{Engine, ProgressSink};
 use pipdock_core::errors::Result;
 use pipdock_core::model::{
     CheckFinding, CheckReport, Dist, EngineId, EngineInfo, EnvSource, ExecMode, OutdatedDist,
@@ -89,7 +89,7 @@ impl Engine for FakeEngine {
         _env: &PyEnv,
         specs: &[PinnedSpec],
         mode: ExecMode,
-        _sink: EventSink,
+        _sink: ProgressSink,
     ) -> Result<StepResult> {
         let names: Vec<String> = specs.iter().map(|s| s.name.to_string()).collect();
         self.calls
@@ -124,7 +124,7 @@ impl Engine for FakeEngine {
         &self,
         _env: &PyEnv,
         names: &[PkgName],
-        _sink: EventSink,
+        _sink: ProgressSink,
     ) -> Result<StepResult> {
         let pkg = names
             .first()
@@ -207,15 +207,23 @@ fn snapshot_for(dir: &std::path::Path) -> snapshot::Snapshot {
     .expect("snapshot")
 }
 
-fn sink() -> EventSink {
+fn sink() -> ProgressSink {
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     // Dropping the receiver would make every send fail; keeping it alive proves the executor does
     // not depend on anyone listening either way.
     std::mem::forget(rx);
-    tx
+    ProgressSink::new(tx, 0, tokio_util::sync::CancellationToken::new())
 }
 
 async fn run(engine: &FakeEngine, packages: &[(&str, &str)]) -> ExecutionSummary {
+    run_with(engine, packages, sink()).await
+}
+
+async fn run_with(
+    engine: &FakeEngine,
+    packages: &[(&str, &str)],
+    sink: ProgressSink,
+) -> ExecutionSummary {
     let dir = scratch();
     let _ = std::fs::remove_dir_all(&dir);
     let snap = snapshot_for(&dir);
@@ -227,7 +235,7 @@ async fn run(engine: &FakeEngine, packages: &[(&str, &str)]) -> ExecutionSummary
         SnapshotProof::Taken(&snap),
         &[],
         now(),
-        sink(),
+        sink,
     )
     .await
     .expect("execute");
@@ -435,4 +443,38 @@ async fn post_check_findings_reach_the_summary() {
     assert!(!summary.check.ok);
     assert_eq!(summary.check.findings.len(), 1);
     assert_eq!(summary.counts.ok, 1, "the install itself still succeeded");
+}
+
+#[tokio::test]
+async fn a_cancelled_run_skips_the_rest_rather_than_isolating_them() {
+    // The trap this guards: Phase A fails, and the cancelled flag is only checked inside Phase B.
+    // Phase B would then re-run every package the user just stopped, one at a time — the exact
+    // opposite of what cancelling means, and slower than the batch they cancelled.
+    let packages = [("alpha", "1.0"), ("badone", "1.0"), ("gamma", "1.0")];
+    let engine = FakeEngine::new(&["badone"]);
+
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    std::mem::forget(rx);
+    let token = tokio_util::sync::CancellationToken::new();
+    token.cancel();
+    let summary = run_with(&engine, &packages, ProgressSink::new(tx, 0, token)).await;
+
+    assert!(summary.cancelled, "the summary must say it was cancelled");
+    assert_eq!(
+        summary.phase,
+        ExecMode::Batch,
+        "a cancelled Phase A must not fall through to Phase B"
+    );
+    assert_eq!(summary.counts.skipped, 3, "{:?}", summary.results);
+    assert_eq!(summary.counts.ok, 0);
+    assert_eq!(
+        summary.counts.failed, 0,
+        "cancelling is not a package failure"
+    );
+}
+
+#[tokio::test]
+async fn an_uncancelled_run_does_not_claim_it_was_cancelled() {
+    let summary = run(&FakeEngine::new(&[]), &[("alpha", "1.0")]).await;
+    assert!(!summary.cancelled);
 }

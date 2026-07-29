@@ -571,7 +571,9 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     } else {
         SnapshotPolicy::Take
     };
-    if let Some(meta) = flow.take_snapshot(policy, &app_data_dir()).await? {
+    if let Some(meta) = flow.take_snapshot(policy, &app_data_dir()).await?
+        && !opts.json
+    {
         println!("snapshot {} written", meta.id);
     }
 
@@ -834,7 +836,9 @@ pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
     // A rollback is itself reversible (DATA-FLOW §8), so the state being left behind is captured
     // before it is replaced.
     let pre = flow.take_snapshot(&app_data).await?;
-    println!("snapshot {} written before rolling back", pre.id);
+    if !opts.json {
+        println!("snapshot {} written before rolling back", pre.id);
+    }
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
     let quiet = opts.quiet;
@@ -1203,7 +1207,9 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
 
     // DATA-FLOW §9.2 applies to removals too: nothing is touched before a snapshot exists.
     let meta = flow.take_snapshot(&app_data_dir()).await?;
-    println!("snapshot {} written before removing", meta.id);
+    if !opts.json {
+        println!("snapshot {} written before removing", meta.id);
+    }
 
     // Engine output streams to stderr as it happens, which is the CLI's equivalent of the GUI's
     // console drawer: a long removal that prints nothing looks hung.

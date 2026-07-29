@@ -332,6 +332,11 @@ expression: out
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "The end-of-run report shown in the summary sheet and emitted by `--json`.",
   "properties": {
+    "cancelled": {
+      "default": false,
+      "description": "True when the user stopped this run part-way.\n\nARCHITECTURE §7 words this as `Skipped(UserCancelled)`, but [`StepStatus`] is a\npayload-free enum and giving it one changes the wire shape for every consumer. A flag on\nthe summary also matches what the summary sheet actually needs: \"cancelled\" is said once\nat the top, not repeated on forty rows.\n\nSteps that never ran are `Skipped`, which is already the honest status for them.",
+      "type": "boolean"
+    },
     "check": {
       "$ref": "#/$defs/CheckReport",
       "description": "Post-run `engine.check()`."

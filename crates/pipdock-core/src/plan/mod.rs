@@ -8,7 +8,7 @@ pub use preview::{
     Decision, ForcedPlan, apply_decisions, default_decision, derive_held_back, forced_requirements,
 };
 
-use crate::engine::{Engine, EventSink};
+use crate::engine::{Engine, ProgressSink};
 use crate::errors::{Code, PdError, Result};
 use crate::model::{
     CheckReport, ExecMode, PinnedSpec, PkgName, PyEnv, Spec, StepResult, StepStatus, Version,
@@ -198,6 +198,16 @@ pub struct ExecutionSummary {
     pub check: CheckReport,
     /// Derived from `results`; see [`ExecutionSummary::tally`].
     pub counts: Counts,
+    /// True when the user stopped this run part-way.
+    ///
+    /// ARCHITECTURE §7 words this as `Skipped(UserCancelled)`, but [`StepStatus`] is a
+    /// payload-free enum and giving it one changes the wire shape for every consumer. A flag on
+    /// the summary also matches what the summary sheet actually needs: "cancelled" is said once
+    /// at the top, not repeated on forty rows.
+    ///
+    /// Steps that never ran are `Skipped`, which is already the honest status for them.
+    #[serde(default)]
+    pub cancelled: bool,
 }
 
 impl ExecutionSummary {
@@ -434,7 +444,7 @@ pub async fn execute(
     _snapshot: SnapshotProof<'_>,
     installed_now: &[crate::model::Dist],
     now: jiff::Timestamp,
-    sink: EventSink,
+    sink: ProgressSink,
 ) -> Result<ExecutionSummary> {
     plan.verify(&plan.env_hash, installed_now, now)?;
 
@@ -449,13 +459,45 @@ pub async fn execute(
                 findings: Vec::new(),
             }),
             counts: Counts::default(),
+            cancelled: false,
         });
     }
 
+    // The plan knows its own length; the caller cannot, so it is set here rather than trusted.
+    let sink = ProgressSink {
+        total: pinned.len(),
+        ..sink
+    };
+
     // Phase A.
     let batch = engine
-        .install(env, &pinned, ExecMode::Batch, sink.clone())
+        .install(env, &pinned, ExecMode::Batch, sink.at(0))
         .await?;
+
+    // A cancelled Phase A must **not** fall through to Phase B. Isolating would re-run every
+    // package the user just stopped, one at a time — the opposite of what cancelling means.
+    if sink.is_cancelled() {
+        let results: Vec<StepResult> = pinned
+            .iter()
+            .map(|spec| StepResult {
+                pkg: spec.name.clone(),
+                from: None,
+                to: Some(spec.version.clone()),
+                status: StepStatus::Skipped,
+                code: None,
+                stderr_tail: None,
+            })
+            .collect();
+        let counts = ExecutionSummary::tally(&results);
+        return Ok(ExecutionSummary {
+            plan_id: plan.id.clone(),
+            phase: ExecMode::Batch,
+            results,
+            check: post_check(engine, env).await,
+            counts,
+            cancelled: true,
+        });
+    }
     if batch.status == StepStatus::Ok {
         let results: Vec<StepResult> = pinned
             .iter()
@@ -475,20 +517,52 @@ pub async fn execute(
             results,
             check: post_check(engine, env).await,
             counts,
+            cancelled: false,
         });
     }
 
     // Phase B: isolate. One failure must not cost the user the other fourteen packages.
     let mut results = Vec::with_capacity(pinned.len());
-    for spec in &pinned {
+    for (index, spec) in pinned.iter().enumerate() {
+        // Checked before each package so the remaining ones are reported as never attempted,
+        // which is what `Skipped` already means. The one in flight when the token tripped is
+        // handled below.
+        if sink.is_cancelled() {
+            results.extend(pinned[index..].iter().map(|remaining| StepResult {
+                pkg: remaining.name.clone(),
+                from: None,
+                to: Some(remaining.version.clone()),
+                status: StepStatus::Skipped,
+                code: None,
+                stderr_tail: None,
+            }));
+            break;
+        }
+
         let step = engine
             .install(
                 env,
                 std::slice::from_ref(spec),
                 ExecMode::Isolated,
-                sink.clone(),
+                sink.at(index),
             )
             .await;
+
+        // A step that failed *because we killed it* is not the package's failure. Reclassifying
+        // here rather than inventing a "cancelled" catalog code keeps the summary honest without
+        // widening the error catalog: it was not attempted to completion, so it is Skipped.
+        if sink.is_cancelled() && step.is_err() {
+            results.push(StepResult {
+                pkg: spec.name.clone(),
+                from: None,
+                to: Some(spec.version.clone()),
+                status: StepStatus::Skipped,
+                code: None,
+                stderr_tail: None,
+            });
+            continue;
+        }
+
         results.push(match step {
             Ok(r) => r,
             // An engine that could not even be spawned is still one package's outcome here;
@@ -511,6 +585,7 @@ pub async fn execute(
         results,
         check: post_check(engine, env).await,
         counts,
+        cancelled: sink.is_cancelled(),
     })
 }
 
@@ -551,7 +626,7 @@ pub async fn execute_rollback(
     plan_id: String,
     restore: &crate::snapshot::RollbackPlan,
     snapshot: SnapshotProof<'_>,
-    sink: EventSink,
+    sink: ProgressSink,
 ) -> Result<ExecutionSummary> {
     let mut results = Vec::new();
 
@@ -594,6 +669,7 @@ pub async fn execute_rollback(
         results,
         check: post_check(engine, env).await,
         counts,
+        cancelled: sink.is_cancelled(),
     })
 }
 
@@ -603,7 +679,7 @@ pub async fn execute_uninstall(
     plan_id: String,
     names: &[PkgName],
     _snapshot: SnapshotProof<'_>,
-    sink: EventSink,
+    sink: ProgressSink,
 ) -> Result<ExecutionSummary> {
     let mut results = Vec::with_capacity(names.len());
     for name in names {
@@ -630,6 +706,7 @@ pub async fn execute_uninstall(
         results,
         check: post_check(engine, env).await,
         counts,
+        cancelled: sink.is_cancelled(),
     })
 }
 

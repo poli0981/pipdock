@@ -14,7 +14,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, EventSink, single_pkg};
+use super::{Engine, ProgressSink, single_pkg};
 
 /// Drives pip as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -150,13 +150,14 @@ impl Engine for PipEngine {
         env: &PyEnv,
         specs: &[PinnedSpec],
         mode: ExecMode,
-        sink: EventSink,
+        sink: ProgressSink,
     ) -> Result<StepResult> {
         let mut argv = vec!["-m".to_owned(), "pip".to_owned(), "install".to_owned()];
         argv.extend(specs.iter().map(PinnedSpec::to_requirement));
         let out = Command::python(&env.interpreter)
             .args(argv)
-            .run_streaming(&sink, 0, single_pkg(specs), mode)
+            .cancel(sink.cancel.clone())
+            .run_streaming(&sink, single_pkg(specs), mode)
             .await?;
         Ok(super::step_result(specs, &out))
     }
@@ -165,7 +166,7 @@ impl Engine for PipEngine {
         &self,
         env: &PyEnv,
         names: &[PkgName],
-        sink: EventSink,
+        sink: ProgressSink,
     ) -> Result<StepResult> {
         let mut argv = vec![
             "-m".to_owned(),
@@ -176,7 +177,8 @@ impl Engine for PipEngine {
         argv.extend(names.iter().map(ToString::to_string));
         let out = Command::python(&env.interpreter)
             .args(argv)
-            .run_streaming(&sink, 0, names.first().cloned(), ExecMode::Isolated)
+            .cancel(sink.cancel.clone())
+            .run_streaming(&sink, names.first().cloned(), ExecMode::Isolated)
             .await?;
         Ok(super::removal_result(names, &out))
     }

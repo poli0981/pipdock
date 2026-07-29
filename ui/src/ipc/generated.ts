@@ -155,6 +155,17 @@ export type ExecMode =
 
 /** The end-of-run report shown in the summary sheet and emitted by `--json`. */
 export interface ExecutionSummary {
+  /**
+   * True when the user stopped this run part-way.
+   *
+   * ARCHITECTURE §7 words this as `Skipped(UserCancelled)`, but [`StepStatus`] is a
+   * payload-free enum and giving it one changes the wire shape for every consumer. A flag on
+   * the summary also matches what the summary sheet actually needs: "cancelled" is said once
+   * at the top, not repeated on forty rows.
+   *
+   * Steps that never ran are `Skipped`, which is already the honest status for them.
+   */
+  cancelled?: boolean;
   /** Post-run `engine.check()`. */
   check: CheckReport;
   /** Derived from `results`; see [`ExecutionSummary::tally`]. */
