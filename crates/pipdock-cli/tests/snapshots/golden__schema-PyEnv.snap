@@ -1,0 +1,79 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "EnvSource": {
+      "description": "How an environment was discovered. Surfaced as the source chip in the Environments screen.",
+      "oneOf": [
+        {
+          "const": "registry",
+          "description": "PEP 514 registry entry.",
+          "type": "string"
+        },
+        {
+          "const": "py-launcher",
+          "description": "Reported by the `py` launcher (`py -0p`).",
+          "type": "string"
+        },
+        {
+          "const": "uv",
+          "description": "Reported by `uv python list`.",
+          "type": "string"
+        },
+        {
+          "const": "venv-scan",
+          "description": "Found by scanning known venv directories.",
+          "type": "string"
+        },
+        {
+          "const": "manual",
+          "description": "Added by the user via *Browse…*.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A Python environment PipDock can act on.",
+  "properties": {
+    "externally_managed": {
+      "description": "PEP 668 marker present. When true, mutation is blocked unless the user enabled the\nSettings override (`PD-ENV-002`, SECURITY §3).",
+      "type": "boolean"
+    },
+    "hidden_user_site": {
+      "default": null,
+      "description": "User site-packages directory that `probe.py -I` is hiding, when there is one.\n\nOwner decision 2026-07-27 (SP-6): the probe keeps running isolated, so on a non-venv\nsystem Python it reports fewer distributions than `pip list` does. `Some` means packages\nreally are hidden and the Installed screen shows a note naming this path; `None` — always\nthe case inside a venv — means the listing is complete.",
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "interpreter": {
+      "description": "Canonicalized path to the interpreter. Never a shell string — see SECURITY §2.",
+      "type": "string"
+    },
+    "prefix": {
+      "description": "`sys.prefix` as reported by `probe.py`.",
+      "type": "string"
+    },
+    "python_version": {
+      "description": "e.g. `\"3.12.4\"`.",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/EnvSource",
+      "description": "Where this env came from."
+    }
+  },
+  "required": [
+    "interpreter",
+    "prefix",
+    "python_version",
+    "externally_managed",
+    "source"
+  ],
+  "title": "PyEnv",
+  "type": "object"
+}

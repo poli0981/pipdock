@@ -1,0 +1,51 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "CheckFinding": {
+      "description": "One unsatisfied requirement reported by `pip check` / `uv pip check`.",
+      "properties": {
+        "pkg": {
+          "$ref": "#/$defs/PkgName",
+          "description": "The distribution whose requirement is unsatisfied."
+        },
+        "requirement": {
+          "description": "Human-readable requirement text as the engine printed it.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "pkg",
+        "requirement"
+      ],
+      "type": "object"
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Post-execution environment verification.",
+  "properties": {
+    "findings": {
+      "default": [],
+      "description": "Details when `ok` is false.",
+      "items": {
+        "$ref": "#/$defs/CheckFinding"
+      },
+      "type": "array"
+    },
+    "ok": {
+      "description": "True when the engine reported no broken requirements.",
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "ok"
+  ],
+  "title": "CheckReport",
+  "type": "object"
+}

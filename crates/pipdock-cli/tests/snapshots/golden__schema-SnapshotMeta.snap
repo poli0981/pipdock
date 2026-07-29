@@ -1,0 +1,117 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "EngineId": {
+      "description": "Which resolver PipDock is driving.",
+      "oneOf": [
+        {
+          "const": "pip",
+          "description": "`<python> -m pip …`",
+          "type": "string"
+        },
+        {
+          "const": "uv",
+          "description": "`uv pip … --python <python>`",
+          "type": "string"
+        }
+      ]
+    },
+    "Trigger": {
+      "description": "What caused a snapshot to be taken. Shown as the trigger label on the timeline (UI-SPEC §4).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Taken automatically before a plan executed.",
+          "properties": {
+            "plan": {
+              "properties": {
+                "plan_id": {
+                  "description": "The plan's id, so a summary and its snapshot can be tied together.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "plan_id"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "plan"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Taken automatically before a rollback, because a rollback is itself reversible\n(DATA-FLOW §8).",
+          "properties": {
+            "rollback": {
+              "properties": {
+                "restoring": {
+                  "description": "The snapshot being restored.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "restoring"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "rollback"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "manual",
+          "description": "Taken because the user asked.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The `.meta.json` sidecar (ARCHITECTURE §6).",
+  "properties": {
+    "app_version": {
+      "description": "PipDock's version, so an old snapshot can be interpreted by a newer build.",
+      "type": "string"
+    },
+    "created_at": {
+      "description": "When it was taken, RFC 3339.",
+      "type": "string"
+    },
+    "engine": {
+      "$ref": "#/$defs/EngineId",
+      "description": "Which engine produced the freeze.\n\nLoad-bearing: pip freezes with `--all` and includes pip/setuptools, uv has no such flag and\nomits them (DATA-FLOW §7). Without this, a diff across engines would read as \"pip was\nuninstalled\"."
+    },
+    "id": {
+      "description": "Snapshot id, which is also its filename stem.",
+      "type": "string"
+    },
+    "package_count": {
+      "description": "How many distributions the freeze recorded.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "trigger": {
+      "$ref": "#/$defs/Trigger",
+      "description": "Why it was taken."
+    }
+  },
+  "required": [
+    "id",
+    "created_at",
+    "trigger",
+    "engine",
+    "package_count",
+    "app_version"
+  ],
+  "title": "Meta",
+  "type": "object"
+}
