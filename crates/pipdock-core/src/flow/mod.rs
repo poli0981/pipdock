@@ -341,6 +341,111 @@ impl UpdateFlow {
     }
 }
 
+/// The uninstall flow (DATA-FLOW §5).
+///
+/// Shorter than [`UpdateFlow`] because there is nothing to resolve, but the same shape and the
+/// same invariant: the guard runs first, and nothing is removed before a snapshot exists.
+///
+/// "Remove dependents too" is not a variant here — it is the caller starting again with
+/// [`crate::graph::GuardReport::with_dependents`] as the new set, which re-runs the guard. That
+/// is what DATA-FLOW §5 means by re-guarding, and it keeps a widened removal from skipping the
+/// check that justified widening it.
+pub struct UninstallFlow {
+    env: PyEnv,
+    engine: Box<dyn Engine>,
+    env_hash: String,
+    names: Vec<PkgName>,
+    plan_id: String,
+    snapshot: SnapshotState,
+}
+
+impl UninstallFlow {
+    /// Parse the names, probe, and run the reverse-dependency guard.
+    ///
+    /// # Errors
+    /// `PD-PKG-002` when a name does not parse; otherwise propagates probe failures.
+    pub async fn start(
+        env: PyEnv,
+        engine: Box<dyn Engine>,
+        pkgs: &[String],
+    ) -> Result<(Self, crate::graph::GuardReport)> {
+        let names: Vec<PkgName> = pkgs
+            .iter()
+            .map(|p| PkgName::parse(p))
+            .collect::<Result<_>>()?;
+
+        // The graph is built from probe.py, which is the only source carrying requires_dist.
+        let probed = crate::envs::probe(&env.interpreter, env.source).await?;
+        let report =
+            ReverseDeps::build_for(&probed.dists, &probed.env.python_version).guard(&names);
+
+        let env_hash = crate::envs::env_hash(&env.interpreter);
+        let plan_id = format!("uninstall-{env_hash:.8}");
+        Ok((
+            Self {
+                env,
+                engine,
+                env_hash,
+                names,
+                plan_id,
+                snapshot: SnapshotState::NotTaken,
+            },
+            report,
+        ))
+    }
+
+    /// Write the pre-removal snapshot.
+    ///
+    /// # Errors
+    /// `PD-SNP-001` when it cannot be written, in which case nothing is removed.
+    pub async fn take_snapshot(&mut self, app_data: &Path) -> Result<snapshot::Meta> {
+        let snap = snapshot::create(
+            app_data,
+            &self.env_hash,
+            self.engine.freeze(&self.env).await?,
+            snapshot::Trigger::Plan {
+                plan_id: self.plan_id.clone(),
+            },
+            self.engine.id(),
+            jiff::Timestamp::now(),
+        )?;
+        let meta = snap.meta.clone();
+        self.snapshot = SnapshotState::Taken(Box::new(snap));
+        Ok(meta)
+    }
+
+    /// Remove the packages, sequentially, skip-and-continue.
+    ///
+    /// # Errors
+    /// `PD-SNP-001` when [`Self::take_snapshot`] has not run. Per-package failures appear in the
+    /// summary rather than as errors.
+    pub async fn execute(&self, sink: EventSink) -> Result<crate::plan::ExecutionSummary> {
+        let proof = proof_from(&self.snapshot)?;
+        // The summary is correlated by the *snapshot* id here, not `plan_id`. That is what the
+        // CLI has always emitted, and it is the more useful handle for a removal: the thing a
+        // user wants after `uninstall` is the snapshot to roll back to.
+        let correlation = match &self.snapshot {
+            SnapshotState::Taken(snap) => snap.meta.id.clone(),
+            _ => self.plan_id.clone(),
+        };
+        plan::execute_uninstall(
+            self.engine.as_ref(),
+            &self.env,
+            correlation,
+            &self.names,
+            proof,
+            sink,
+        )
+        .await
+    }
+
+    /// The packages this flow will remove.
+    #[must_use]
+    pub fn names(&self) -> &[PkgName] {
+        &self.names
+    }
+}
+
 /// The proof that DATA-FLOW §9.2 was satisfied, or the refusal.
 ///
 /// Split out so the refusal is unit-testable: splitting `confirm` into a snapshot call and an

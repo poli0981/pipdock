@@ -10,8 +10,7 @@ use std::path::{Path, PathBuf};
 use pipdock_core::engine::{Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
-use pipdock_core::flow::{FlowStep, NothingReason, SnapshotPolicy, UpdateFlow};
-use pipdock_core::graph::ReverseDeps;
+use pipdock_core::flow::{FlowStep, NothingReason, SnapshotPolicy, UninstallFlow, UpdateFlow};
 use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
 
 /// Re-exported so `main.rs` keeps referring to `run::Intent`. It lives in the core now, because
@@ -1224,14 +1223,7 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     let env = select_env(opts).await?;
     let engine = engine_for(opts);
 
-    let names: Vec<PkgName> = pkgs
-        .iter()
-        .map(|p| PkgName::parse(p))
-        .collect::<Result<_>>()?;
-
-    // The graph is built from probe.py, which is the only source carrying requires_dist.
-    let probed = envs::probe(&env.interpreter, env.source).await?;
-    let report = ReverseDeps::build_for(&probed.dists, &probed.env.python_version).guard(&names);
+    let (mut flow, report) = UninstallFlow::start(env, engine, pkgs).await?;
 
     if !report.is_clear() {
         if opts.json {
@@ -1269,18 +1261,8 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     }
 
     // DATA-FLOW §9.2 applies to removals too: nothing is touched before a snapshot exists.
-    let env_hash = envs::env_hash(&env.interpreter);
-    let snap = snapshot::create(
-        &app_data_dir(),
-        &env_hash,
-        engine.freeze(&env).await?,
-        snapshot::Trigger::Plan {
-            plan_id: format!("uninstall-{env_hash:.8}"),
-        },
-        engine.id(),
-        jiff::Timestamp::now(),
-    )?;
-    println!("snapshot {} written before removing", snap.meta.id);
+    let meta = flow.take_snapshot(&app_data_dir()).await?;
+    println!("snapshot {} written before removing", meta.id);
 
     // Engine output streams to stderr as it happens, which is the CLI's equivalent of the GUI's
     // console drawer: a long removal that prints nothing looks hung.
@@ -1294,15 +1276,7 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
         }
     });
 
-    let summary = plan::execute_uninstall(
-        engine.as_ref(),
-        &env,
-        snap.meta.id.clone(),
-        &names,
-        snapshot::SnapshotProof::Taken(&snap),
-        tx,
-    )
-    .await?;
+    let summary = flow.execute(tx).await?;
     drop(pump);
 
     print_summary(opts, &summary);
