@@ -198,10 +198,75 @@ pub struct Candidate {
 /// the installation it points at collapse into one entry (SP-6). The **first** source to report a
 /// path wins, and sources are ordered so the more authoritative one is asked first.
 pub async fn scan() -> Vec<Candidate> {
+    scan_reporting(&|_| {}).await
+}
+
+/// Where a discovery sweep currently is.
+///
+/// ARCHITECTURE §7 names a `scan-progress` event and never says what it carries; this is the
+/// payload. Discovery is the slowest thing PipDock does before it can show anything — a registry
+/// walk, `py -0p`, `uv python list` and a venv scan, each spawning processes — so a first screen
+/// that sits blank through all of it is the worst possible first impression.
+///
+/// `label` is a path and is **never localized** (I18N §2). The UI localizes `phase`.
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct ScanProgress {
+    /// Which source is being read.
+    pub phase: ScanPhase,
+    /// Sources finished so far.
+    pub done: usize,
+    /// How many sources there are, so a caller can render a determinate bar.
+    pub total: usize,
+    /// The interpreter or directory in hand, when there is one.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+}
+
+/// The discovery sources, in the order [`scan`] reads them.
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "kebab-case")]
+pub enum ScanPhase {
+    /// PEP 514 registry entries.
+    Registry,
+    /// `py -0p`.
+    Launcher,
+    /// `uv python list`.
+    Uv,
+    /// `.venv` directories below the working directory.
+    VenvScan,
+    /// Deduplicating and canonicalizing what was found.
+    Collating,
+}
+
+/// How many sources a sweep reads, for the `total` a caller renders against.
+const SCAN_SOURCES: usize = 5;
+
+/// Discover environments, reporting progress as each source is read.
+///
+/// The callback is synchronous and must not block: it is called between sources, on the task
+/// driving the scan.
+pub async fn scan_reporting(report: &(dyn Fn(ScanProgress) + Sync)) -> Vec<Candidate> {
+    let step = |phase: ScanPhase, done: usize| ScanProgress {
+        phase,
+        done,
+        total: SCAN_SOURCES,
+        label: None,
+    };
+
+    report(step(ScanPhase::Registry, 0));
     let registry = registry_interpreters();
+    report(step(ScanPhase::Launcher, 1));
     let launcher = py_launcher_interpreters().await;
+    report(step(ScanPhase::Uv, 2));
     let uv = uv_interpreters().await;
+    report(step(ScanPhase::VenvScan, 3));
     let venvs = venv_scan(&std::env::current_dir().unwrap_or_default());
+    report(step(ScanPhase::Collating, 4));
 
     let mut found: BTreeMap<String, Candidate> = BTreeMap::new();
     let sources = [

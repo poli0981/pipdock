@@ -19,7 +19,9 @@
     "resolving": "đang phân giải",
     "executing": "đang chạy",
     "log": "nhật ký",
-    "noEnvironment": "chưa chọn môi trường"
+    "noEnvironment": "chưa chọn môi trường",
+    "ready": "sẵn sàng",
+    "packages_other": "{{count}} gói"
   },
   "actions": {
     "confirm": "Xác nhận",
@@ -30,16 +32,71 @@
     "selectAll": "Chọn tất cả",
     "details": "Chi tiết",
     "copyLog": "Sao chép toàn bộ nhật ký",
-    "reportBug": "Báo lỗi"
+    "reportBug": "Báo lỗi",
+    "accept": "Tiếp tục",
+    "decline": "Từ chối và thoát",
+    "use": "Dùng",
+    "retry": "Thử lại",
+    "openLogs": "Mở thư mục nhật ký"
   },
   "env": {
     "partialListing": "Các gói cài riêng cho tài khoản của bạn không hiển thị ở đây.",
     "partialListingDetail": "PipDock đọc môi trường này ở chế độ cách ly nên bỏ qua {{path}}. Môi trường ảo không bị ảnh hưởng.",
-    "requiresPython": "Cần Python {{required}} — môi trường này là {{found}}."
+    "requiresPython": "Cần Python {{required}} — môi trường này là {{found}}.",
+    "title": "Môi trường",
+    "empty": "không tìm thấy môi trường Python nào",
+    "emptyHint": "Hãy cài Python, hoặc dùng Duyệt… để chọn một trình thông dịch.",
+    "scanning": "Đang tìm môi trường…",
+    "scanPhase": {
+      "registry": "Đang đọc registry của Windows",
+      "launcher": "Đang hỏi py launcher",
+      "uv": "Đang hỏi uv",
+      "venv-scan": "Đang tìm thư mục .venv",
+      "collating": "Đang tổng hợp kết quả"
+    },
+    "source": {
+      "registry": "registry",
+      "py-launcher": "py launcher",
+      "uv": "uv",
+      "venv-scan": "venv",
+      "manual": "thủ công"
+    },
+    "managed": "HỆ THỐNG",
+    "managedDetail": "Môi trường do hệ điều hành quản lý (PEP 668). Hãy tạo một môi trường ảo; tuỳ chọn ghi đè nằm trong Cài đặt và không được khuyến khích.",
+    "unusable": "Không đọc được trình thông dịch này.",
+    "selected": "Đang chọn"
   },
-  "phase0": {
-    "heading": "Giai đoạn 0 — dựng khung",
-    "body": "Khung ứng dụng, design token và các catalog ngôn ngữ đã sẵn sàng. Các màn hình sẽ có ở M2, sau khi các spike của Giai đoạn 0 trả lời được cách từng engine báo cáo kế hoạch dry-run.",
-    "docs": "Xem docs/ROADMAP.md"
+  "settings": {
+    "title": "Cài đặt",
+    "engine": "Bộ máy",
+    "engineDetail": "Bộ giải phụ thuộc mà PipDock điều khiển. Cả hai đều được hỗ trợ; uv nhanh hơn, pip thì luôn có sẵn.",
+    "locale": "Ngôn ngữ",
+    "localeSystem": "Theo hệ thống",
+    "override": "Cho phép môi trường do hệ thống quản lý",
+    "overrideDetail": "PEP 668 đánh dấu một số bản Python là do hệ điều hành quản lý. Cài vào đó có thể làm hỏng công cụ hệ thống, và không có cách hoàn tác nào ngoài ảnh chụp. Hãy để tắt trừ khi bạn biết rõ vì sao cần bật.",
+    "saved": "Đã lưu"
+  },
+  "legal": {
+    "title": "Trước khi bắt đầu",
+    "intro": "PipDock thay đổi những gì được cài trong môi trường Python của bạn. Vui lòng đọc các tài liệu sau trước khi tiếp tục:",
+    "documents": {
+      "license": "Giấy phép (GPL-3.0)",
+      "eula": "Thoả thuận người dùng cuối",
+      "disclaimer": "Tuyên bố miễn trừ",
+      "privacy": "Chính sách riêng tư",
+      "thirdParty": "Ghi chú bên thứ ba"
+    },
+    "summary": "PipDock được cung cấp không kèm bảo hành. Nó chạy pip hoặc uv trên những môi trường bạn chọn, và mọi thay đổi đều được xem trước và chụp ảnh trước — nhưng bạn vẫn chịu trách nhiệm về những gì mình cài.",
+    "accept": "Tôi đã đọc và chấp nhận các tài liệu này.",
+    "openFailed": "Không mở được liên kết. Các tài liệu nằm trên GitHub tại poli0981/pipdock."
+  },
+  "errors": {
+    "title": "Đã xảy ra lỗi",
+    "retry": "Thử lại",
+    "PD-ENV-001": "Không tìm thấy hoặc không chạy được trình thông dịch đó.",
+    "PD-ENV-002": "Bản Python này do hệ điều hành quản lý.",
+    "PD-ENV-003": "PipDock không đọc được môi trường này.",
+    "PD-INT-001": "PipDock gặp lỗi nội bộ.",
+    "unknown": "Đã xảy ra lỗi ngoài dự kiến."
   }
 }

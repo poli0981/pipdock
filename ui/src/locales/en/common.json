@@ -19,7 +19,10 @@
     "resolving": "resolving",
     "executing": "executing",
     "log": "log",
-    "noEnvironment": "no environment selected"
+    "noEnvironment": "no environment selected",
+    "ready": "ready",
+    "packages_one": "{{count}} package",
+    "packages_other": "{{count}} packages"
   },
   "actions": {
     "confirm": "Confirm",
@@ -30,16 +33,71 @@
     "selectAll": "Select all",
     "details": "Details",
     "copyLog": "Copy full log",
-    "reportBug": "Report bug"
+    "reportBug": "Report bug",
+    "accept": "Continue",
+    "decline": "Decline and exit",
+    "use": "Use",
+    "retry": "Retry",
+    "openLogs": "Open logs folder"
   },
   "env": {
     "partialListing": "Packages installed for your user account are not shown here.",
     "partialListingDetail": "PipDock reads this environment in isolated mode, which skips {{path}}. Virtual environments are unaffected.",
-    "requiresPython": "Needs Python {{required}} — this environment is {{found}}."
+    "requiresPython": "Needs Python {{required}} — this environment is {{found}}.",
+    "title": "Environments",
+    "empty": "no Python environments found",
+    "emptyHint": "Install Python, or use Browse… to pick an interpreter.",
+    "scanning": "Discovering environments…",
+    "scanPhase": {
+      "registry": "Reading the Windows registry",
+      "launcher": "Asking the py launcher",
+      "uv": "Asking uv",
+      "venv-scan": "Looking for .venv directories",
+      "collating": "Collating results"
+    },
+    "source": {
+      "registry": "registry",
+      "py-launcher": "py launcher",
+      "uv": "uv",
+      "venv-scan": "venv",
+      "manual": "manual"
+    },
+    "managed": "MANAGED",
+    "managedDetail": "Externally managed (PEP 668). Create a virtual environment instead; the override lives in Settings and is discouraged.",
+    "unusable": "This interpreter could not be read.",
+    "selected": "Selected"
   },
-  "phase0": {
-    "heading": "Phase 0 — scaffold",
-    "body": "The shell, design tokens and locale catalogs are in place. Screens land in M2, after the Phase 0 spikes answer how each engine reports its dry-run plan.",
-    "docs": "See docs/ROADMAP.md"
+  "settings": {
+    "title": "Settings",
+    "engine": "Engine",
+    "engineDetail": "Which resolver PipDock drives. Both are supported; uv is faster, pip is always present.",
+    "locale": "Language",
+    "localeSystem": "Follow the system",
+    "override": "Allow externally managed environments",
+    "overrideDetail": "PEP 668 marks some Pythons as managed by the operating system. Installing into one can break system tools, and there is no undo beyond a snapshot. Leave this off unless you know why you need it.",
+    "saved": "Saved"
+  },
+  "legal": {
+    "title": "Before you start",
+    "intro": "PipDock changes what is installed in your Python environments. Please read these before continuing:",
+    "documents": {
+      "license": "License (GPL-3.0)",
+      "eula": "End-User Licence Agreement",
+      "disclaimer": "Disclaimer",
+      "privacy": "Privacy Policy",
+      "thirdParty": "Third-Party Notices"
+    },
+    "summary": "PipDock is provided without warranty. It runs pip or uv against environments you choose, and every change is previewed and snapshotted first — but you remain responsible for what you install.",
+    "accept": "I have read and accept these documents.",
+    "openFailed": "Could not open the link. The documents are on GitHub under poli0981/pipdock."
+  },
+  "errors": {
+    "title": "Something went wrong",
+    "retry": "Try again",
+    "PD-ENV-001": "That interpreter is missing or cannot be run.",
+    "PD-ENV-002": "This Python is managed by the operating system.",
+    "PD-ENV-003": "PipDock could not read this environment.",
+    "PD-INT-001": "PipDock hit an internal error.",
+    "unknown": "An unexpected error occurred."
   }
 }
