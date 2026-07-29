@@ -532,6 +532,71 @@ async fn post_check(engine: &dyn Engine, env: &PyEnv) -> CheckReport {
 ///
 /// # Errors
 /// Never for a package failure — those land in the summary. Only a stale plan aborts.
+/// Apply a rollback plan: remove what the snapshot does not have, restore what it does.
+///
+/// Lives here rather than in a head because it is the mutating half of DATA-FLOW §8, and a
+/// hand-assembled `ExecutionSummary` in one head is a summary the other head cannot reproduce.
+///
+/// Restores run in [`ExecMode::Isolated`], one package at a time. A batch would be faster, but
+/// this is the one flow whose entire job is exactness: a batch resolve is free to pick a
+/// different version than the snapshot recorded, and a partial failure would take the rest of the
+/// restore with it.
+///
+/// # Errors
+/// Propagates a failure of the removal phase. Individual restore failures are **not** errors —
+/// they land in the summary with their codes, so a snapshot that is 90% restorable restores 90%.
+pub async fn execute_rollback(
+    engine: &dyn Engine,
+    env: &PyEnv,
+    plan_id: String,
+    restore: &crate::snapshot::RollbackPlan,
+    snapshot: SnapshotProof<'_>,
+    sink: EventSink,
+) -> Result<ExecutionSummary> {
+    let mut results = Vec::new();
+
+    if !restore.uninstall.is_empty() {
+        let removed = execute_uninstall(
+            engine,
+            env,
+            plan_id.clone(),
+            &restore.uninstall,
+            snapshot,
+            sink.clone(),
+        )
+        .await?;
+        results.extend(removed.results);
+    }
+
+    for spec in &restore.install {
+        let step = engine
+            .install(
+                env,
+                std::slice::from_ref(spec),
+                ExecMode::Isolated,
+                sink.clone(),
+            )
+            .await;
+        results.push(step.unwrap_or_else(|e| StepResult {
+            pkg: spec.name.clone(),
+            from: None,
+            to: Some(spec.version.clone()),
+            status: StepStatus::Failed,
+            code: Some(e.code),
+            stderr_tail: e.stderr_tail,
+        }));
+    }
+
+    let counts = ExecutionSummary::tally(&results);
+    Ok(ExecutionSummary {
+        plan_id,
+        phase: ExecMode::Isolated,
+        results,
+        check: post_check(engine, env).await,
+        counts,
+    })
+}
+
 pub async fn execute_uninstall(
     engine: &dyn Engine,
     env: &PyEnv,

@@ -10,7 +10,9 @@ use std::path::{Path, PathBuf};
 use pipdock_core::engine::{Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
-use pipdock_core::flow::{FlowStep, NothingReason, SnapshotPolicy, UninstallFlow, UpdateFlow};
+use pipdock_core::flow::{
+    FlowStep, NothingReason, RollbackFlow, SnapshotPolicy, UninstallFlow, UpdateFlow,
+};
 use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
 
 /// Re-exported so `main.rs` keeps referring to `run::Intent`. It lives in the core now, because
@@ -795,59 +797,44 @@ pub async fn pip_upgrade(opts: &GlobalOpts) -> Result<Exit> {
 /// cannot be written, in which case nothing is executed.
 pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
     let env = select_env(opts).await?;
-    let engine = engine_for(opts);
-    let env_hash = envs::env_hash(&env.interpreter);
     let app_data = app_data_dir();
 
-    let target = snapshot::load(&app_data, &env_hash, id)?;
-    let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
-    let diff = snapshot::diff(&current, &target.entries());
-    let restore = snapshot::rollback_plan(&diff);
+    let (mut flow, preview) = RollbackFlow::start(env, engine_for(opts), &app_data, id).await?;
 
-    if restore.is_empty() {
-        println!("environment already matches snapshot {}", target.meta.id);
+    if preview.restore.is_empty() {
+        println!("environment already matches snapshot {}", preview.target.id);
         return Ok(Exit::Success);
     }
 
-    println!("Rolling back to {}:", target.meta.id);
-    for name in &restore.uninstall {
+    println!("Rolling back to {}:", preview.target.id);
+    for name in &preview.restore.uninstall {
         println!("  remove  {name}");
     }
-    for spec in &restore.install {
+    for spec in &preview.restore.install {
         println!("  restore {} {}", spec.name, spec.version);
     }
 
     // Honesty about what cannot come back, rather than reporting a success that is not one.
-    let stuck = snapshot::unrestorable_lines(&target.freeze);
-    if !stuck.is_empty() {
+    if !preview.unrestorable.is_empty() {
         println!(
             "\nwarning[PD-SNP-002]: {} entr(y/ies) in this snapshot cannot be restored from an \
              index and will be left as they are:",
-            stuck.len()
+            preview.unrestorable.len()
         );
-        for line in &stuck {
+        for line in &preview.unrestorable {
             println!("  {line}");
         }
     }
 
-    if !opts.yes && !confirm_text(&format!("Apply {} operation(s)?", restore.len())) {
+    if !opts.yes && !confirm_text(&format!("Apply {} operation(s)?", preview.restore.len())) {
         println!("aborted");
         return Ok(Exit::PlanAborted);
     }
 
     // A rollback is itself reversible (DATA-FLOW §8), so the state being left behind is captured
     // before it is replaced.
-    let pre = snapshot::create(
-        &app_data,
-        &env_hash,
-        engine.freeze(&env).await?,
-        snapshot::Trigger::Rollback {
-            restoring: target.meta.id.clone(),
-        },
-        engine.id(),
-        jiff::Timestamp::now(),
-    )?;
-    println!("snapshot {} written before rolling back", pre.meta.id);
+    let pre = flow.take_snapshot(&app_data).await?;
+    println!("snapshot {} written before rolling back", pre.id);
 
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
     let quiet = opts.quiet;
@@ -859,53 +846,7 @@ pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
         }
     });
 
-    let mut results = Vec::new();
-    if !restore.uninstall.is_empty() {
-        let summary = plan::execute_uninstall(
-            engine.as_ref(),
-            &env,
-            pre.meta.id.clone(),
-            &restore.uninstall,
-            snapshot::SnapshotProof::Taken(&pre),
-            tx.clone(),
-        )
-        .await?;
-        results.extend(summary.results);
-    }
-
-    for spec in &restore.install {
-        let step = engine
-            .install(
-                &env,
-                std::slice::from_ref(spec),
-                pipdock_core::model::ExecMode::Isolated,
-                tx.clone(),
-            )
-            .await;
-        results.push(step.unwrap_or_else(|e| pipdock_core::model::StepResult {
-            pkg: spec.name.clone(),
-            from: None,
-            to: Some(spec.version.clone()),
-            status: StepStatus::Failed,
-            code: Some(e.code),
-            stderr_tail: e.stderr_tail,
-        }));
-    }
-
-    let counts = plan::ExecutionSummary::tally(&results);
-    let summary = plan::ExecutionSummary {
-        plan_id: pre.meta.id.clone(),
-        phase: pipdock_core::model::ExecMode::Isolated,
-        results,
-        check: engine
-            .check(&env)
-            .await
-            .unwrap_or(pipdock_core::model::CheckReport {
-                ok: true,
-                findings: Vec::new(),
-            }),
-        counts,
-    };
+    let summary = flow.execute(tx).await?;
 
     print_summary(opts, &summary);
     Ok(if summary.counts.failed > 0 {

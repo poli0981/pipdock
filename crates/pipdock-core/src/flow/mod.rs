@@ -446,6 +446,109 @@ impl UninstallFlow {
     }
 }
 
+/// What a rollback would do, for the caller to show before it happens.
+#[derive(Debug, Clone)]
+pub struct RollbackPreview {
+    /// The snapshot being restored.
+    pub target: snapshot::Meta,
+    /// The minimal set of operations to get there.
+    pub restore: snapshot::RollbackPlan,
+    /// Freeze lines no index can restore — editable installs, direct URLs (`PD-SNP-002`).
+    ///
+    /// Reported rather than dropped: a rollback that silently leaves these behind is a success
+    /// message for a restore that did not fully happen.
+    pub unrestorable: Vec<String>,
+}
+
+/// The rollback flow (DATA-FLOW §8).
+pub struct RollbackFlow {
+    env: PyEnv,
+    engine: Box<dyn Engine>,
+    env_hash: String,
+    target_id: String,
+    restore: snapshot::RollbackPlan,
+    /// The state being *replaced*, captured before it is — a rollback is itself reversible.
+    pre: SnapshotState,
+}
+
+impl RollbackFlow {
+    /// Load the target snapshot and work out the minimal restore plan.
+    ///
+    /// # Errors
+    /// `PD-SNP-002` when no such snapshot exists; otherwise propagates engine failures.
+    pub async fn start(
+        env: PyEnv,
+        engine: Box<dyn Engine>,
+        app_data: &Path,
+        id: &str,
+    ) -> Result<(Self, RollbackPreview)> {
+        let env_hash = crate::envs::env_hash(&env.interpreter);
+        let target = snapshot::load(app_data, &env_hash, id)?;
+        let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
+        let diff = snapshot::diff(&current, &target.entries());
+        let restore = snapshot::rollback_plan(&diff);
+
+        let preview = RollbackPreview {
+            target: target.meta.clone(),
+            restore: restore.clone(),
+            unrestorable: snapshot::unrestorable_lines(&target.freeze),
+        };
+        Ok((
+            Self {
+                env,
+                engine,
+                env_hash,
+                target_id: target.meta.id,
+                restore,
+                pre: SnapshotState::NotTaken,
+            },
+            preview,
+        ))
+    }
+
+    /// Capture the state being replaced, so the rollback is itself reversible (DATA-FLOW §8).
+    ///
+    /// # Errors
+    /// `PD-SNP-001` when it cannot be written, in which case nothing is restored.
+    pub async fn take_snapshot(&mut self, app_data: &Path) -> Result<snapshot::Meta> {
+        let snap = snapshot::create(
+            app_data,
+            &self.env_hash,
+            self.engine.freeze(&self.env).await?,
+            snapshot::Trigger::Rollback {
+                restoring: self.target_id.clone(),
+            },
+            self.engine.id(),
+            jiff::Timestamp::now(),
+        )?;
+        let meta = snap.meta.clone();
+        self.pre = SnapshotState::Taken(Box::new(snap));
+        Ok(meta)
+    }
+
+    /// Apply the restore.
+    ///
+    /// # Errors
+    /// `PD-SNP-001` when [`Self::take_snapshot`] has not run. Per-package failures appear in the
+    /// summary rather than as errors.
+    pub async fn execute(&self, sink: EventSink) -> Result<crate::plan::ExecutionSummary> {
+        let proof = proof_from(&self.pre)?;
+        let correlation = match &self.pre {
+            SnapshotState::Taken(snap) => snap.meta.id.clone(),
+            _ => self.target_id.clone(),
+        };
+        plan::execute_rollback(
+            self.engine.as_ref(),
+            &self.env,
+            correlation,
+            &self.restore,
+            proof,
+            sink,
+        )
+        .await
+    }
+}
+
 /// The proof that DATA-FLOW §9.2 was satisfied, or the refusal.
 ///
 /// Split out so the refusal is unit-testable: splitting `confirm` into a snapshot call and an
