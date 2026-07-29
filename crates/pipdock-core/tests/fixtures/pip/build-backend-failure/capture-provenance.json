@@ -1,0 +1,16 @@
+{
+  "scenario": "build-backend-failure",
+  "engine_version": "pip 25.0.1 (python 3.12)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "<WORK>\\venv\\Scripts\\python.exe",
+    "-m",
+    "pip",
+    "install",
+    "-U",
+    "--no-cache-dir",
+    "numpy==1.19.5"
+  ],
+  "stdout_bytes": 360,
+  "stderr_bytes": 7255
+}

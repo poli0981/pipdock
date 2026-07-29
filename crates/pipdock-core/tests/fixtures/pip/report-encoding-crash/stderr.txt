@@ -1,41 +1,41 @@
 
 [notice] A new release of pip is available: 25.0.1 -> 26.1.2
-[notice] To update, run: C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Scripts\python.exe -m pip install --upgrade pip
+[notice] To update, run: <WORK>\venv\Scripts\python.exe -m pip install --upgrade pip
 ERROR: Exception:
 Traceback (most recent call last):
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_internal\cli\base_command.py", line 106, in _run_wrapper
+  File "<WORK>\venv\Lib\site-packages\pip\_internal\cli\base_command.py", line 106, in _run_wrapper
     status = _inner_run()
              ^^^^^^^^^^^^
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_internal\cli\base_command.py", line 97, in _inner_run
+  File "<WORK>\venv\Lib\site-packages\pip\_internal\cli\base_command.py", line 97, in _inner_run
     return self.run(options, args)
            ^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_internal\cli\req_command.py", line 67, in wrapper
+  File "<WORK>\venv\Lib\site-packages\pip\_internal\cli\req_command.py", line 67, in wrapper
     return func(self, options, args)
            ^^^^^^^^^^^^^^^^^^^^^^^^^
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_internal\commands\install.py", line 393, in run
+  File "<WORK>\venv\Lib\site-packages\pip\_internal\commands\install.py", line 393, in run
     print_json(data=report.to_dict())
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\__init__.py", line 106, in print_json
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\__init__.py", line 106, in print_json
     get_console().print_json(
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 1787, in print_json
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 1787, in print_json
     self.print(json_renderable, soft_wrap=True)
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 1678, in print
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 1678, in print
     with self:
          ^^^^
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 864, in __exit__
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 864, in __exit__
     self._exit_buffer()
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 822, in _exit_buffer
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 822, in _exit_buffer
     self._check_buffer()
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 2019, in _check_buffer
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 2019, in _check_buffer
     self._write_buffer()
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 2055, in _write_buffer
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\console.py", line 2055, in _write_buffer
     legacy_windows_render(buffer, LegacyWindowsTerm(self.file))
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\_windows_renderer.py", line 17, in legacy_windows_render
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\_windows_renderer.py", line 17, in legacy_windows_render
     term.write_styled(text, style)
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\_win32_console.py", line 441, in write_styled
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\_win32_console.py", line 441, in write_styled
     self.write_text(text)
-  File "C:\Users\Anon\AppData\Local\Temp\pd-pip-report-encoding-crash-h4_safl0\venv\Lib\site-packages\pip\_vendor\rich\_win32_console.py", line 402, in write_text
+  File "<WORK>\venv\Lib\site-packages\pip\_vendor\rich\_win32_console.py", line 402, in write_text
     self.write(text)
-  File "C:\Users\Anon\AppData\Local\Programs\Python\Python312\Lib\encodings\cp1252.py", line 19, in encode
+  File "<PATH>\cp1252.py", line 19, in encode
     return codecs.charmap_encode(input,self.errors,encoding_table)[0]
            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 UnicodeEncodeError: 'charmap' codec can't encode characters in position 860-863: character maps to <undefined>

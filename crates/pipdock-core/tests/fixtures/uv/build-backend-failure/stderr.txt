@@ -1,5 +1,5 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-build-backend-failure-x06525p0\venv
-Resolved 1 package in 325ms
+Using Python 3.12.10 environment at: <WORK>\venv
+Resolved 1 package in <DURATION>
    Building numpy==1.19.5
   × Failed to build `numpy==1.19.5`
   ├─▶ The build backend returned an error
@@ -10,7 +10,7 @@ Resolved 1 package in 325ms
       Traceback (most recent call last):
         File "<string>", line 8, in <module>
         File
-      "C:\Users\Anon\AppData\Local\uv\cache\builds-v0\.tmpM6qzfj\Lib\site-packages\setuptools\__init__.py",
+      "<PATH>\__init__.py",
       line 9, in <module>
           import distutils.core
       ModuleNotFoundError: No module named 'distutils'

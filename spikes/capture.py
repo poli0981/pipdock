@@ -19,6 +19,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -233,15 +234,20 @@ def capture(engine: str, scenario: Scenario, uv_exe: Path | None, out_root: Path
             if seed_result.returncode != 0:
                 print(f"  ! seed failed ({seed_result.returncode}); capturing anyway")
 
+        # Cache-free on purpose. A warm cache turns "Downloading numpy-1.19.5.zip (7.3 MB)" into
+        # "Using cached numpy-1.19.5.zip", so the same scenario captures differently depending on
+        # what the machine happened to have — and a CI runner is always cold while a dev machine
+        # is usually warm. The download path is the one both agree on. It costs bandwidth on a
+        # weekly job and buys a fixture that can actually be compared.
         if engine == "pip":
-            args = ["install", "-U"]
+            args = ["install", "-U", "--no-cache-dir"]
             if scenario.dry_run:
                 # DATA-FLOW §7: this is the exact planning command, JSON report to stdout.
                 args += ["--dry-run", "--quiet", "--report", "-"]
             args += scenario.extra_args + scenario.target
             argv = pip_argv(python, args)
         else:
-            args = ["install", "-U"]
+            args = ["install", "-U", "--no-cache"]
             if scenario.dry_run:
                 args += ["--dry-run"]
             args += scenario.extra_args + scenario.target
@@ -251,39 +257,118 @@ def capture(engine: str, scenario: Scenario, uv_exe: Path | None, out_root: Path
 
         out_dir = out_root / engine / scenario.name
         out_dir.mkdir(parents=True, exist_ok=True)
-        (out_dir / "stdout.txt").write_text(result.stdout, encoding="utf-8")
-        (out_dir / "stderr.txt").write_text(result.stderr, encoding="utf-8")
+        # The captured streams are redacted for the same reason argv is, and it matters more
+        # here: pip's "[notice] To update, run: <venv>\Scripts\python.exe -m pip install
+        # --upgrade pip" embeds the disposable venv's path, which carries mkdtemp's random
+        # suffix. Left in, every pip stderr.txt differs on every capture — so the drift job can
+        # never go green — and the capturing user's home directory ships in a public repo.
+        #
+        # This is the one place the fixtures are not literal engine bytes, and it is safe
+        # because no classifier in errors/catalog.rs matches on a filesystem path; they all key
+        # off message text. Line endings are untouched: `text=True` gave us LF in memory and
+        # write_text puts CRLF back, exactly as before.
+        (out_dir / "stdout.txt").write_text(redact(result.stdout, work), encoding="utf-8")
+        (out_dir / "stderr.txt").write_text(redact(result.stderr, work), encoding="utf-8")
+
+        # The sidecar is split by what each half is FOR, because the weekly drift job diffs the
+        # fixture tree and fails on any change (ci-integration.yml, "Fail if the captured shapes
+        # moved"). Anything that churns for reasons unrelated to engine output would make that
+        # job fire on every run and mean nothing — which is exactly what it used to do.
+        #
+        #   meta.json               the contract. A diff here is a real change in engine
+        #                           behaviour, and the drift job is right to fail on it.
+        #   capture-provenance.json how these bytes were obtained. Rewritten every capture and
+        #                           excluded from the drift gate, but still committed so you can
+        #                           always tell which engine produced the current fixtures.
         meta = {
             "scenario": scenario.name,
             "question": scenario.question,
             "expects_code": scenario.code_for(engine),
             "engine": engine,
-            "engine_version": engine_version(engine, python, uv_exe),
-            "python": python_version(python),
-            "argv": [redact(a) for a in argv],
             "extra_env": env,
             "exit_code": result.returncode,
             "seed": scenario.seed,
             "seed_exit_code": None if seed_result is None else seed_result.returncode,
+        }
+        provenance = {
+            "scenario": scenario.name,
+            "engine_version": engine_version(engine, python, uv_exe),
+            "python": python_version(python),
+            "argv": [redact(a, work) for a in argv],
             "stdout_bytes": len(result.stdout),
             "stderr_bytes": len(result.stderr),
         }
         (out_dir / "meta.json").write_text(json.dumps(meta, indent=2) + "\n", encoding="utf-8")
-        return meta
+        (out_dir / "capture-provenance.json").write_text(
+            json.dumps(provenance, indent=2) + "\n", encoding="utf-8"
+        )
+        return {**meta, **provenance}
     finally:
         shutil.rmtree(work, ignore_errors=True)
 
 
-def redact(arg: str) -> str:
-    """Replace the temp-dir path so fixtures are stable across machines and runs."""
-    return arg.replace(str(Path(tempfile.gettempdir())), "<TMP>")
+# Any drive-absolute Windows path, in both the raw form engines print to a console and the
+# backslash-escaped form they emit inside JSON. Stops at quotes and whitespace so a path
+# embedded in a JSON string cannot swallow the closing quote.
+_ABS_PATH = re.compile(r'[A-Za-z]:(?:\\\\[^\\/:*?"<>|\r\n]+)+|[A-Za-z]:(?:\\[^\\/:*?"<>|\r\n]+)+')
+
+
+def redact(text: str, work: Path) -> str:
+    """Strip machine- and run-specific paths so a capture is comparable across machines.
+
+    Three distinct sources of churn, all of which used to land in committed fixtures:
+
+    * `work` is a fresh `mkdtemp`, so its name carries a random suffix. pip's "[notice] To
+      update, run: <venv>\\Scripts\\python.exe" embeds it, so every pip stderr.txt differed on
+      every capture.
+    * uv's build cache uses its own random `.tmpXXXXXX` directories, which appear in build
+      backend tracebacks.
+    * Absolute interpreter paths differ by machine — `C:\\Users\\<name>\\AppData\\Local\\Programs`
+      locally versus `C:\\hostedtoolcache\\...` on a CI runner — so a fixture captured on one
+      could never match a re-capture on the other.
+
+    Together those meant the drift job could not go green, and they shipped a real person's home
+    directory to a public repo. The final path component is kept because it is the part that
+    carries diagnostic meaning (`cp1252.py`); the directory prefix is not.
+
+    This is the one place fixtures are not literal engine bytes. It is safe because nothing reads
+    a path out of them: every entry in `CLASSIFIERS` (errors/catalog.rs) keys off message text,
+    and the plan parsers read pip's JSON report, whose URLs are https rather than filesystem.
+    """
+    text = text.replace(str(work), "<WORK>")
+    text = text.replace(str(work).replace("\\", "\\\\"), "<WORK>")
+    text = re.sub(r"\.tmp[A-Za-z0-9_]{6,}", ".tmpXXXXXX", text)
+
+    def keep_basename(m: re.Match[str]) -> str:
+        sep = "\\\\" if "\\\\" in m.group(0) else "\\"
+        return "<PATH>" + sep + m.group(0).split(sep)[-1]
+
+    text = _ABS_PATH.sub(keep_basename, text)
+    text = text.replace(str(Path(tempfile.gettempdir())), "<TMP>")
+
+    # CPython object addresses. pip's retry warnings embed the urllib3 connection object's repr
+    # ("<...HTTPConnection object at 0x000001A92FBCFBC0>"), and ASLR moves it every process.
+    text = re.sub(r"0x[0-9A-Fa-f]{6,}", "0xADDR", text)
+
+    # pip's download progress bar carries a transfer rate and an ETA, so it is different on
+    # every run and wildly different between a dev machine and a CI runner.
+    text = re.sub(r"(?m)^\s*-+\s+[^\r\n]*?eta [0-9:]+[ \t]*$", "     <PROGRESS>", text)
+
+    # uv times every phase — "Resolved 3 packages in 775ms", "Checked 8 packages in 1ms". The
+    # counts are signal and stay; the durations are never the same twice. Safe to drop: the uv
+    # adapter only tests `text.contains("Resolved ")` and reads the +/- lines (engine/parse.rs).
+    return re.sub(r"\bin \d+(?:\.\d+)?(?:ms|µs|us|s)\b", "in <DURATION>", text)
 
 
 def engine_version(engine: str, python: Path, uv_exe: Path | None) -> str:
     argv = (
         pip_argv(python, ["--version"]) if engine == "pip" else [str(uv_exe), "--version"]
     )
-    return run(argv).stdout.strip()
+    raw = run(argv).stdout.strip()
+    # `pip --version` reports its own install path: "pip 25.0.1 from C:\Users\<name>\... (python
+    # 3.12)". That is the capturing user's home directory, and these fixtures are committed to a
+    # public repo. Drop the clause; the version and the interpreter are the parts that matter.
+    return re.sub(r"^(pip \S+) from .*? (\(python .*\))$", r"\1 \2", raw)
 
 
 def python_version(python: Path) -> str:

@@ -1,5 +1,5 @@
 ERROR: Cannot install httpcore>=1.0 and httpx==0.23.0 because these package versions have conflicting dependencies.
 
 [notice] A new release of pip is available: 25.0.1 -> 26.1.2
-[notice] To update, run: C:\Users\Anon\AppData\Local\Temp\pd-pip-impossible-6ja7hyci\venv\Scripts\python.exe -m pip install --upgrade pip
+[notice] To update, run: <WORK>\venv\Scripts\python.exe -m pip install --upgrade pip
 ERROR: ResolutionImpossible: for help visit https://pip.pypa.io/en/latest/topics/dependency-resolution/#dealing-with-dependency-conflicts

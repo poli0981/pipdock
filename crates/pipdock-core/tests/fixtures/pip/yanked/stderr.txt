@@ -2,4 +2,4 @@ WARNING: The candidate selected for download or install is a yanked version: 'ur
 Reason for being yanked: Truncated response bodies when streaming a large compressed body. Upgrade to at least 2.0.2 (See: https://github.com/urllib3/urllib3/issues/3009)
 
 [notice] A new release of pip is available: 25.0.1 -> 26.1.2
-[notice] To update, run: C:\Users\Anon\AppData\Local\Temp\pd-pip-yanked-id7w4uu1\venv\Scripts\python.exe -m pip install --upgrade pip
+[notice] To update, run: <WORK>\venv\Scripts\python.exe -m pip install --upgrade pip

@@ -1,0 +1,18 @@
+{
+  "scenario": "yanked",
+  "engine_version": "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "<PATH>\\uv.exe",
+    "pip",
+    "install",
+    "-U",
+    "--no-cache",
+    "--dry-run",
+    "urllib3==2.0.0",
+    "--python",
+    "<WORK>\\venv\\Scripts\\python.exe"
+  ],
+  "stdout_bytes": 0,
+  "stderr_bytes": 386
+}

@@ -22,8 +22,12 @@ on:
       - 'spikes/capture.py'
       - '.github/workflows/ci-integration.yml'
   schedule:
-    # Nightly, and the fixture-drift check weekly on Mondays (see the job condition below).
+    # Nightly: the disposable-venv end-to-end pass.
     - cron: '17 3 * * *'
+    # Mondays: the fixture-drift re-capture. It needs its own cron rather than a day-of-week
+    # condition on the nightly one — `github.event.schedule` is the only thing a job can match
+    # on, so two behaviours need two entries or the "weekly" job silently runs every night.
+    - cron: '17 4 * * 1'
   workflow_dispatch:
 
 permissions:
@@ -181,7 +185,9 @@ jobs:
     name: Re-capture against the latest engines
     # Weekly rather than nightly: it hits PyPI hard enough that daily would be rude, and engine
     # releases are not a daily event.
-    if: github.event_name == 'schedule' && github.event.schedule == '17 3 * * *' && github.run_attempt == 1
+    # Not gated on run_attempt: re-running the workflow is how you reproduce a drift failure,
+    # so skipping this job on a retry would defeat the point.
+    if: (github.event_name == 'schedule' && github.event.schedule == '17 4 * * 1') || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
     timeout-minutes: 30
     steps:
@@ -207,12 +213,22 @@ jobs:
 
       # A diff means an engine changed its output. That is exactly the PD-ENG-003 situation the
       # adapters degrade into, and catching it here is what stops a user meeting it first.
+      #
+      # capture-provenance.json is excluded: it records the engine and interpreter versions and
+      # the argv used, all of which move on every engine release and every setup-python bump.
+      # Gating on it would fire this job constantly for reasons that have nothing to do with
+      # output shape. It is still rewritten and still committable, so `git diff` after a run
+      # always tells you which engine produced the current bytes.
       - name: Fail if the captured shapes moved
         shell: pwsh
         run: |
-          git diff --stat -- crates/pipdock-core/tests/fixtures
-          if (git status --porcelain -- crates/pipdock-core/tests/fixtures) {
-            git diff -- crates/pipdock-core/tests/fixtures
+          $paths = @(
+            'crates/pipdock-core/tests/fixtures',
+            ':!crates/pipdock-core/tests/fixtures/**/capture-provenance.json'
+          )
+          git diff --stat -- $paths
+          if (git status --porcelain -- $paths) {
+            git diff --text -- $paths
             throw "engine output changed — review the diff, update the adapters, commit the new fixtures"
           }
 

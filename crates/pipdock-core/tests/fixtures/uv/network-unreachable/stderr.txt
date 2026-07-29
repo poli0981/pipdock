@@ -1,5 +1,5 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-network-unreachable-ba6imiic\venv
-error: Request failed after 3 retries in 16.2s
+Using Python 3.12.10 environment at: <WORK>\venv
+error: Request failed after 3 retries in <DURATION>
   Caused by: Failed to fetch: `http://127.0.0.1:1/simple/idna/`
   Caused by: error sending request for url (http://127.0.0.1:1/simple/idna/)
   Caused by: client error (Connect)

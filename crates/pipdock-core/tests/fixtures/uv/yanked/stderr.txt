@@ -1,5 +1,5 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-yanked-q_o2x7qx\venv
-Resolved 1 package in 740ms
+Using Python 3.12.10 environment at: <WORK>\venv
+Resolved 1 package in <DURATION>
 Would download 1 package
 Would install 1 package
  + urllib3==2.0.0

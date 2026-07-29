@@ -3,18 +3,6 @@
   "question": "SP-1 core question: httpx 0.23.0 requires httpcore<0.16, so httpcore cannot reach its 1.x latest. Does the engine name httpx as the blocker, or only report the resolved version? ANSWER: neither \u2014 both engines ignore the installed httpx entirely and plan httpcore 1.0.9, silently breaking it. Exit 0.",
   "expects_code": null,
   "engine": "uv",
-  "engine_version": "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)",
-  "python": "Python 3.12.10",
-  "argv": [
-    "spikes\\.venv-uv-latest\\Scripts\\uv.exe",
-    "pip",
-    "install",
-    "-U",
-    "--dry-run",
-    "httpcore",
-    "--python",
-    "<TMP>\\pd-uv-held-back-6hmjod7b\\venv\\Scripts\\python.exe"
-  ],
   "extra_env": {
     "PYTHONIOENCODING": "utf-8",
     "PYTHONUTF8": "1"
@@ -23,7 +11,5 @@
   "seed": [
     "httpx==0.23.0"
   ],
-  "seed_exit_code": 0,
-  "stdout_bytes": 0,
-  "stderr_bytes": 276
+  "seed_exit_code": 0
 }

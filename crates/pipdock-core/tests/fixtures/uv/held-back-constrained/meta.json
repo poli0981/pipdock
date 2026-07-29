@@ -3,19 +3,6 @@
   "question": "SP-1 follow-up: does restating the installed set as explicit requirements make the resolver hold httpcore back to 0.15.x instead of breaking httpx? This decides whether PipDock must pass the full installed set on every plan.",
   "expects_code": null,
   "engine": "uv",
-  "engine_version": "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)",
-  "python": "Python 3.12.10",
-  "argv": [
-    "spikes\\.venv-uv-latest\\Scripts\\uv.exe",
-    "pip",
-    "install",
-    "-U",
-    "--dry-run",
-    "httpcore",
-    "httpx==0.23.0",
-    "--python",
-    "<TMP>\\pd-uv-held-back-constrained-66ncg_2i\\venv\\Scripts\\python.exe"
-  ],
   "extra_env": {
     "PYTHONIOENCODING": "utf-8",
     "PYTHONUTF8": "1"
@@ -24,7 +11,5 @@
   "seed": [
     "httpx==0.23.0"
   ],
-  "seed_exit_code": 0,
-  "stdout_bytes": 0,
-  "stderr_bytes": 189
+  "seed_exit_code": 0
 }
