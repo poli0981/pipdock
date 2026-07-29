@@ -37,7 +37,9 @@
 
 ## Install
 
-Download the installer (NSIS `.exe` or `.msi`) from [GitHub Releases](https://github.com/poli0981/pipdock/releases). Auto-updates are delivered via signed Tauri updater artifacts from the same Releases page.
+Download the installer (NSIS `.exe` or `.msi`) from [GitHub Releases](https://github.com/poli0981/pipdock/releases).
+
+PipDock does not update itself — grab a new build from the same page when you want one. That is deliberate: a self-updater is a standing remote-code-execution path into a tool that already runs subprocesses against your interpreters, and it is not worth the convenience (see [docs/SECURITY.md](docs/SECURITY.md) §5).
 
 > Windows SmartScreen may warn on first run because binaries are not EV-code-signed. Verify the SHA-256 checksum published with each release.
 
@@ -67,7 +69,7 @@ pipdock snapshot rollback latest
 | [docs/ERROR-CATALOG.md](docs/ERROR-CATALOG.md) | Error codes, stderr detection patterns, user guidance |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, PEP 668 policy, supply-chain hygiene |
 | [docs/TESTING.md](docs/TESTING.md) | Test strategy incl. disposable-venv integration tests |
-| [docs/RELEASE-CI.md](docs/RELEASE-CI.md) | CI callers into `poli0981/.github`, release & updater pipeline |
+| [docs/RELEASE-CI.md](docs/RELEASE-CI.md) | CI callers into `poli0981/.github`, release pipeline |
 | [docs/I18N.md](docs/I18N.md) | EN/VI localization rules |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Spike week, milestones, exit criteria |
 | [legal/](legal/) | EULA, Disclaimer, Privacy Policy, Third-Party Notices (linked by the in-app legal gate) |

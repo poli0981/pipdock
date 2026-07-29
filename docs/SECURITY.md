@@ -24,14 +24,21 @@ Environments carrying an `EXTERNALLY-MANAGED` marker are **blocked by default** 
 | Destination | Purpose | Notes |
 |---|---|---|
 | `pypi.org` | PEP 691 name index, per-package JSON metadata | HTTPS with certificate verification; redirects restricted to `pypi.org`/`files.pythonhosted.org` |
-| `github.com` (Releases) | PipDock's own updates | via `tauri-plugin-updater`, see §5 |
 | — everything else | none | engines make their own PyPI connections per their configs (user `pip.ini`/`uv.toml` respected, incl. private indexes — PipDock does not rewrite index URLs) |
+
+`pypi.org` is the **only** host PipDock itself connects to. It does not update itself (§5), so it has no reason to reach `github.com` — the legal gate and the bug-report deep link hand a URL to the user's browser rather than fetching anything. The webview cannot reach either: `connect-src` in `tauri.conf.json` allows only `'self'` and the IPC origin, so all network access goes through Rust.
 
 No telemetry, no crash reporting endpoints, no analytics. TLS failures surface as PD-NET-002 and the app **never** offers to disable verification.
 
 ## 5. Update integrity (PipDock itself)
 
-`tauri-plugin-updater` with the Tauri signing key: release artifacts + `latest.json` are signed at build; the app verifies signatures before applying. The private key lives only in GitHub Actions secrets (`TAURI_SIGNING_PRIVATE_KEY`); SHA-256 checksums are published per release for manual verification (SmartScreen note in README). Installer artifacts: NSIS + MSI from the Tauri bundler.
+**PipDock does not update itself.** New versions come from the GitHub Releases page and are installed like any other download.
+
+That is a deliberate removal, not an omission. A self-updater is a permanent remote-code-execution path into a tool that already runs subprocesses against the user's interpreters, and it has to be defended for the life of the product: a signing key that must never leak, an endpoint that must never be spoofable, and verification logic that must never be bypassable. For a tool people open occasionally to tidy an environment, that is a large standing liability bought for a small convenience.
+
+What replaces it: SHA-256 checksums published per release (`SHA256SUMS.txt`) for manual verification, which the README tells users to check because SmartScreen warns on first run — the binaries are not EV-code-signed. Installer artifacts are NSIS + MSI from the Tauri bundler.
+
+Consequences worth knowing: there is no signing keypair to generate or rotate, no `TAURI_SIGNING_PRIVATE_KEY` secret, no `latest.json`, and `tauri-plugin-updater` is not a dependency.
 
 ## 6. Auditing user environments (P1 Security tab)
 

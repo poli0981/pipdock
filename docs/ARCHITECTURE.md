@@ -129,7 +129,7 @@ Zustand stores: `useEnvStore`, `usePlanStore`, `useIndexStore`, `useSettingsStor
 
 | Component | Version policy |
 |---|---|
-| Tauri | 2.10.x (latest 2.x line) + `tauri-plugin-updater` |
+| Tauri | 2.10.x (latest 2.x line). **No `tauri-plugin-updater`** — PipDock does not update itself (SECURITY §5) |
 | Rust | latest stable toolchain, pinned via `rust-toolchain.toml` |
 | React / TypeScript | 19.x / latest stable |
 | Vite / Tailwind | 8.1.x (Rolldown line) / 4.x |

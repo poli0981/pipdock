@@ -6,7 +6,7 @@
 
 | Component | License | Role |
 |---|---|---|
-| Tauri 2 (+ plugins: updater, dialog, shell) | MIT OR Apache-2.0 | application framework |
+| Tauri 2 (+ plugin: dialog) | MIT OR Apache-2.0 | application framework |
 | React 19, react-dom | MIT | UI |
 | TypeScript | Apache-2.0 | build-time |
 | Vite 8, Rolldown toolchain | MIT | build-time |

@@ -1,8 +1,11 @@
 # Project-local: the ops repo has no reusable Tauri/build workflow (docs/RELEASE-CI.md §1).
 #
-# Produces the NSIS .exe and .msi, signs the updater artifacts, publishes SHA256SUMS.txt and
-# leaves a DRAFT release for owner review. Publishing is manual on purpose — RELEASE-CI.md §3.4 —
-# and announce-release.yml fires on `release: published`.
+# Produces the NSIS .exe and .msi, publishes SHA256SUMS.txt and leaves a DRAFT release for owner
+# review. Publishing is manual on purpose — RELEASE-CI.md §3.4 — and announce-release.yml fires on
+# `release: published`.
+#
+# PipDock does not update itself, so there is no signing key and no `latest.json` here. Users get
+# new versions from the GitHub Releases page. The checksums below are what they verify against.
 
 name: Release
 
@@ -28,7 +31,7 @@ env:
 
 jobs:
   build:
-    name: Build · sign · draft
+    name: Build · checksum · draft
     runs-on: windows-latest
     timeout-minutes: 90
     steps:
@@ -59,21 +62,15 @@ jobs:
       - name: Build frontend
         run: npm run build
 
-      - name: Build, bundle and sign
-        env:
-          # Private key lives only in Actions secrets (docs/SECURITY.md §5); the matching public
-          # key is baked into tauri.conf.json so the app verifies updates before applying them.
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: npx tauri build --locked --bundles nsis,msi,updater
+      - name: Build and bundle
+        run: npx tauri build --locked --bundles nsis,msi
 
       - name: Collect artifacts
         shell: pwsh
         run: |
           $out = "release-artifacts"
           New-Item -ItemType Directory -Force $out | Out-Null
-          Get-ChildItem -Recurse target\release\bundle `
-            -Include *.exe, *.msi, *.zip, *.sig, latest.json |
+          Get-ChildItem -Recurse target\release\bundle -Include *.exe, *.msi |
             ForEach-Object { Copy-Item $_.FullName $out }
           Get-ChildItem $out
 

@@ -43,16 +43,17 @@ Dependency updates use **Dependabot** (`.github/dependabot.yml`) — the portfol
 ## 3. Release pipeline (tag `v*`)
 
 1. Windows runner: `npm ci && vite build` → `cargo tauri build --locked` producing NSIS `.exe` + `.msi`.
-2. Sign updater artifacts with `TAURI_SIGNING_PRIVATE_KEY` (repo secret; public key baked into `tauri.conf.json`); generate `latest.json` for `tauri-plugin-updater` pointing at the GitHub Release assets.
-3. Compute and publish `SHA256SUMS.txt`.
-4. Draft GitHub Release with generated changelog; manual publish (owner review) → `announce-release.yml` fires the Discord announcement.
-5. Post-release checklist issue auto-opened: verify updater from previous version, verify SmartScreen behavior, spot-check EN/VI in the shipped build.
+2. Compute and publish `SHA256SUMS.txt`.
+3. Draft GitHub Release with generated changelog; manual publish (owner review) → `announce-release.yml` fires the Discord announcement.
+4. Post-release checklist issue auto-opened: verify SmartScreen behavior, spot-check EN/VI in the shipped build.
 
-Secrets bootstrap: set per-repo with `gh secret set` (the ops repo has no `setup-secrets.sh`) — `TAURI_SIGNING_PRIVATE_KEY` and `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` for the updater, plus the Discord webhooks the ops-repo notifiers expect (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`; the callers pass `secrets: inherit`).
+There is no signing step. **PipDock does not update itself** (SECURITY §5), so no `latest.json` is produced, no artifact is signed, and no keypair exists to manage.
+
+Secrets bootstrap: set per-repo with `gh secret set` (the ops repo has no `setup-secrets.sh`) — the Discord webhooks the ops-repo notifiers expect (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`; the callers pass `secrets: inherit`). That is the whole list.
 
 ## 4. Artifact & support policy
 
-Two active lines at most: latest release gets features; previous minor gets security-only patches for 90 days. Updater always targets latest. MSI provided for org deployment; winget manifest submission is P2 (tracked in ROADMAP).
+Two active lines at most: latest release gets features; previous minor gets security-only patches for 90 days. Users move between versions by downloading from the Releases page — there is no update channel to target. MSI provided for org deployment; winget manifest submission is P2 (tracked in ROADMAP), and would be the natural place to add an upgrade path that is not PipDock's own code.
 
 ## 5. Repo scaffolding checklist (day one)
 
@@ -61,7 +62,6 @@ Two active lines at most: latest release gets features; previous minor gets secu
 - [x] `.github/dependabot.yml` covering cargo, npm, github-actions and the Code Health pins.
 - [x] `rust-toolchain.toml`, `.nvmrc` (24), `Cargo.lock`/`package-lock.json` committed.
 - [ ] **Repo settings (owner, via the GitHub UI or `gh` — not committable):** branch protection on `main`; disable Advanced Security → CodeQL *Default setup* (the reusable is advanced-setup and is rejected at upload time otherwise); enable Discussions for the issue-template contact links.
-- [ ] **Secrets via `gh secret set`:** `TAURI_SIGNING_PRIVATE_KEY`, `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`, and the Discord webhooks (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`).
-- [ ] **Generate the updater keypair** (`npx tauri signer generate`) and replace the `plugins.updater.pubkey` placeholder in `src-tauri/tauri.conf.json` with the public half. Until then the updater cannot verify a release.
+- [ ] **Secrets via `gh secret set`:** the Discord webhooks (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`). No signing key — see §3.
 - [ ] Replace the placeholder app icon (`src-tauri/icons/`) in the ROADMAP Phase 3 branding pass.
 - [ ] README badges: CI, CodeQL, release, license.
