@@ -38,11 +38,11 @@ expression: out
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "A Python environment PipDock can act on.",
   "properties": {
-    "externally_managed": {
+    "externallyManaged": {
       "description": "PEP 668 marker present. When true, mutation is blocked unless the user enabled the\nSettings override (`PD-ENV-002`, SECURITY §3).",
       "type": "boolean"
     },
-    "hidden_user_site": {
+    "hiddenUserSite": {
       "default": null,
       "description": "User site-packages directory that `probe.py -I` is hiding, when there is one.\n\nOwner decision 2026-07-27 (SP-6): the probe keeps running isolated, so on a non-venv\nsystem Python it reports fewer distributions than `pip list` does. `Some` means packages\nreally are hidden and the Installed screen shows a note naming this path; `None` — always\nthe case inside a venv — means the listing is complete.",
       "type": [
@@ -58,7 +58,7 @@ expression: out
       "description": "`sys.prefix` as reported by `probe.py`.",
       "type": "string"
     },
-    "python_version": {
+    "pythonVersion": {
       "description": "e.g. `\"3.12.4\"`.",
       "type": "string"
     },
@@ -70,8 +70,8 @@ expression: out
   "required": [
     "interpreter",
     "prefix",
-    "python_version",
-    "externally_managed",
+    "pythonVersion",
+    "externallyManaged",
     "source"
   ],
   "title": "PyEnv",

@@ -34,6 +34,7 @@ pub enum Strategy {
 
 /// The user's intent, before the engine has said anything about it.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct PlanRequest {
     /// Already-installed packages the user selected for upgrade.
     #[serde(default)]
@@ -123,6 +124,7 @@ pub struct ImpossibleDetail {
 /// populate `held_back.blockers`. If it is not, SP-1's go/no-go says v1.0 ships pip-primary with uv
 /// behind a beta flag.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ResolutionReport {
     /// Everything that would change if the user confirms.
     #[serde(default)]
@@ -181,6 +183,7 @@ pub struct Counts {
 
 /// The end-of-run report shown in the summary sheet and emitted by `--json`.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ExecutionSummary {
     /// Correlates the summary with its snapshot and log ring buffer.
     pub plan_id: String,
@@ -656,5 +659,56 @@ mod tests {
         let pinned = report.pinned_set();
         assert_eq!(pinned.len(), 1);
         assert_eq!(pinned[0].to_requirement(), "httpx==0.28.1");
+    }
+
+    #[test]
+    fn every_exported_schema_uses_camel_case_properties() {
+        // DATA-FLOW §6 documents `planId`, ERROR-CATALOG §3 documents `stderrTail`, and
+        // ui/src/ipc/index.ts declares the same. Deriving serde without `rename_all` emitted the
+        // Rust spelling, so `pipdock --json` disagreed with its own specification -- and with the
+        // error envelope main.rs hand-builds, in the same binary.
+        //
+        // Walking the generated schemas is what makes this total. A convention only covers the
+        // structs someone remembered; this fails at `cargo test` the moment a snake_case field
+        // reaches the exported surface, including through a type nested inside another.
+        fn property_names(node: &serde_json::Value, out: &mut Vec<String>) {
+            match node {
+                serde_json::Value::Object(map) => {
+                    for (key, value) in map {
+                        if key == "properties"
+                            && let Some(props) = value.as_object()
+                        {
+                            out.extend(props.keys().cloned());
+                        }
+                        property_names(value, out);
+                    }
+                }
+                serde_json::Value::Array(items) => {
+                    for item in items {
+                        property_names(item, out);
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        let mut offenders = Vec::new();
+        for name in SCHEMA_TYPES {
+            let schema = json_schema(name).expect("every listed type has a schema");
+            let mut props = Vec::new();
+            property_names(&schema, &mut props);
+            for prop in props {
+                if prop.contains('_') {
+                    offenders.push(format!("{name}.{prop}"));
+                }
+            }
+        }
+        offenders.sort();
+        offenders.dedup();
+        assert!(
+            offenders.is_empty(),
+            "snake_case reached the IPC surface; add #[serde(rename_all = \"camelCase\")]:\n  {}",
+            offenders.join("\n  ")
+        );
     }
 }

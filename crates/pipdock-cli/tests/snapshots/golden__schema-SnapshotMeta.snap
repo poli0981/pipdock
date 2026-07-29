@@ -28,13 +28,13 @@ expression: out
           "properties": {
             "plan": {
               "properties": {
-                "plan_id": {
+                "planId": {
                   "description": "The plan's id, so a summary and its snapshot can be tied together.",
                   "type": "string"
                 }
               },
               "required": [
-                "plan_id"
+                "planId"
               ],
               "type": "object"
             }
@@ -75,13 +75,13 @@ expression: out
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "description": "The `.meta.json` sidecar (ARCHITECTURE §6).",
+  "description": "The `.meta.json` sidecar (ARCHITECTURE §6).\n\nThis type serves twice: it is the on-disk sidecar *and* what `snapshot list --json` emits, so\nit is in `SCHEMA_TYPES`. The camelCase spelling is the wire contract, and the `alias`\nattributes are what keep sidecars written before that change readable — a snapshot that no\nlonger parses is a rollback the user silently cannot perform, which is the one failure this\nmodule exists to prevent. Removable once no pre-1.0 snapshot can plausibly still be on disk.",
   "properties": {
-    "app_version": {
+    "appVersion": {
       "description": "PipDock's version, so an old snapshot can be interpreted by a newer build.",
       "type": "string"
     },
-    "created_at": {
+    "createdAt": {
       "description": "When it was taken, RFC 3339.",
       "type": "string"
     },
@@ -93,7 +93,7 @@ expression: out
       "description": "Snapshot id, which is also its filename stem.",
       "type": "string"
     },
-    "package_count": {
+    "packageCount": {
       "description": "How many distributions the freeze recorded.",
       "format": "uint",
       "minimum": 0,
@@ -106,11 +106,11 @@ expression: out
   },
   "required": [
     "id",
-    "created_at",
+    "createdAt",
     "trigger",
     "engine",
-    "package_count",
-    "app_version"
+    "packageCount",
+    "appVersion"
   ],
   "title": "Meta",
   "type": "object"

@@ -15,7 +15,7 @@ expression: out
           "$ref": "#/$defs/PkgName",
           "description": "Normalized distribution name."
         },
-        "version_req": {
+        "versionReq": {
           "description": "PEP 440 specifier such as `\">=2,<3\"`, or `None` for \"latest\".",
           "type": [
             "string",

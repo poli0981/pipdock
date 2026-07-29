@@ -384,6 +384,7 @@ pub fn is_stale(last: Option<jiff::Timestamp>, now: jiff::Timestamp) -> bool {
 
 /// Cached PyPI metadata for one package (ARCHITECTURE §5).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct PackageMeta {
     /// Normalized name.
     pub name: String,
