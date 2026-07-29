@@ -135,7 +135,7 @@ Zustand stores: `useEnvStore`, `usePlanStore`, `useIndexStore`, `useSettingsStor
 | Vite / Tailwind | 8.1.x (Rolldown line) / 4.x |
 | Node (dev only) | 24 LTS (Active LTS; EOL 2028-04) |
 | pip engine | ≥ 24.0 supported; latest is 26.1.x. `--dry-run --report` requires ≥ 22.2 — PipDock offers to upgrade older pips before first plan. |
-| uv engine | latest stable (0.9.x line at writing); minimum pinned after SP-1 |
+| uv engine | latest stable (0.11.x line at writing); **minimum 0.10.0**, pinned by SP-1 (`UV_MIN_VERSION`, `engine/mod.rs`) |
 | Managed Pythons | 3.10 – 3.14 (3.9 is EOL) |
 | Windows | 10 (1809+) / 11; WebView2 Evergreen assumed present; `longPathAware` manifest enabled |
 | rusqlite | **held at 0.37** (`libsqlite3-sys` 0.35). 0.40 pulls `libsqlite3-sys` 0.38.1, whose build script uses the unstable `cfg_select!` and therefore does not compile on stable Rust 1.94.1. Revisit when the toolchain advances. |

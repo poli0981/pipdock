@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: Phase 0 (scaffold + spike week)**.
+Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 complete (core + CLI); M2 (Tauri GUI) starting**.
 
 ## Read the docs before changing anything
 
@@ -59,13 +59,15 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 substantially complete.** The CLI works against real environments: every P0 command except
-`health` (which belongs to M3). See `docs/ROADMAP.md` Phase 1 for what is verified, what changed
-during implementation, and what is still owed — notably TESTING L2 has never actually run in CI,
-and the L4 golden-output tests are not written.
+**M1 complete.** The CLI works against real environments: every P0 command except `health` (which
+belongs to M3). See `docs/ROADMAP.md` Phase 1 for what is verified and what changed during
+implementation. Still owed: the L4 golden-output tests (`assert_cmd` and `insta` are dev-deps and
+currently unused) and the SP-5 numpy/scipy/pandas dogfood.
 
-Next is M2, the Tauri GUI. The core already carries everything it needs; the shell, design tokens
-and locale catalogs are scaffolded and the IPC command names are fixed in `ui/src/ipc`.
+Next is M2, the Tauri GUI. Read `docs/ROADMAP.md` Phase 2 before starting — the bridge is thinner
+than it looks: `ui/src/ipc/index.ts` fixes 26 command *names* with zero wrappers, `src-tauri`
+registers exactly one command (`app_info`, a smoke test), and 2 of 16 `Pd*` components, 1 of 5
+Zustand stores and 2 of 14 locale catalogs exist.
 
 ## Things that look like bugs but are not
 
@@ -75,3 +77,13 @@ and locale catalogs are scaffolded and the IPC command names are fixed in `ui/sr
   deliberate: they are excluded from the pin set and reported separately rather than dropped.
 - `pipdock engine uv` failing when uv is not on PATH is intentional — storing a preference that
   cannot be honoured just moves the failure to the next command.
+- Fixtures under `tests/fixtures/{pip,uv}/` are **not** literal engine bytes: `spikes/capture.py`
+  redacts absolute paths, object addresses, progress bars and uv's timings. Without that they
+  differ on every run and every machine, so the weekly drift job could never go green — and pip's
+  "[notice] To update, run: …" shipped the capturing user's home directory to a public repo. It is
+  safe because nothing reads a path or a duration out of them: every `CLASSIFIERS` entry keys off
+  message text, and the uv adapter only tests `contains("Resolved ")`. Line endings are still
+  byte-exact, which is what `.gitattributes`' `-text` protects.
+- `meta.json` next to `capture-provenance.json` is a deliberate split. `meta.json` is the contract
+  the drift gate watches; provenance records engine/interpreter versions and argv, churns on every
+  release, and is excluded from the gate.
