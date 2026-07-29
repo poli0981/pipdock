@@ -1,0 +1,20 @@
+{
+  "scenario": "held-back",
+  "engine_version": "pip 25.0.1 (python 3.12)",
+  "python": "Python 3.12.10",
+  "argv": [
+    "<WORK>\\venv\\Scripts\\python.exe",
+    "-m",
+    "pip",
+    "install",
+    "-U",
+    "--no-cache-dir",
+    "--dry-run",
+    "--quiet",
+    "--report",
+    "-",
+    "httpcore"
+  ],
+  "stdout_bytes": 32856,
+  "stderr_bytes": 199
+}

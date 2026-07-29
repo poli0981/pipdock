@@ -16,5 +16,14 @@
 # pip and uv emit CRLF on Windows. Normalising those to LF in the blob would test the adapter
 # parsers against line endings that never occur in production — a parser mishandling a trailing
 # \r would pass CI and fail on every real Windows machine. docs/TESTING.md §1 makes adapter
-# parsing the thing that must never regress, so: no normalisation, no diffing.
-crates/pipdock-core/tests/fixtures/** -text -diff
+# parsing the thing that must never regress, so: no normalisation.
+#
+# `-text` is what buys that. `-diff` does NOT: it only suppresses the textual diff, and it used
+# to be set here too, which meant the weekly drift job — whose entire job is to show you which
+# engine bytes moved — could report nothing but "Binary files differ". Byte-exactness and a
+# readable diff are not in tension, so keep the first and drop the second.
+crates/pipdock-core/tests/fixtures/**/*.txt -text
+
+# The JSON sidecars are ours, not the engines'. They are ordinary text and must stay diffable:
+# meta.json is the contract the drift job gates on, so its diff has to be legible.
+crates/pipdock-core/tests/fixtures/**/*.json text eol=crlf

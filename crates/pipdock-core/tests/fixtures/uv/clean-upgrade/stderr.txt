@@ -1,5 +1,5 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-clean-upgrade-py2bn54p\venv
-Resolved 1 package in 293ms
+Using Python 3.12.10 environment at: <WORK>\venv
+Resolved 1 package in <DURATION>
 Would download 1 package
 Would uninstall 1 package
 Would install 1 package

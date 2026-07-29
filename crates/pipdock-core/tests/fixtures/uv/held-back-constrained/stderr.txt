@@ -1,4 +1,4 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-held-back-constrained-66ncg_2i\venv
-Resolved 8 packages in 406ms
-Checked 8 packages in 1ms
+Using Python 3.12.10 environment at: <WORK>\venv
+Resolved 8 packages in <DURATION>
+Checked 8 packages in <DURATION>
 Would make no changes

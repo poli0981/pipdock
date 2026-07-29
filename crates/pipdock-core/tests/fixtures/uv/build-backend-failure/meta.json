@@ -3,24 +3,11 @@
   "question": "sdist build backend failure (PEP 517 backend unavailable).",
   "expects_code": "PD-BLD-002",
   "engine": "uv",
-  "engine_version": "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)",
-  "python": "Python 3.12.10",
-  "argv": [
-    "spikes\\.venv-uv-latest\\Scripts\\uv.exe",
-    "pip",
-    "install",
-    "-U",
-    "numpy==1.19.5",
-    "--python",
-    "<TMP>\\pd-uv-build-backend-failure-x06525p0\\venv\\Scripts\\python.exe"
-  ],
   "extra_env": {
     "PYTHONIOENCODING": "utf-8",
     "PYTHONUTF8": "1"
   },
   "exit_code": 1,
   "seed": [],
-  "seed_exit_code": null,
-  "stdout_bytes": 0,
-  "stderr_bytes": 861
+  "seed_exit_code": null
 }

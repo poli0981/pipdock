@@ -1,5 +1,5 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-held-back-6hmjod7b\venv
-Resolved 3 packages in 491ms
+Using Python 3.12.10 environment at: <WORK>\venv
+Resolved 3 packages in <DURATION>
 Would download 2 packages
 Would uninstall 2 packages
 Would install 2 packages

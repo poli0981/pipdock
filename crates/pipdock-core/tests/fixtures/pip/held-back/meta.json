@@ -3,20 +3,6 @@
   "question": "SP-1 core question: httpx 0.23.0 requires httpcore<0.16, so httpcore cannot reach its 1.x latest. Does the engine name httpx as the blocker, or only report the resolved version? ANSWER: neither \u2014 both engines ignore the installed httpx entirely and plan httpcore 1.0.9, silently breaking it. Exit 0.",
   "expects_code": null,
   "engine": "pip",
-  "engine_version": "pip 25.0.1 from C:\\Users\\Anon\\AppData\\Local\\Temp\\pd-pip-held-back-mm7fn80i\\venv\\Lib\\site-packages\\pip (python 3.12)",
-  "python": "Python 3.12.10",
-  "argv": [
-    "<TMP>\\pd-pip-held-back-mm7fn80i\\venv\\Scripts\\python.exe",
-    "-m",
-    "pip",
-    "install",
-    "-U",
-    "--dry-run",
-    "--quiet",
-    "--report",
-    "-",
-    "httpcore"
-  ],
   "extra_env": {
     "PYTHONIOENCODING": "utf-8",
     "PYTHONUTF8": "1"
@@ -25,7 +11,5 @@
   "seed": [
     "httpx==0.23.0"
   ],
-  "seed_exit_code": 0,
-  "stdout_bytes": 32856,
-  "stderr_bytes": 199
+  "seed_exit_code": 0
 }

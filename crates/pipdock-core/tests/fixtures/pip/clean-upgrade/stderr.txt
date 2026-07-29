@@ -1,3 +1,3 @@
 
 [notice] A new release of pip is available: 25.0.1 -> 26.1.2
-[notice] To update, run: C:\Users\Anon\AppData\Local\Temp\pd-pip-clean-upgrade-enhq45pn\venv\Scripts\python.exe -m pip install --upgrade pip
+[notice] To update, run: <WORK>\venv\Scripts\python.exe -m pip install --upgrade pip

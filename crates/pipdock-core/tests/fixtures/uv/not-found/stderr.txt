@@ -1,4 +1,4 @@
-Using Python 3.12.10 environment at: C:\Users\Anon\AppData\Local\Temp\pd-uv-not-found-_xu4q_pz\venv
+Using Python 3.12.10 environment at: <WORK>\venv
   × No solution found when resolving dependencies:
   ╰─▶ Because pipdock-no-such-package-9f3a2b was not found in the package
       registry and you require pipdock-no-such-package-9f3a2b, we can conclude
