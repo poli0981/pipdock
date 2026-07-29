@@ -161,7 +161,13 @@ jobs:
           .itest\Scripts\python.exe -m pip install --quiet requests
           .\target\debug\pipdock.exe uninstall urllib3 --env .itest
           # CLI-SPEC §7: a guard trip exits non-zero so `||` works in scripts.
-          if ($LASTEXITCODE -eq 0) { throw "the guard did not refuse to break requests" }
+          $guard = $LASTEXITCODE
+          if ($guard -eq 0) { throw "the guard did not refuse to break requests" }
+          Write-Host "guard tripped as expected (exit $guard)"
+          # This step succeeds *because* the command failed, so the non-zero code must not leak:
+          # the runner ends a pwsh step with `exit $LASTEXITCODE`, which would fail the step on
+          # the very outcome it is asserting.
+          exit 0
 
       - name: End-to-end — exit codes match CLI-SPEC §5
         shell: pwsh
