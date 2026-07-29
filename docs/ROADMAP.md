@@ -132,13 +132,32 @@ Then M2. The core carries everything the GUI needs; `ui/src/ipc` fixes the comma
 
 Tauri app, design tokens, Environments/Installed/Updates/Search/Pins screens, preview + 3-way conflict UX, console drawer, summary sheet, snapshots UI, legal gate, EN/VI catalogs, settings. **Exit:** all UI-SPEC click budgets met by manual count; L3 green; VI sweep clean.
 
-The estimate was 3–4 weeks until 2026-07-29, when surveying the code for M2 showed the bridge is scaffolding rather than substance: `ui/src/ipc/index.ts` fixes 26 command **names** with zero wrappers, `src-tauri` registers exactly one command (`app_info`, a smoke test), and 2 of 16 `Pd*` components, 1 of 5 Zustand stores and 2 of 14 locale catalogs exist. Scope is unchanged; the estimate moved to match it.
+The estimate was 3–4 weeks until 2026-07-29, when surveying the code for M2 showed the bridge was scaffolding rather than substance: 26 command **names** with zero wrappers, one registered Tauri command, 2 of 16 `Pd*` components, 1 of 5 stores. Scope is unchanged; the estimate moved to match it.
 
-Three pieces of M2 have no home in the core yet and should be sequenced before the screens:
+### Stage 1 — the IPC bridge — **done 2026-07-30**
 
-- **A shared flow layer.** `plan_and_run` (`crates/pipdock-cli/src/run.rs`, ~200 lines) is the whole DATA-FLOW §3 machine and lives only in the CLI — PEP 668 gate, pins filtering, the conflict re-resolve loop, snapshot-or-waive, `AcceptedPlan::accept`, two-phase execute. So do rollback execution and the uninstall guard. The GUI needs all of it, and duplicating it would mean two implementations of the hard invariants.
-- **Cancellation.** Nothing exists: no token, no `child.kill()`. `plan_cancel` is a declared TS name with no Rust counterpart, and `exec.rs`'s 600 s watchdog uses `tokio::time::timeout`, which drops the future — tokio children are not kill-on-drop, so the child outlives it today.
-- **Progress.** `ProgressEvent.step` is hardcoded `0` at all four producer sites, so the console drawer's per-package markers and the live region's "13 of 15" are unimplementable as written; and `scan-progress` has no producer at all.
+Ten commits, `0ccee04..a553bf7`. Everything M2's screens stand on now exists, and there is a running app.
+
+| | What landed |
+|---|---|
+| **Wire format** | `#[serde(rename)]` on all 30 `Code` variants so they serialize as `PD-*`, and `rename_all = "camelCase"` on every IPC-crossing struct. `--json` had never matched DATA-FLOW §6 or ERROR-CATALOG §3 — and the two `--json` paths in the binary disagreed with each other. Held by a `Code::ALL` round-trip test and a test that walks every `SCHEMA_TYPES` schema rejecting any property containing `_`. |
+| **Codegen** | `ui/src/ipc/generated.ts` from schemars via `cargo run -p xtask -- bindings`. Deviates from ARCHITECTURE §9's specta; reasoning and the revisit condition are in `crates/pipdock-core/src/bindings.rs`. Drift is a **test** failure, so it fires locally as well as in CI. |
+| **`core::flow`** | `UpdateFlow`, `UninstallFlow`, `RollbackFlow` — resumable state machines, because the GUI's two decision points are IPC round trips with a render in between. `plan::execute_rollback` is new: core had `rollback_plan()` and nothing to run it, so the CLI hand-assembled an `ExecutionSummary`. **The flow never prints.** |
+| **Cancellation** | `CancellationToken` through `exec.rs`, plus `kill_on_drop(true)` — the 600 s watchdog had never killed anything. A cancelled Phase A does **not** fall through to Phase B, and a step killed by us is `Skipped`, not `Failed`. |
+| **Progress** | `ProgressSink` carries `step`/`total`; `scan-progress` finally has a producer and a payload (`ScanProgress`). |
+| **Vertical slice** | Legal gate, Environments, Settings. `core::settings`, `docsHash` computed in `build.rs`, capabilities split and scoped. |
+
+**Four bugs turned up that were not in the plan**, all found by running things rather than reading them: the watchdog leak; `--json` unparseable because `snapshot … written` went to stdout; blocker attribution naming constraints from other Pythons (the SP-5 dogfood); and `updater:default` granted to a plugin whose pubkey was a placeholder.
+
+### Stage 2 onward — where to pick up
+
+Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2 (Installed + Updates, read-only) is next and needs a virtualization library — `@tanstack/react-virtual` is the recommendation, and any addition must survive `npm audit --audit-level=high`.
+
+Three things are deliberately deferred and should be picked up **with the slice that can verify them**, not before:
+
+1. **The `plan-progress` lifecycle enum** (`StepStarted` / `Line` / `StepFinished`) and Tauri-side event coalescing. Belongs with the console drawer in **S3**, where a running UI can show whether the per-package markers actually work. Changing the payload shape amends ARCHITECTURE §7.
+2. **A Windows Job Object** (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) so cancellation kills the whole process tree. Today it reaches the direct child only; the measured consequence is recorded on `exec::Command::build`. `python -m pip` spawns build backends, so this matters for **S3**.
+3. **`ExecutionSummary.cancelled` copy.** Nothing specifies what to tell a user whose install was interrupted, and killing pip mid-install can leave site-packages partially written. The summary should say so and point at the snapshot.
 
 ## Phase 3 — M3 "Health + polish" (~2 weeks)
 
