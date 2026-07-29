@@ -123,14 +123,32 @@ jobs:
         run: |
           $ErrorActionPreference = 'Stop'
           .\target\debug\pipdock.exe snapshot create --env .itest
+          # Pin the id now. `latest` is not stable across this flow: `update --all` writes a
+          # Trigger::Plan snapshot before it mutates, and `snapshot rollback` writes a
+          # Trigger::Rollback one before it restores (DATA-FLOW §8 — rollback is itself
+          # reversible). Asserting against `latest` afterwards compares the restored
+          # environment to the *pre-rollback* state and always reports a full diff.
+          $id = @(.\target\debug\pipdock.exe snapshot list --env .itest --json | ConvertFrom-Json)[0].id
+          if (-not $id) { throw "snapshot create left nothing for snapshot list to report" }
+          Write-Host "pinned snapshot $id"
+
           .\target\debug\pipdock.exe update --all --env .itest --yes
           if ($LASTEXITCODE -ne 0) { throw "update --all failed" }
-          .\target\debug\pipdock.exe snapshot rollback latest --env .itest --yes
+          .\target\debug\pipdock.exe snapshot rollback $id --env .itest --yes
           if ($LASTEXITCODE -ne 0) { throw "rollback failed" }
+
           # PRD §6's rollback metric: the environment must match the snapshot exactly.
-          $diff = .\target\debug\pipdock.exe snapshot diff latest --env .itest 2>&1 | Out-String
-          Write-Host $diff
-          if ($diff -notmatch 'matches snapshot') { throw "rollback left the environment different" }
+          # Assert on the structure, not the prose — a reworded success line must not be able
+          # to pass this, and an unrelated string must not be able to fail it.
+          $diff = .\target\debug\pipdock.exe snapshot diff $id --env .itest --json | ConvertFrom-Json
+          Write-Host ($diff | ConvertTo-Json -Depth 5)
+          # @($null).Count is 1 in PowerShell, so filter rather than count directly — an omitted
+          # field must read as "no drift", not as one phantom package.
+          $drift = @(@($diff.added) + @($diff.removed) + @($diff.changed) |
+                     Where-Object { $null -ne $_ })
+          if ($drift.Count -ne 0) {
+            throw "rollback left $($drift.Count) package(s) different from snapshot $id"
+          }
 
       - name: End-to-end — the uninstall guard refuses to break things
         shell: pwsh
