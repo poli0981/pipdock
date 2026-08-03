@@ -13,7 +13,7 @@
 
 deptry==0.25.1
 vulture==2.16
-ruff==0.16.0
+ruff==0.16.1
 
 # P1 (Security tab, PRD P1-1). Pinned now so spike SP-4 has something concrete to invoke while
 # it settles the foreign-environment audit flags.
