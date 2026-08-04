@@ -230,9 +230,46 @@ half-written, and points at the snapshot.
 across an await is not `Send` and a Tauri command cannot return it. It takes the pins instead —
 one synchronous read at each call site, and the flow no longer touches a database at all.
 
-### Stage 4 onward — where to pick up
+### Stage 4 — search, the dock bay and install — **done 2026-08-04**
 
-Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2 and S3 are done (above). **S4 — search, the dock bay and install — is next.** Its exit check is the one to design for *before* building it: **< 50 ms per keystroke measured in the app**, which adds an IPC round trip SP-3 never measured. Decide the fallback (debounce plus rendering the previous result set) before taking the measurement, not after.
+Five commits. Both exit criteria met and measured in the running app, and 16 of UI-SPEC §6's 16
+components now exist.
+
+| | What landed |
+|---|---|
+| **Index** | `IndexSlot` in `AppState` holds the 864k-name index; warmed on first Search open, never blocking a search. `index_search`, `index_refresh`, `pkg_metadata`. |
+| **UI** | `useIndexStore`, `PdSearch`, `PdDockBay`, `PdOfflineBanner`, the metadata panel, `/` to focus. |
+| **Install** | The dock bay resolves through `Intent::Install`, into the same preview and summary S3 built. |
+
+**The keystroke budget, measured rather than assumed — and it was being missed.**
+
+| | Median | p95 | Over 50 ms |
+|---|---|---|---|
+| First measurement | 57.4 ms | 79.8 ms | 18 of 19 |
+| After two fixes | **22 ms** | **24.5 ms** | **0 of 19** |
+
+The two fixes were a **leading-edge debounce** — it was trailing-only, spending 16 ms of a 50 ms
+budget doing nothing on every keystroke, while the comment above it had claimed leading-edge
+behaviour since the day it was written — and **`SEARCH_LIMIT` 50 → 20**, because React commits
+every row on every keystroke and the row count is the largest lever on the render half.
+
+**A number I reported was wrong, and it mattered.** The 613 ms index load was a *debug* build; in
+release it is 140 ms, and the worst keystroke is 16 ms rather than 176 ms. The design — hold the
+index, warm on demand — is unchanged and still right at 140 ms, but it had been justified with a
+figure four times too large. `crates/pipdock-core/tests/search_latency.rs` now **refuses to run in
+debug** rather than printing a number that means nothing.
+
+**Two bugs found by counting clicks**, neither reachable by any test written for them:
+
+1. **A plan started from Search resolved into nowhere.** `PdPlanPanel` was owned by `PdPackages`,
+   so the command ran, the flow parked, and the user saw unchanged search results. A plan belongs
+   to the app — there is one at a time, and which tab is showing is not part of that.
+2. **Every result offered [Add], including installed packages**, because only `PdPackages` ever
+   loaded the installed set. That is exactly the mistake DATA-FLOW §4's chips exist to prevent.
+
+### Stage 5 onward — where to pick up
+
+Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2, S3 and S4 are done (above). **S5 — uninstall, the guard dialog and the Pins screen — is next**, and it is a small one: `uninstall_guard` and `uninstall_execute` are the last two mutating commands, DATA-FLOW §5's three-option dialog is fully specified, and the pin commands already exist from S2. Exit: uninstall = 3 clicks, and *Remove dependents too* re-guards rather than proceeding.
 
 **All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 
