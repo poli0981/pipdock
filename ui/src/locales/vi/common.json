@@ -102,6 +102,50 @@
     "outdatedFailed": "Không kiểm tra được cập nhật, nên chưa gói nào được gắn nhãn.",
     "orphanOutdated_other": "{{count}} gói có bản cập nhật nhưng không có trong danh sách này."
   },
+  "plan": {
+    "section": {
+      "upgrade": "Sẽ nâng cấp ({{count}})",
+      "downgrade": "Sẽ hạ cấp ({{count}})",
+      "new-install": "Sẽ cài ({{count}})",
+      "new-dependency": "Phụ thuộc mới ({{count}})",
+      "needsDecision": "Cần bạn quyết định ({{count}})"
+    },
+    "decision": {
+      "keep-compatible": "Giữ tương thích",
+      "skip": "Bỏ qua",
+      "force-latest": "Ép bản mới nhất"
+    },
+    "status": {
+      "ok": "xong",
+      "failed": "thất bại",
+      "skipped": "bỏ qua"
+    },
+    "heldBack": "bị giữ lại",
+    "impossible": "không thể",
+    "blocker": "{{by}} yêu cầu {{constraint}}",
+    "keepCompatibleImpossible": "Không có phiên bản tương thích nào để giữ — gói này chỉ có thể bỏ qua hoặc ép.",
+    "forceWarning_other": "Ép gói này sẽ làm hỏng {{names}}, vốn đã khai báo ràng buộc ở trên.",
+    "resolving": "Đang phân giải…",
+    "previewTitle": "Xem trước",
+    "emptyPreview": "không có gì để thay đổi",
+    "emptyPreviewHint": "Các gói đã chọn vốn đã ở đúng phiên bản mà bộ giải sẽ chọn.",
+    "roundsLeft_other": "Còn {{count}} lượt quyết định.",
+    "roundsExhausted": "Hết lượt quyết định. Hãy xác nhận những gì đang có, hoặc quay lại và chọn ít hơn.",
+    "confirm": "Xác nhận ({{count}} thay đổi)",
+    "applyDecisions": "Áp dụng lựa chọn",
+    "console": "Bảng điều khiển",
+    "progress": "Hoàn tất {{done}}/{{total}}",
+    "executing": "Đang áp dụng thay đổi…",
+    "stop": "Dừng",
+    "stopping": "Đang dừng…",
+    "summaryTitle": "Hoàn tất",
+    "counts": "{{ok}} thành công, {{failed}} thất bại, {{skipped}} bỏ qua",
+    "cancelledDetail": "Bạn đã dừng giữa chừng. Các gói đã cài vẫn được giữ, và có thể có một gói bị ghi dở — ảnh chụp bên dưới khôi phục môi trường đúng như trước đó.",
+    "snapshotTaken": "Ảnh chụp đã tạo trước mọi thay đổi:",
+    "checkFailed_other": "Còn {{count}} vấn đề phụ thuộc sau lần chạy này.",
+    "checkFinding": "{{pkg}} yêu cầu {{requirement}}",
+    "done": "Quay lại danh sách gói"
+  },
   "settings": {
     "title": "Cài đặt",
     "engine": "Bộ máy",

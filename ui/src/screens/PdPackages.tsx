@@ -16,8 +16,9 @@ import { useTranslation } from 'react-i18next'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdPackageTable } from '@/components/PdPackageTable'
+import { PdPlanPanel } from '@/screens/PdPlanPanel'
 import { outdatedOnly, selectableForUpdate } from '@/screens/rows'
-import { useEnvStore } from '@/stores'
+import { useEnvStore, usePlanStore } from '@/stores'
 
 interface PdPackagesProps {
   mode: 'installed' | 'updates'
@@ -44,6 +45,8 @@ export function PdPackages({ mode }: PdPackagesProps) {
   const selectAll = useEnvStore((s) => s.selectAll)
   const clearSelection = useEnvStore((s) => s.clearSelection)
   const togglePin = useEnvStore((s) => s.togglePin)
+  const planPhase = usePlanStore((s) => s.phase)
+  const planResolve = usePlanStore((s) => s.resolve)
 
   // The row's handler must return void. Wrapped here rather than in the store so `togglePin` stays
   // awaitable for the tests, and stable across renders so the memoized rows are not defeated.
@@ -67,6 +70,22 @@ export function PdPackages({ mode }: PdPackagesProps) {
   const visible = mode === 'updates' ? outdatedOnly(packages) : packages
   const { selectable, pinnedExcluded } = selectableForUpdate(visible)
   const title = mode === 'updates' ? t('packages.updatesTitle') : t('packages.installedTitle')
+
+  // The preview *replaces* the table (UI-SPEC §4) rather than sitting beside it: one plan, one
+  // screen, and nothing to mis-click while a decision is pending.
+  if (planPhase !== 'idle') {
+    return (
+      <PdPlanPanel
+        onFinished={() => {
+          // The environment changed under the table, so re-read it rather than showing the
+          // versions from before the run.
+          clearSelection()
+          void loadPackages()
+          void loadOutdated()
+        }}
+      />
+    )
+  }
 
   if (selected === null) {
     return (
@@ -112,13 +131,22 @@ export function PdPackages({ mode }: PdPackagesProps) {
           >
             {t('actions.selectAll')}
           </button>
-          {/* S3's entry point. Rendered disabled rather than omitted, so the 4-click budget in
-              UI-SPEC §5 is honest about where the click will be when the preview lands. */}
+          {/* UI-SPEC §5's 4-click budget: Updates → Select all → Update → Confirm. This is the
+              third, and the preview's Confirm is the fourth. */}
           <button
             type="button"
-            disabled
-            title={t('packages.updateSelectedSoon')}
-            className="rounded-pd border border-border px-3 py-1 disabled:opacity-40"
+            onClick={() => {
+              if (row?.env === undefined) return
+              void planResolve(row.env, {
+                intent: 'update',
+                all: false,
+                pkgs: [...selection],
+                except: [],
+                forceLatest: false,
+              })
+            }}
+            disabled={selection.size === 0 || row?.env === undefined}
+            className="rounded-pd border border-accent px-3 py-1 text-accent disabled:border-border disabled:text-text-dim disabled:opacity-40"
           >
             {t('packages.actions.updateSelected')}
           </button>
