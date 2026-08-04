@@ -49,10 +49,11 @@ impl PlanSlot {
 
 /// How far the in-memory name index has got.
 ///
-/// **Measured on the real 858k-project index: `NameIndex::load` costs 613 ms** — twelve times the
-/// entire per-keystroke budget, and SP-3 had already ruled out the alternative (scanning SQLite
-/// per keystroke measured 218 ms against 50 ms). So it is loaded once and held, and the only
-/// question was when to pay for it.
+/// **Measured on the real 864k-project index: `NameIndex::load` costs 140 ms in release** (572 ms
+/// in debug, which is not the number that matters). Still roughly three times the entire
+/// per-keystroke budget, and SP-3 had already ruled out the alternative — scanning SQLite per
+/// keystroke measured 218 ms against 50 ms. So it is loaded once and held, and the only question
+/// was when to pay for it. `crates/pipdock-core/tests/search_latency.rs` re-measures both.
 ///
 /// The answer is on demand, with this state as the honest account of it: a user who never opens
 /// Search never pays, and one who does gets the field immediately with a note rather than a

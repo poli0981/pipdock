@@ -191,8 +191,8 @@ export const pinRemove = (envHash: string, pkg: string): Promise<boolean> =>
  * What `indexSearch` resolves to.
  *
  * `ready` is separate from an empty `hits` because "no such package" and "the index is still
- * loading" are different answers. Loading 858k names costs ~613 ms, and telling someone their
- * package does not exist for that long would be a lie.
+ * loading" are different answers. Loading 864k names costs ~140 ms, and telling someone their
+ * package does not exist for even that long would be a lie.
  */
 export interface SearchResults {
   hits: Hit[]

@@ -261,7 +261,7 @@ pub struct SearchResults {
 /// Fuzzy search over the local name index.
 ///
 /// **Never blocks on the load.** SP-3 measured scanning SQLite at 218 ms per keystroke against a
-/// 50 ms budget, so the index is held in memory — and loading it costs 613 ms on the real 858k
+/// 50 ms budget, so the index is held in memory — and loading it costs 140 ms on the real 864k
 /// index, which is why a search that arrives first is answered `ready: false` rather than queued
 /// behind it. The load is kicked off here so the screen does not have to coordinate; calling this
 /// on every keystroke is safe.
