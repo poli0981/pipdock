@@ -17,15 +17,19 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import type {
   Decision,
   Dist,
+  Freshness,
+  Hit,
   EngineId,
   EnvSource,
   ExecutionSummary,
   FlowStep,
   Intent,
   OutdatedDist,
+  PackageMeta,
   Pin,
   ProgressEvent,
   PyEnv,
+  RefreshReport,
   SnapshotMeta,
 } from './generated'
 
@@ -182,6 +186,37 @@ export const pinAdd = (envHash: string, pin: Pin): Promise<void> =>
 /** Remove a pin, resolving to whether one existed. */
 export const pinRemove = (envHash: string, pkg: string): Promise<boolean> =>
   invoke('pin_remove', { envHash, pkg })
+
+/**
+ * What `indexSearch` resolves to.
+ *
+ * `ready` is separate from an empty `hits` because "no such package" and "the index is still
+ * loading" are different answers. Loading 858k names costs ~613 ms, and telling someone their
+ * package does not exist for that long would be a lie.
+ */
+export interface SearchResults {
+  hits: Hit[]
+  ready: boolean
+  /** Set when the index cannot be loaded at all — usually "never refreshed". */
+  unavailable?: string
+}
+
+/**
+ * Fuzzy search the local name index. Safe to call on every keystroke.
+ *
+ * Never blocks on the index load: a search that arrives first comes back `ready: false` and the
+ * screen says so. SP-3 ruled out the alternative — scanning SQLite per keystroke measured 218 ms
+ * against a 50 ms budget.
+ */
+export const indexSearch = (query: string, limit: number): Promise<SearchResults> =>
+  invoke('index_search', { query, limit })
+
+/** Cached PyPI metadata for the details panel, with how fresh it is. */
+export const pkgMetadata = (pkg: string): Promise<[PackageMeta, Freshness]> =>
+  invoke('pkg_metadata', { pkg })
+
+/** Re-download the PEP 691 name index. The previous index stays searchable if this fails. */
+export const indexRefresh = (): Promise<RefreshReport> => invoke('index_refresh')
 
 /** What `planExecute` resolves to: the summary, and the snapshot taken before anything ran. */
 export interface ExecutionOutcome {

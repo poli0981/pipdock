@@ -953,12 +953,11 @@ fn confirm_text(question: &str) -> bool {
 /// `PD-NET-010` when the index cannot be fetched. The previous index stays in place and remains
 /// searchable — a failed refresh must not cost the user the index they already had.
 pub async fn index_refresh(opts: &GlobalOpts) -> Result<Exit> {
-    let store = Store::open(&app_data_dir())?;
     if !opts.quiet {
         eprintln!("fetching {} …", index::SIMPLE_INDEX_URL);
     }
 
-    let report = index::refresh(&store, jiff::Timestamp::now()).await?;
+    let report = index::refresh(&app_data_dir(), jiff::Timestamp::now()).await?;
 
     if opts.json {
         println!(
@@ -1037,9 +1036,8 @@ pub async fn search(opts: &GlobalOpts, query: &str, limit: usize) -> Result<Exit
 /// `PD-PKG-002` when PyPI does not know the name; `PD-NET-001` when it is neither cached nor
 /// reachable.
 pub async fn info(opts: &GlobalOpts, pkg: &str) -> Result<Exit> {
-    let store = Store::open(&app_data_dir())?;
     let name = PkgName::parse(pkg)?;
-    let (meta, freshness) = index::metadata(&store, &name, jiff::Timestamp::now()).await?;
+    let (meta, freshness) = index::metadata(&app_data_dir(), &name, jiff::Timestamp::now()).await?;
 
     if opts.json {
         println!(

@@ -255,6 +255,7 @@ impl NameIndex {
 
 /// What a refresh did.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct RefreshReport {
     /// Projects ingested.
     pub projects: usize,
@@ -273,7 +274,7 @@ pub struct RefreshReport {
 /// # Errors
 /// `PD-NET-010` when the fetch or ingest fails. The previous index is left in place and stays
 /// searchable, because a failed refresh must not cost the user the index they already had.
-pub async fn refresh(store: &Store, now: jiff::Timestamp) -> Result<RefreshReport> {
+pub async fn refresh(app_data: &std::path::Path, now: jiff::Timestamp) -> Result<RefreshReport> {
     let started = std::time::Instant::now();
 
     let client = http_client()?;
@@ -319,7 +320,11 @@ pub async fn refresh(store: &Store, now: jiff::Timestamp) -> Result<RefreshRepor
         .map(|name| (crate::model::normalize_name(name), name.to_owned()))
         .collect();
 
-    ingest(store, &rows)?;
+    // Opened only now, after the download: the ingest is synchronous, so the handle never spans an
+    // await. Holding one open across a multi-second PyPI transfer would block every other command
+    // that wanted the store, for no benefit.
+    let store = Store::open(app_data)?;
+    ingest(&store, &rows)?;
     store.set(KEY_LAST_REFRESH, &now.to_string())?;
 
     Ok(RefreshReport {
@@ -421,11 +426,15 @@ pub enum Freshness {
 /// `PD-NET-001` when the package is not cached **and** the network is unreachable; `PD-PKG-002`
 /// when PyPI does not know the name.
 pub async fn metadata(
-    store: &Store,
+    app_data: &std::path::Path,
     name: &PkgName,
     now: jiff::Timestamp,
 ) -> Result<(PackageMeta, Freshness)> {
-    if let Some((meta, fetched_at)) = cached_metadata(store, name)? {
+    // The store is opened for each synchronous stretch and dropped before the network call, never
+    // held across it. `Store` wraps a `rusqlite::Connection` and is `Send` but not `Sync`, so a
+    // future holding one is not `Send` and cannot be returned from a Tauri command — and holding a
+    // database handle open across a PyPI round trip would be wrong even where it compiled.
+    if let Some((meta, fetched_at)) = cached_metadata(&Store::open(app_data)?, name)? {
         let age_ms = now
             .as_millisecond()
             .saturating_sub(fetched_at.as_millisecond());
@@ -437,7 +446,7 @@ pub async fn metadata(
     match fetch_metadata(name).await {
         Ok(meta) => {
             let payload = serde_json::to_string(&meta).unwrap_or_default();
-            store
+            Store::open(app_data)?
                 .conn()
                 .execute(
                     "INSERT INTO meta_cache (normalized, payload, fetched_at) VALUES (?1, ?2, ?3)
@@ -452,7 +461,7 @@ pub async fn metadata(
         }
         // Offline with a stale entry is better than offline with nothing: ARCHITECTURE §5 says
         // the metadata panel shows a cached/offline badge rather than failing.
-        Err(e) => match cached_metadata(store, name)? {
+        Err(e) => match cached_metadata(&Store::open(app_data)?, name)? {
             Some((meta, _)) => Ok((meta, Freshness::Stale)),
             None => Err(e),
         },

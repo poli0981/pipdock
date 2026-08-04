@@ -1,0 +1,35 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a refresh did.",
+  "properties": {
+    "elapsedMs": {
+      "description": "How long the whole refresh took.",
+      "format": "uint64",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "projects": {
+      "description": "Projects ingested.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "wireBytes": {
+      "description": "Bytes received on the wire.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    }
+  },
+  "required": [
+    "projects",
+    "wireBytes",
+    "elapsedMs"
+  ],
+  "title": "RefreshReport",
+  "type": "object"
+}

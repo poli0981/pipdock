@@ -12,6 +12,7 @@ use pipdock_core::engine;
 use pipdock_core::envs::{self, ScanProgress};
 use pipdock_core::errors::Code;
 use pipdock_core::flow;
+use pipdock_core::index::{self, NameIndex};
 use pipdock_core::model::EnvSource;
 use pipdock_core::pins::{self, Pin};
 use pipdock_core::plan::{Decision, ExecutionSummary};
@@ -238,6 +239,100 @@ pub async fn pin_remove(
     let name = pipdock_core::PkgName::parse(&pkg)?;
     let store = state.store.lock().await;
     Ok(pins::remove(&store, &env_hash, &name)?)
+}
+
+/// What `index_search` returns.
+///
+/// A struct rather than a bare `Hit[]` because "no results" and "the index is not loaded yet" are
+/// different answers and the screen must say different things about them. Conflating them would
+/// tell a user their package does not exist during the 613 ms it takes to load 858k names.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SearchResults {
+    /// Matches, best first. Empty when `ready` is false.
+    pub hits: Vec<index::Hit>,
+    /// False while the index is still loading.
+    pub ready: bool,
+    /// Set when the index could not be loaded at all — usually "never refreshed".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub unavailable: Option<String>,
+}
+
+/// Fuzzy search over the local name index.
+///
+/// **Never blocks on the load.** SP-3 measured scanning SQLite at 218 ms per keystroke against a
+/// 50 ms budget, so the index is held in memory — and loading it costs 613 ms on the real 858k
+/// index, which is why a search that arrives first is answered `ready: false` rather than queued
+/// behind it. The load is kicked off here so the screen does not have to coordinate; calling this
+/// on every keystroke is safe.
+///
+/// # Errors
+/// Never as a whole — an index that cannot be loaded is reported in `unavailable`, because
+/// "refresh the index" is an action, not a failure.
+#[tauri::command]
+pub async fn index_search(
+    state: tauri::State<'_, AppState>,
+    query: String,
+    limit: usize,
+) -> Wire<SearchResults> {
+    if let Some(hits) = state.search_index(&query, limit) {
+        return Ok(SearchResults {
+            hits,
+            ready: true,
+            unavailable: None,
+        });
+    }
+
+    if state.begin_index_load() {
+        let loaded = {
+            let store = state.store.lock().await;
+            NameIndex::load(&store)
+        };
+        state.finish_index_load(loaded);
+        // The load that this keystroke paid for is done, so answer from it rather than making the
+        // user press another key.
+        if let Some(hits) = state.search_index(&query, limit) {
+            return Ok(SearchResults {
+                hits,
+                ready: true,
+                unavailable: None,
+            });
+        }
+    }
+
+    Ok(SearchResults {
+        hits: Vec::new(),
+        ready: false,
+        unavailable: state.index_failure(),
+    })
+}
+
+/// Cached PyPI metadata for the details panel, with how fresh it is.
+///
+/// # Errors
+/// `PD-PKG-002` when the name is malformed or PyPI does not know it; `PD-NET-001` when it is
+/// neither cached nor reachable.
+#[tauri::command]
+pub async fn pkg_metadata(
+    state: tauri::State<'_, AppState>,
+    pkg: String,
+) -> Wire<(index::PackageMeta, index::Freshness)> {
+    let name = PkgName::parse(&pkg)?;
+    // Takes the directory, not a `Store`: `index::metadata` opens one for each synchronous stretch
+    // and drops it before the PyPI call, so its future stays `Send`.
+    Ok(index::metadata(&state.app_data, &name, jiff::Timestamp::now()).await?)
+}
+
+/// Re-download the PEP 691 name index.
+///
+/// # Errors
+/// `PD-NET-010` when the index cannot be fetched; the previously cached index stays searchable.
+#[tauri::command]
+pub async fn index_refresh(state: tauri::State<'_, AppState>) -> Wire<index::RefreshReport> {
+    let report = index::refresh(&state.app_data, jiff::Timestamp::now()).await?;
+    // Otherwise a refresh reports thousands of new projects and search cannot find any of them.
+    state.invalidate_index();
+    Ok(report)
 }
 
 /// What `plan_execute` returns: the summary, plus the snapshot it took first.
