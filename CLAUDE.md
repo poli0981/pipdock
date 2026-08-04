@@ -61,23 +61,28 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 complete. M2 Stage 1 (IPC bridge) complete 2026-07-30; Stage 2 (Installed + Updates)
-complete 2026-08-04.** The app runs: legal gate → Environments → Installed → Updates → Settings,
-over real commands. `docs/ROADMAP.md` Phase 2 has the Stage 1 and Stage 2 tables and says where to
-pick up — read it before starting a slice.
+**M1 complete. M2 Stage 1 (IPC bridge) 2026-07-30, Stage 2 (Installed + Updates) and Stage 3 (the
+mutation spine) both 2026-08-04.** The app previews, decides, executes, streams and summarises over
+real commands — "update everything" is **4 clicks**, counted by hand. `docs/ROADMAP.md` Phase 2 has
+a table per stage and says where to pick up; read it before starting a slice.
 
-Next is **S3, the mutation spine** — the biggest and riskiest slice. Three things are deliberately
-deferred to it because it is the first slice that can verify them: the `plan-progress` lifecycle
-enum, a Windows Job Object for whole-tree kill, and the post-cancel summary copy.
+Next is **S4 — search, the dock bay and install.** Its exit check is the one to design for *before*
+building: **< 50 ms per keystroke measured in the app**, which adds an IPC round trip SP-3 never
+measured. Decide the fallback (debounce plus rendering the previous result set) before taking the
+measurement, not after. All three Stage 1 deferrals are closed.
 
-Two S2 decisions bind S3 directly:
+Three rules from S2/S3 that bind everything after them:
 
 - **"N pinned excluded" in the table is presentation, not enforcement.** DATA-FLOW §9.5 is enforced
-  by `pins::filter_upgrades` at the plan boundary. S3's preview must show the flow's
-  `excluded_pins()`, not the number the table computed, or the two will drift.
-- **Row state is three-valued** (`unknown` / `current` / `outdated`), because `pkg_list` is local
-  and `pkg_outdated` is networked. Anything that renders package state has the same obligation:
-  never assert a state you have not actually loaded yet.
+  by `pins::filter_upgrades` at the plan boundary; a preview must show the flow's
+  `excluded_pins()`, not a number the UI computed, or the two drift.
+- **Never render a state you have not loaded.** Row state is three-valued
+  (`unknown`/`current`/`outdated`) because `pkg_list` is local and `pkg_outdated` is networked.
+  Treating "not yet known" as "up to date" dims 200 rows and un-dims a handful a second later.
+- **A Tauri command's future must be `Send`, and `Store` is not `Sync`.** Never hold the store
+  guard across an await — it does not compile at the command boundary, and where it does compile
+  (inside core) it serializes every other command behind a network call. Read what you need, drop
+  the guard, then await. This is why `UpdateFlow::start` takes pins rather than a `&Store`.
 
 Things worth knowing before you change any of it:
 

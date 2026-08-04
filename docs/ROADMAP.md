@@ -189,15 +189,52 @@ are met.
 Also resolved: UI-SPEC §8's "select-all-visible", which has no meaning under virtualization. It is
 the current filtered set, and §8 now says so.
 
-### Stage 3 onward — where to pick up
+### Stage 3 — the mutation spine — **done 2026-08-04**
 
-Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2 is done (above); **S3, the mutation spine, is next** — it is the biggest and riskiest slice, and the one everything since Stage 1 has been building toward.
+Two PRs. The app now previews, decides, executes, streams and summarises — PRD G1's promise that
+every mutating operation is previewed before it runs is real for the first time in the GUI.
 
-Three things are deliberately deferred and should be picked up **with the slice that can verify them**, not before:
+| | What landed |
+|---|---|
+| **Cancellation** | A Windows Job Object, so a cancel reaches the build backends `python -m pip` spawns and not only pip. `win32job` is a safe wrapper, so `unsafe_code = "forbid"` stays absolute. |
+| **`plan-progress`** | A tagged lifecycle (`stepStarted` / `line` / `stepFinished`) instead of a bare line, plus `stream`. ARCHITECTURE §7 amended. |
+| **Wire types** | `FlowStep`, `Intent`, `Decision` and `ProgressEvent` cross IPC; `roundsRemaining` makes `MAX_CONFLICT_ROUNDS` visible for the first time. |
+| **Plan session** | `PlanSlot` in `AppState` holds the resumable flow between the four calls that drive it; `PD-RES-003` refuses a second plan. |
+| **UI** | `usePlanStore`, `PdPreviewDiff`, `PdConflictRow`, `PdConsoleDrawer`, `PdSummarySheet` — 13 of UI-SPEC §6's 16 components now exist. |
+| **L3** | The last three of TESTING §2's five obligations, so the list is complete and §3's PR gate means something. |
 
-1. **The `plan-progress` lifecycle enum** (`StepStarted` / `Line` / `StepFinished`) and Tauri-side event coalescing. Belongs with the console drawer in **S3**, where a running UI can show whether the per-package markers actually work. Changing the payload shape amends ARCHITECTURE §7.
-2. **A Windows Job Object** (`JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE`) so cancellation kills the whole process tree. Today it reaches the direct child only; the measured consequence is recorded on `exec::Command::build`. `python -m pip` spawns build backends, so this matters for **S3**.
-3. **`ExecutionSummary.cancelled` copy.** Nothing specifies what to tell a user whose install was interrupted, and killing pip mid-install can leave site-packages partially written. The summary should say so and point at the snapshot.
+**Exit criteria, counted and measured in a running app:** "update everything" is **exactly 4
+clicks** — Updates → Select all → Update → Confirm — and it is still 4 with a conflict left at its
+default, which is §5's second row. Cancelling mid-execution yields a coherent summary with
+`Skipped` rows and the cancelled banner. The live region reads "2 of 4 complete" and the drawer
+groups output by package, both of which were unimplementable before the lifecycle enum existed.
+
+**Three specification gaps closed, each recorded in UI-SPEC §4:**
+
+1. **`Will downgrade` has a section.** `ChangeKind` has four variants and §4 named three groups. A
+   *compatible* resolve routinely moves a package down, and `2.0 → 1.9` under a heading reading
+   "Will upgrade" is misleading about the change most likely to surprise.
+2. **`Keep compatible` is disabled on impossible rows.** §4 said every needs-decision row hosts the
+   full 3-way control, but `default_decision(is_impossible = true, …)` returns `Skip` — there is no
+   compatible version to keep. The UI mirrors the core rather than offering a choice it would
+   refuse.
+3. **The round counter is visible.** `MAX_CONFLICT_ROUNDS` had been in core since M1 with nothing
+   surfacing it, so a user could hit the cap unwarned.
+
+**And the third Stage 1 deferral, `ExecutionSummary.cancelled` copy**, which had no specified
+wording: the summary now says the run stopped part-way, that a package may have been left
+half-written, and points at the snapshot.
+
+**One design change forced by the compiler, worth knowing.** `UpdateFlow::start` took a `&Store`;
+`Store` wraps a `rusqlite::Connection` and is `Send` but **not `Sync`**, so a future holding one
+across an await is not `Send` and a Tauri command cannot return it. It takes the pins instead —
+one synchronous read at each call site, and the flow no longer touches a database at all.
+
+### Stage 4 onward — where to pick up
+
+Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2 and S3 are done (above). **S4 — search, the dock bay and install — is next.** Its exit check is the one to design for *before* building it: **< 50 ms per keystroke measured in the app**, which adds an IPC round trip SP-3 never measured. Decide the fallback (debounce plus rendering the previous result set) before taking the measurement, not after.
+
+**All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 
 ## Phase 3 — M3 "Health + polish" (~2 weeks)
 
