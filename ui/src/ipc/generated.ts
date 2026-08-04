@@ -81,6 +81,7 @@ export type Code =
   | 'PD-ENG-999'
   | 'PD-RES-001'
   | 'PD-RES-002'
+  | 'PD-RES-003'
   | 'PD-BLD-001'
   | 'PD-BLD-002'
   | 'PD-BLD-003'
@@ -112,6 +113,12 @@ export interface Counts {
   /** Steps not attempted. */
   skipped: number;
 }
+
+/** What the user chose for one package that needs a decision (DATA-FLOW §3, CLI-SPEC §4). */
+export type Decision =
+  | 'keep-compatible'
+  | 'skip'
+  | 'force-latest';
 
 /** The difference between two environment states. */
 export interface Diff {

@@ -14,7 +14,20 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-import type { Dist, EngineId, EnvSource, OutdatedDist, Pin, PyEnv } from './generated'
+import type {
+  Decision,
+  Dist,
+  EngineId,
+  EnvSource,
+  ExecutionSummary,
+  FlowStep,
+  Intent,
+  OutdatedDist,
+  Pin,
+  ProgressEvent,
+  PyEnv,
+  SnapshotMeta,
+} from './generated'
 
 export type * from './generated'
 
@@ -169,6 +182,49 @@ export const pinAdd = (envHash: string, pin: Pin): Promise<void> =>
 /** Remove a pin, resolving to whether one existed. */
 export const pinRemove = (envHash: string, pkg: string): Promise<boolean> =>
   invoke('pin_remove', { envHash, pkg })
+
+/** What `planExecute` resolves to: the summary, and the snapshot taken before anything ran. */
+export interface ExecutionOutcome {
+  summary: ExecutionSummary
+  /** Absent only when the snapshot was waived, which the GUI never does. */
+  snapshot?: SnapshotMeta
+}
+
+/**
+ * Begin an update or install: resolve, and derive what needs a decision.
+ *
+ * The first of four calls that drive **one** resumable flow held in Rust between them. Rejects
+ * with `PD-RES-003` if a plan is already in flight — one at a time, deliberately, because two
+ * would interleave engine commands against a single environment.
+ */
+export const planResolve = (env: PyEnv, intent: Intent): Promise<FlowStep> =>
+  invoke('plan_resolve', { env, intent })
+
+/** Apply the 3-way conflict choices and re-resolve. Keyed by package name. */
+export const planDecide = (decisions: Record<string, Decision>): Promise<FlowStep> =>
+  invoke('plan_decide', { decisions })
+
+/**
+ * Snapshot, then run the plan. Streams `plan-progress` throughout.
+ *
+ * The snapshot is not optional: DATA-FLOW §9.2 aborts with `PD-SNP-001` rather than mutating
+ * without one, and `--no-snapshot` is a CLI waiver with no GUI surface.
+ */
+export const planExecute = (): Promise<ExecutionOutcome> => invoke('plan_execute')
+
+/** Stop the running plan. Resolves to whether anything was actually in flight. */
+export const planCancel = (): Promise<boolean> => invoke('plan_cancel')
+
+/**
+ * Subscribe to execution progress. Returns the unlisten function.
+ *
+ * Every step emits one `stepStarted`, any number of `line`s, and one `stepFinished` — which is
+ * what lets the console drawer group by section and the live region count completions.
+ */
+export const onPlanProgress = (handler: (event: ProgressEvent) => void): Promise<UnlistenFn> =>
+  listen<ProgressEvent>('plan-progress', (event) => {
+    handler(event.payload)
+  })
 
 export const settingsGet = (): Promise<Settings> => invoke('settings_get')
 

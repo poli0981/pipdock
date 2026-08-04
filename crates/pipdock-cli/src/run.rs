@@ -490,7 +490,10 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     let env = select_env(opts).await?;
     let store = Store::open(&app_data_dir())?;
 
-    let (mut flow, mut step) = UpdateFlow::start(env, engine_for(opts), &intent, &store).await?;
+    // Read before the flow starts: `UpdateFlow` takes the pins rather than the store they came
+    // from, so its future stays `Send` for the GUI's sake.
+    let env_pins = pins::list(&store, &envs::env_hash(&env.interpreter))?;
+    let (mut flow, mut step) = UpdateFlow::start(env, engine_for(opts), &intent, &env_pins).await?;
 
     // The flow returns the exclusion as data; the wording is the head's business (I18N §1).
     if !flow.excluded_pins().is_empty() && !opts.json {

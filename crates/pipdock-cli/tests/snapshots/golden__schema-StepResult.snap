@@ -53,6 +53,11 @@ expression: out
           "type": "string"
         },
         {
+          "const": "PD-RES-003",
+          "description": "A plan is already resolving or executing in this session.\n\nThe GUI drives one resumable flow across several IPC calls, so \"start a plan\" and \"run the\nplan\" are different messages arriving at different times — nothing structurally stops a\nsecond one arriving in between. Refusing is the only safe answer: two concurrent plans\nwould interleave engine commands against one environment, and DATA-FLOW §9.3's staleness\ncheck would be comparing against a set the other plan is busy changing.",
+          "type": "string"
+        },
+        {
           "const": "PD-BLD-001",
           "description": "MSVC build tools required but absent.",
           "type": "string"

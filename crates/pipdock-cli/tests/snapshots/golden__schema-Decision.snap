@@ -1,0 +1,26 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What the user chose for one package that needs a decision (DATA-FLOW §3, CLI-SPEC §4).",
+  "oneOf": [
+    {
+      "const": "keep-compatible",
+      "description": "Accept the resolver's compatible version. The safe default, and the one that needs no\nextra click in the 4-click budget (UI-SPEC §5).",
+      "type": "string"
+    },
+    {
+      "const": "skip",
+      "description": "Drop the package from this plan entirely.",
+      "type": "string"
+    },
+    {
+      "const": "force-latest",
+      "description": "Take the latest anyway, knowingly breaking whatever declared the constraint\n(DISCLAIMER §2).",
+      "type": "string"
+    }
+  ],
+  "title": "Decision"
+}
