@@ -51,6 +51,17 @@ function Row({
       aria-selected={selected}
       data-state={state}
       data-pinned={pinned}
+      // UI-SPEC §8: Space toggles row selection. The row itself is the tab stop, not the
+      // checkbox — with 200 rows, tabbing through two controls each is not traversal, it is a
+      // punishment. `tabIndex={0}` plus this handler is what makes the row the unit.
+      tabIndex={0}
+      onKeyDown={(e) => {
+        if (e.key === ' ' && !pinned) {
+          // Otherwise the scroll container pages down under the focused row.
+          e.preventDefault()
+          onToggle(row.name)
+        }
+      }}
       style={style}
       className={`absolute top-0 left-0 flex w-full items-center gap-3 border-b border-border px-3 ${
         // UI-SPEC §4: up-to-date rows are dimmed. `unknown` is deliberately not dimmed —
@@ -68,6 +79,8 @@ function Row({
           onToggle(row.name)
         }}
         aria-label={row.name}
+        // Not a tab stop: the row is (see onKeyDown above). Still clickable and still announced.
+        tabIndex={-1}
         className="shrink-0 accent-accent disabled:opacity-40"
       />
 
