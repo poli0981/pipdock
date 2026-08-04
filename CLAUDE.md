@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 complete (core + CLI); M2 (Tauri GUI) starting**.
+Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 complete; M2 Stages 1–4 done, S5 next**.
 
 ## Read the docs before changing anything
 
@@ -61,15 +61,15 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 complete. M2 Stage 1 (IPC bridge) 2026-07-30, Stage 2 (Installed + Updates) and Stage 3 (the
-mutation spine) both 2026-08-04.** The app previews, decides, executes, streams and summarises over
-real commands — "update everything" is **4 clicks**, counted by hand. `docs/ROADMAP.md` Phase 2 has
-a table per stage and says where to pick up; read it before starting a slice.
+**M1 complete. M2 Stages 1–4 done** (IPC bridge 2026-07-30; Installed+Updates, the mutation spine
+and search+install all 2026-08-04). The app discovers, lists, previews, decides, executes, streams,
+summarises and installs over real commands. **"Update everything" is 4 clicks and "install one" is
+4 clicks**, both counted by hand in the running app; search is **22 ms median per keystroke**
+against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
+table per stage and says where to pick up; read it before starting a slice.
 
-Next is **S4 — search, the dock bay and install.** Its exit check is the one to design for *before*
-building: **< 50 ms per keystroke measured in the app**, which adds an IPC round trip SP-3 never
-measured. Decide the fallback (debounce plus rendering the previous result set) before taking the
-measurement, not after. All three Stage 1 deferrals are closed.
+Next is **S5 — uninstall, the guard dialog and the Pins screen**, and it is a small one: the pin
+commands already exist from S2, and DATA-FLOW §5's three-option dialog is fully specified.
 
 Three rules from S2/S3 that bind everything after them:
 
@@ -82,7 +82,12 @@ Three rules from S2/S3 that bind everything after them:
 - **A Tauri command's future must be `Send`, and `Store` is not `Sync`.** Never hold the store
   guard across an await — it does not compile at the command boundary, and where it does compile
   (inside core) it serializes every other command behind a network call. Read what you need, drop
-  the guard, then await. This is why `UpdateFlow::start` takes pins rather than a `&Store`.
+  the guard, then await. This is why `UpdateFlow::start` takes pins rather than a `&Store`, and why
+  `index::metadata`/`refresh` take the app-data path. It has bitten twice; assume it will again.
+- **Measure in `--release`, and say which build a number came from.** A debug build measures bounds
+  checks: the same index load is 572 ms in debug and 140 ms in release, and the same keystroke is
+  176 ms against 16 ms. A design was justified with a figure four times too large before anyone
+  noticed. `crates/pipdock-core/tests/search_latency.rs` refuses to run in debug for that reason.
 
 Things worth knowing before you change any of it:
 
@@ -100,6 +105,10 @@ Things worth knowing before you change any of it:
   a probe 10× slower than before (found by timing it), a size that was *wrong* rather than missing
   for editable installs and a package listed twice (both found by one real `pip install -e`), and
   every screen fetching twice on mount (found by logging what actually crossed the bridge).
+  Stage 3: a cancellation test that passed while the orphan lived on. Stage 4: an index load
+  reported four times too large because it was measured in debug, a keystroke budget that was
+  being missed by 30 ms, and a plan started from Search that resolved into a screen which does not
+  render it — the command ran, the flow parked, and the user saw nothing change.
 - **`probe.py` is on the hot path.** The Installed screen re-probes on every environment open, so
   anything added to `_dists()` is paid 200+ times per open. `Distribution.files` looks harmless and
   costs 10×; read the metadata files directly and measure before committing.
