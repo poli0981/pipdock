@@ -67,6 +67,45 @@
     "unusable": "This interpreter could not be read.",
     "selected": "Selected"
   },
+  "packages": {
+    "installedTitle": "Installed",
+    "updatesTitle": "Updates",
+    "tableLabel": "Packages",
+    "column": {
+      "name": "Package",
+      "version": "Version",
+      "latest": "Latest",
+      "size": "Size",
+      "status": "Status"
+    },
+    "badge": {
+      "update": "UPDATE",
+      "pinned": "pinned",
+      "pinnedDetail": "Pinned: left out of bulk updates. You can still update it on its own.",
+      "heldDetail": "Held at {{version}}: left out of bulk updates, and restated at this version in every plan."
+    },
+    "actions": {
+      "pin": "Pin this package",
+      "unpin": "Remove this pin",
+      "updateSelected": "Update selected",
+      "clearSelection": "Clear"
+    },
+    "updateSelectedSoon": "Previewing and applying updates arrives in a later version.",
+    "selected_one": "{{count}} selected",
+    "selected_other": "{{count}} selected",
+    "pinnedExcluded_one": "{{count}} pinned excluded",
+    "pinnedExcluded_other": "{{count}} pinned excluded",
+    "checkingUpdates": "Checking for updates…",
+    "loading": "Reading the environment…",
+    "empty": "no packages installed here",
+    "emptyHint": "This environment has nothing in it yet.",
+    "updatesEmpty": "all packages up to date",
+    "noEnvironment": "no environment selected",
+    "noEnvironmentHint": "Pick one on the Environments screen.",
+    "outdatedFailed": "Could not check for updates, so nothing is badged.",
+    "orphanOutdated_one": "{{count}} package has an update but is not in this listing.",
+    "orphanOutdated_other": "{{count}} packages have updates but are not in this listing."
+  },
   "settings": {
     "title": "Settings",
     "engine": "Engine",
