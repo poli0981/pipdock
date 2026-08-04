@@ -61,14 +61,23 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 complete. M2 Stage 1 (the IPC bridge) complete 2026-07-30.** The app runs: legal gate →
-Environments → Settings, over real commands. `docs/ROADMAP.md` Phase 2 has the full Stage 1 table
-and says where to pick up — read it before starting a slice.
+**M1 complete. M2 Stage 1 (IPC bridge) complete 2026-07-30; Stage 2 (Installed + Updates)
+complete 2026-08-04.** The app runs: legal gate → Environments → Installed → Updates → Settings,
+over real commands. `docs/ROADMAP.md` Phase 2 has the Stage 1 and Stage 2 tables and says where to
+pick up — read it before starting a slice.
 
-Next is **S2** (Installed + Updates, read-only), then **S3** (the mutation spine, the biggest
-slice). Three things are deliberately deferred to the slice that can verify them, and ROADMAP
-Phase 2 lists them: the `plan-progress` lifecycle enum, a Windows Job Object for whole-tree kill,
-and the post-cancel summary copy.
+Next is **S3, the mutation spine** — the biggest and riskiest slice. Three things are deliberately
+deferred to it because it is the first slice that can verify them: the `plan-progress` lifecycle
+enum, a Windows Job Object for whole-tree kill, and the post-cancel summary copy.
+
+Two S2 decisions bind S3 directly:
+
+- **"N pinned excluded" in the table is presentation, not enforcement.** DATA-FLOW §9.5 is enforced
+  by `pins::filter_upgrades` at the plan boundary. S3's preview must show the flow's
+  `excluded_pins()`, not the number the table computed, or the two will drift.
+- **Row state is three-valued** (`unknown` / `current` / `outdated`), because `pkg_list` is local
+  and `pkg_outdated` is networked. Anything that renders package state has the same obligation:
+  never assert a state you have not actually loaded yet.
 
 Things worth knowing before you change any of it:
 
@@ -79,10 +88,16 @@ Things worth knowing before you change any of it:
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no
   `SCHEMA_TYPES` property may contain `_`. Both fail at `cargo test`.
-- **Run it, don't just test it.** Every one of the four unplanned bugs found during Stage 1 came
-  from executing against a real environment or a real runner, not from reading code or passing
-  tests: the watchdog that never killed anything, `--json` that never parsed, attribution that
-  told 3.12 users something false, and a drift job that could not go green.
+- **Run it, don't just test it.** Every unplanned bug in Stage 1 *and* Stage 2 came from executing
+  against a real environment, a real runner or a real browser — never from reading code or from a
+  passing suite. Stage 1: the watchdog that never killed anything, `--json` that never parsed,
+  attribution that told 3.12 users something false, a drift job that could not go green. Stage 2:
+  a probe 10× slower than before (found by timing it), a size that was *wrong* rather than missing
+  for editable installs and a package listed twice (both found by one real `pip install -e`), and
+  every screen fetching twice on mount (found by logging what actually crossed the bridge).
+- **`probe.py` is on the hot path.** The Installed screen re-probes on every environment open, so
+  anything added to `_dists()` is paid 200+ times per open. `Distribution.files` looks harmless and
+  costs 10×; read the metadata files directly and measure before committing.
 
 ## Things that look like bugs but are not
 

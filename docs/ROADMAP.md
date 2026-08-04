@@ -149,9 +149,49 @@ Ten commits, `0ccee04..a553bf7`. Everything M2's screens stand on now exists, an
 
 **Four bugs turned up that were not in the plan**, all found by running things rather than reading them: the watchdog leak; `--json` unparseable because `snapshot … written` went to stdout; blocker attribution naming constraints from other Pythons (the SP-5 dogfood); and `updater:default` granted to a plugin whose pubkey was a placeholder.
 
-### Stage 2 onward — where to pick up
+### Stage 2 — Installed + Updates (read-only) — **done 2026-08-04**
 
-Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2 (Installed + Updates, read-only) is next and needs a virtualization library — `@tanstack/react-virtual` is the recommendation, and any addition must survive `npm audit --audit-level=high`.
+Three PRs, `d7da4d7..`. Both screens render from a real environment, and the slice's exit criteria
+are met.
+
+| | What landed |
+|---|---|
+| **Docs** | ARCHITECTURE §7's command list rewritten as a table of **32** — it was prose with `a\|b\|c` groupings, ambiguous enough that Stage 1 added `app_info` and `plan_decide` without amending it. Closes open owner decision #1. DATA-FLOW §7's "List installed" row corrected: it claimed an engine command **neither head has ever called**. |
+| **Core** | `engine::for_id` — the CLI held the only copy of engine selection plus a duplicate `KEY_ENGINE` and a byte-for-byte copy of `store::default_app_data`. `Dist.sizeBytes`, summed from RECORD. `PkgName` validates on deserialize. |
+| **Bridge** | `pkg_list`, `pkg_outdated`, `pin_list\|add\|remove`, registered and wrapped. `pkg_list` reads the probe, not the engine; both take a `PyEnv` so the outdated path never probes. |
+| **UI** | `PdBadge`, `PdEmptyState`, `PdPackageRow`, `PdPackageTable` (virtualized) — 8 of 16 components now exist. One screen serving both tabs, `useEnvStore` grown, EN+VI catalogs, `Space`/`Ctrl+A`. |
+| **L3** | The repo's first rendered-component tests, fed from fixtures generated out of the real Rust types by `cargo run -p xtask -- ipc-fixtures` and held current by a staleness test. |
+
+**Four bugs turned up that were not in the plan, three of them found by running:**
+
+1. **`Distribution.files` is a 10× trap.** The obvious way to sum RECORD took the probe from 551 ms
+   to **5,492 ms** on a 352-package environment — on the path the Installed screen runs on every
+   environment open. Parsing RECORD text directly costs 79 ms.
+2. **The naive size is wrong for editables, not merely missing.** A PEP 660 install has a *valid*
+   RECORD listing only its import shim: **240 bytes for a package whose sources are 8.1 MiB**.
+   Detected via `direct_url.json` and reported as absent, because a wrong number is worse than none.
+3. **A distribution could be listed twice.** An editable puts its own `.egg-info` on `sys.path`, so
+   `importlib.metadata` finds it there *and* at the venv's `.dist-info`. `pip list` shows it once.
+   For the table it is an ambiguous join key and two rows a user cannot tell apart.
+4. **Every screen fetched twice on mount.** React runs effects twice in development and the
+   `loadedFor` guard is set only *after* the await, so both runs proceed. `env_scan` had done this
+   since Stage 1, invisibly, because both scans return the same rows.
+
+**Two decisions worth knowing before S3:**
+
+- **Row state is three-valued, not two.** `pkg_list` is local, `pkg_outdated` is networked, so there
+  is a window where outdatedness is unknown. Treating it as "up to date" dims all 200 rows and
+  un-dims a handful a second later — visibly wrong, and untrue while it lasts.
+- **"N pinned excluded" is presentation, not enforcement.** DATA-FLOW §9.5 is enforced by
+  `pins::filter_upgrades` at the plan boundary. **S3's preview must report the flow's
+  `excluded_pins()`, not the number the table computed.**
+
+Also resolved: UI-SPEC §8's "select-all-visible", which has no meaning under virtualization. It is
+the current filtered set, and §8 now says so.
+
+### Stage 3 onward — where to pick up
+
+Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2 is done (above); **S3, the mutation spine, is next** — it is the biggest and riskiest slice, and the one everything since Stage 1 has been building toward.
 
 Three things are deliberately deferred and should be picked up **with the slice that can verify them**, not before:
 
