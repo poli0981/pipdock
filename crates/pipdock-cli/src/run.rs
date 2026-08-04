@@ -573,8 +573,9 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     let quiet = opts.quiet;
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if !quiet {
-                eprintln!("{}", event.line);
+            // The lifecycle markers carry no text; the CLI streams engine output only.
+            if let Some(line) = event.line().filter(|_| !quiet) {
+                eprintln!("{line}");
             }
         }
     });
@@ -836,8 +837,9 @@ pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
     let quiet = opts.quiet;
     tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if !quiet {
-                eprintln!("{}", event.line);
+            // The lifecycle markers carry no text; the CLI streams engine output only.
+            if let Some(line) = event.line().filter(|_| !quiet) {
+                eprintln!("{line}");
             }
         }
     });
@@ -1209,8 +1211,9 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     let quiet = opts.quiet;
     let pump = tokio::spawn(async move {
         while let Some(event) = rx.recv().await {
-            if !quiet {
-                eprintln!("{}", event.line);
+            // The lifecycle markers carry no text; the CLI streams engine output only.
+            if let Some(line) = event.line().filter(|_| !quiet) {
+                eprintln!("{line}");
             }
         }
     });

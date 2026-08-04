@@ -272,6 +272,7 @@ pub fn json_schema(type_name: &str) -> Result<serde_json::Value> {
         "SnapshotMeta" => crate::snapshot::Meta,
         "Hit" => crate::index::Hit,
         "PackageMeta" => crate::index::PackageMeta,
+        "ProgressEvent" => crate::engine::ProgressEvent,
         "Code" => crate::errors::Code,
     }
 }
@@ -292,6 +293,7 @@ pub const SCHEMA_TYPES: &[&str] = &[
     "SnapshotMeta",
     "Hit",
     "PackageMeta",
+    "ProgressEvent",
     "Code",
 ];
 
@@ -469,10 +471,14 @@ pub async fn execute(
         ..sink
     };
 
-    // Phase A.
+    // Phase A. The markers are emitted here rather than inside the adapter for the same reason
+    // `step` is: an adapter runs one command and cannot know its position in the plan.
+    let batch_sink = sink.at(0);
+    batch_sink.started(None, ExecMode::Batch);
     let batch = engine
-        .install(env, &pinned, ExecMode::Batch, sink.at(0))
+        .install(env, &pinned, ExecMode::Batch, batch_sink.clone())
         .await?;
+    batch_sink.finished(None, ExecMode::Batch, batch.status);
 
     // A cancelled Phase A must **not** fall through to Phase B. Isolating would re-run every
     // package the user just stopped, one at a time — the opposite of what cancelling means.
@@ -539,12 +545,14 @@ pub async fn execute(
             break;
         }
 
+        let step_sink = sink.at(index);
+        step_sink.started(Some(spec.name.clone()), ExecMode::Isolated);
         let step = engine
             .install(
                 env,
                 std::slice::from_ref(spec),
                 ExecMode::Isolated,
-                sink.at(index),
+                step_sink.clone(),
             )
             .await;
 
@@ -552,6 +560,11 @@ pub async fn execute(
         // here rather than inventing a "cancelled" catalog code keeps the summary honest without
         // widening the error catalog: it was not attempted to completion, so it is Skipped.
         if sink.is_cancelled() && step.is_err() {
+            step_sink.finished(
+                Some(spec.name.clone()),
+                ExecMode::Isolated,
+                StepStatus::Skipped,
+            );
             results.push(StepResult {
                 pkg: spec.name.clone(),
                 from: None,
@@ -563,7 +576,7 @@ pub async fn execute(
             continue;
         }
 
-        results.push(match step {
+        let result = match step {
             Ok(r) => r,
             // An engine that could not even be spawned is still one package's outcome here;
             // aborting would discard the packages that already succeeded.
@@ -575,7 +588,11 @@ pub async fn execute(
                 code: Some(e.code),
                 stderr_tail: e.stderr_tail,
             },
-        });
+        };
+        // Every StepStarted gets exactly one StepFinished, whichever way the step ended — the
+        // drawer closes a section on it and the live region counts it.
+        step_sink.finished(Some(spec.name.clone()), ExecMode::Isolated, result.status);
+        results.push(result);
     }
 
     let counts = ExecutionSummary::tally(&results);

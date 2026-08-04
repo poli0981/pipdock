@@ -16,7 +16,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use pipdock_core::engine::{Engine, ProgressSink};
+use pipdock_core::engine::{Engine, ProgressEvent, ProgressSink};
 use pipdock_core::errors::Result;
 use pipdock_core::model::{
     CheckFinding, CheckReport, Dist, EngineId, EngineInfo, EnvSource, ExecMode, OutdatedDist,
@@ -241,6 +241,77 @@ async fn run_with(
     .expect("execute");
     let _ = std::fs::remove_dir_all(&dir);
     summary
+}
+
+/// Run and collect every `plan-progress` event, rather than discarding them.
+async fn run_collecting(
+    engine: &FakeEngine,
+    packages: &[(&str, &str)],
+) -> (ExecutionSummary, Vec<ProgressEvent>) {
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let sink = ProgressSink::new(tx, 0, tokio_util::sync::CancellationToken::new());
+    let summary = run_with(engine, packages, sink).await;
+
+    let mut events = Vec::new();
+    // The sender is dropped with the sink inside `run_with`, so this drains and stops.
+    while let Some(e) = rx.recv().await {
+        events.push(e);
+    }
+    (summary, events)
+}
+
+#[tokio::test]
+async fn every_step_is_opened_and_closed_exactly_once() {
+    // The property the console drawer's sections and the "13 of 15 complete" live region both
+    // stand on. Neither can be recovered from the output text, which is why the payload became a
+    // lifecycle: a section that is never closed stays open forever, and a counter that misses a
+    // step never reaches its total.
+    let engine = FakeEngine::new(&["badone"]);
+    let (summary, events) = run_collecting(
+        &engine,
+        &[("good", "1.0"), ("badone", "1.0"), ("other", "2.0")],
+    )
+    .await;
+
+    // Phase A fails, so this is the isolated pass: one step per package, plus Phase A's own.
+    let started: Vec<usize> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProgressEvent::StepStarted { step, .. } => Some(*step),
+            _ => None,
+        })
+        .collect();
+    let finished: Vec<usize> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProgressEvent::StepFinished { step, .. } => Some(*step),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(started, finished, "every step opened must also be closed");
+    assert_eq!(
+        finished.len(),
+        summary.results.len() + 1,
+        "one marker pair per package, plus Phase A's"
+    );
+
+    // A failed step still closes, carrying the status the summary reports.
+    let closes: Vec<(String, StepStatus)> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProgressEvent::StepFinished {
+                pkg: Some(p),
+                status,
+                ..
+            } => Some((p.as_str().to_owned(), *status)),
+            _ => None,
+        })
+        .collect();
+    assert!(
+        closes.contains(&("badone".to_owned(), StepStatus::Failed)),
+        "the failing package must still close its section: {closes:?}"
+    );
 }
 
 #[tokio::test]

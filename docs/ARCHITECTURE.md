@@ -145,7 +145,19 @@ This table is the surface. A command that is not listed here does not exist; add
 | `logs_tail` | `string[]` | Tail of the in-memory log ring buffer, for the console drawer. |
 | `report_bug_url` | `string` | Prefilled GitHub issue URL (ERROR-CATALOG §4). Built in Rust so it cannot drift from `pipdock self report-bug`. **Nothing is ever sent automatically.** |
 
-Events (Tauri event channel): `plan-progress { step, pkg, phase, line }` streams live subprocess output to the in-app console; `scan-progress`; `health-progress`. Long operations are cancellable: `plan_cancel` kills the current child process group and marks remaining steps `Skipped(UserCancelled)` — already-completed steps stay applied (snapshot covers full revert).
+Events (Tauri event channel): `plan-progress` streams live subprocess output to the in-app console; `scan-progress`; `health-progress`.
+
+`plan-progress` carries a **tagged lifecycle**, not a bare line — amended in S3, where the console drawer and the live region were first built:
+
+| `kind` | Payload | Meaning |
+|---|---|---|
+| `stepStarted` | `step, total, pkg?, phase` | Opens a section in the console drawer |
+| `line` | `step, pkg?, phase, stream, line` | One line of engine output, verbatim and never localized |
+| `stepFinished` | `step, total, pkg?, phase, status` | Closes the section; advances the "13 of 15 complete" live region |
+
+It was originally specified as `{ step, pkg, phase, line }`, which made both of those features unimplementable: there was no event meaning "a step began" to group a section under, and none meaning "one finished" to count. Neither is recoverable from the text — engine output does not reliably name the package it concerns, and counting lines is not counting steps. Every step now emits exactly one `stepStarted`, any number of `line`s, and exactly one `stepFinished`, whichever way it ended. `stream` distinguishes stdout from stderr, which matters for uv in particular: uv writes its **plan** to stderr (SP-1), so stderr does not mean failure.
+
+Long operations are cancellable: `plan_cancel` trips the plan's token, which kills the child **and its whole process tree** (a Windows Job Object — `python -m pip` spawns build backends), and remaining steps are reported `Skipped` with `ExecutionSummary.cancelled` set. Already-completed steps stay applied; the snapshot covers full revert.
 
 ## 8. Execution model (two-phase)
 

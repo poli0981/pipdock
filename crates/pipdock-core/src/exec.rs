@@ -21,7 +21,7 @@ use tokio::io::{AsyncBufReadExt, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio_util::sync::CancellationToken;
 
-use crate::engine::{ProgressEvent, ProgressSink};
+use crate::engine::{ProgressEvent, ProgressSink, Stream};
 use crate::errors::{Code, PdError, Result};
 use crate::model::{ExecMode, PkgName};
 
@@ -275,10 +275,11 @@ impl Command {
                     while let Ok(Some(line)) = lines.next_line().await {
                         // Send failure means the UI stopped listening; keep capturing regardless
                         // so the summary and the log are still complete.
-                        let _ = sink.send(ProgressEvent {
+                        let _ = sink.send(ProgressEvent::Line {
                             step,
                             pkg: pkg.clone(),
                             phase,
+                            stream: Stream::Stdout,
                             line: line.clone(),
                         });
                         buf.push_str(&line);
@@ -296,10 +297,11 @@ impl Command {
                 if let Some(r) = reader {
                     let mut lines = BufReader::new(r).lines();
                     while let Ok(Some(line)) = lines.next_line().await {
-                        let _ = sink.send(ProgressEvent {
+                        let _ = sink.send(ProgressEvent::Line {
                             step,
                             pkg: pkg.clone(),
                             phase,
+                            stream: Stream::Stderr,
                             line: line.clone(),
                         });
                         buf.push_str(&line);
@@ -612,6 +614,40 @@ mod tests {
             grandchildren_alive(marker),
             0,
             "a grandchild outlived the watchdog"
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn each_line_says_which_stream_it_came_from() {
+        // The console drawer renders the two differently, and for uv the distinction is not a
+        // judgement: uv writes its *plan* to stderr (SP-1), so stderr does not mean failure.
+        // Needs a real subprocess — the `FakeEngine` used elsewhere returns results without ever
+        // producing output, which is how the first version of this test proved nothing.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let sink = ProgressSink::new(tx, 1, CancellationToken::new());
+
+        Command::new("cmd")
+            .args(["/C", "echo to-stdout& echo to-stderr 1>&2"])
+            .run_streaming(&sink, None, ExecMode::Batch)
+            .await
+            .expect("the command runs");
+        drop(sink);
+
+        let mut seen = Vec::new();
+        while let Some(event) = rx.recv().await {
+            if let ProgressEvent::Line { stream, line, .. } = event {
+                seen.push((stream, line.trim().to_owned()));
+            }
+        }
+
+        assert!(
+            seen.contains(&(Stream::Stdout, "to-stdout".to_owned())),
+            "stdout was not tagged as stdout: {seen:?}"
+        );
+        assert!(
+            seen.contains(&(Stream::Stderr, "to-stderr".to_owned())),
+            "stderr was not tagged as stderr: {seen:?}"
         );
     }
 

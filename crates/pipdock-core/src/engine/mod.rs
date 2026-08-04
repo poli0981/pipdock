@@ -16,7 +16,7 @@ use async_trait::async_trait;
 use crate::errors::Result;
 use crate::model::{
     CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
-    StepResult,
+    StepResult, StepStatus,
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 use tokio_util::sync::CancellationToken;
@@ -51,6 +51,30 @@ pub struct ProgressSink {
 }
 
 impl ProgressSink {
+    /// Announce that step `step` is starting.
+    ///
+    /// Emitted by the executor rather than the adapter: an adapter runs one command and cannot
+    /// know whether it is step 3 of 15, which is the same reason `step` itself lives here.
+    pub fn started(&self, pkg: Option<PkgName>, phase: ExecMode) {
+        let _ = self.tx.send(ProgressEvent::StepStarted {
+            step: self.step,
+            total: self.total,
+            pkg,
+            phase,
+        });
+    }
+
+    /// Announce that step `step` has finished, and how.
+    pub fn finished(&self, pkg: Option<PkgName>, phase: ExecMode, status: StepStatus) {
+        let _ = self.tx.send(ProgressEvent::StepFinished {
+            step: self.step,
+            total: self.total,
+            pkg,
+            phase,
+            status,
+        });
+    }
+
     /// A sink for a plan of `total` steps, starting at step zero.
     #[must_use]
     pub fn new(tx: EventSink, total: usize, cancel: CancellationToken) -> Self {
@@ -78,18 +102,90 @@ impl ProgressSink {
     }
 }
 
-/// A line of progress from a running engine command.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
-pub struct ProgressEvent {
-    /// Zero-based index of the step within the plan.
-    pub step: usize,
-    /// The package this line belongs to, absent for batch-wide output.
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub pkg: Option<PkgName>,
-    /// Which execution phase is running.
-    pub phase: ExecMode,
-    /// One line of the engine's stdout or stderr, verbatim and never localized.
-    pub line: String,
+/// Which stream a line came from.
+///
+/// The console drawer renders them differently, and for uv the distinction is load-bearing in a
+/// way it is not for pip: uv writes its **plan** to stderr (SP-1), so "stderr" here does not mean
+/// "something went wrong".
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "lowercase")]
+pub enum Stream {
+    /// The engine's stdout.
+    Stdout,
+    /// The engine's stderr.
+    Stderr,
+}
+
+/// One event on the `plan-progress` channel (ARCHITECTURE §7).
+///
+/// Deferred from Stage 1 to the slice that could verify it. It was a bare line, which made two
+/// documented features unimplementable: UI-SPEC §3's per-package section markers in the console
+/// drawer had nothing to mark a section with, and §8's "13 of 15 complete" live region had no
+/// event that meant "one finished". Neither can be recovered from the text — an engine's output
+/// does not reliably say which package it is about, and counting lines is not counting steps.
+///
+/// A tagged lifecycle instead: every step emits exactly one [`Self::StepStarted`], any number of
+/// [`Self::Line`]s, and exactly one [`Self::StepFinished`]. That makes the drawer's grouping and
+/// the live region's counter both mechanical rather than inferred.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum ProgressEvent {
+    /// A step is about to run. Opens a section in the console drawer.
+    StepStarted {
+        /// Zero-based index of the step within the plan.
+        step: usize,
+        /// How many steps the plan has, so the caller can render progress without counting.
+        total: usize,
+        /// The package this step is for, absent for a batch covering the whole set.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pkg: Option<PkgName>,
+        /// Which execution phase is running.
+        phase: ExecMode,
+    },
+    /// One line of the engine's output, verbatim and never localized (I18N §2).
+    Line {
+        /// Zero-based index of the step within the plan.
+        step: usize,
+        /// The package this line belongs to, absent for batch-wide output.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pkg: Option<PkgName>,
+        /// Which execution phase is running.
+        phase: ExecMode,
+        /// Which stream produced it.
+        stream: Stream,
+        /// The line itself.
+        line: String,
+    },
+    /// A step has finished. Closes its section, and advances the live region's counter.
+    StepFinished {
+        /// Zero-based index of the step within the plan.
+        step: usize,
+        /// How many steps the plan has.
+        total: usize,
+        /// The package this step was for.
+        #[serde(skip_serializing_if = "Option::is_none")]
+        pkg: Option<PkgName>,
+        /// Which execution phase produced it.
+        phase: ExecMode,
+        /// How it ended.
+        status: StepStatus,
+    },
+}
+
+impl ProgressEvent {
+    /// The text a plain consumer should show, if any.
+    ///
+    /// The CLI streams engine output to stderr and has no use for the markers; this keeps that a
+    /// one-liner rather than a match at every call site.
+    #[must_use]
+    pub fn line(&self) -> Option<&str> {
+        match self {
+            Self::Line { line, .. } => Some(line),
+            Self::StepStarted { .. } | Self::StepFinished { .. } => None,
+        }
+    }
 }
 
 /// The contract both adapters implement. See ARCHITECTURE §3.
