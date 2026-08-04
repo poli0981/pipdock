@@ -106,6 +106,53 @@
     "orphanOutdated_one": "{{count}} package has an update but is not in this listing.",
     "orphanOutdated_other": "{{count}} packages have updates but are not in this listing."
   },
+  "plan": {
+    "section": {
+      "upgrade": "Will upgrade ({{count}})",
+      "downgrade": "Will downgrade ({{count}})",
+      "new-install": "Will install ({{count}})",
+      "new-dependency": "New dependencies ({{count}})",
+      "needsDecision": "Needs a decision ({{count}})"
+    },
+    "decision": {
+      "keep-compatible": "Keep compatible",
+      "skip": "Skip",
+      "force-latest": "Force latest"
+    },
+    "status": {
+      "ok": "ok",
+      "failed": "failed",
+      "skipped": "skipped"
+    },
+    "heldBack": "held back",
+    "impossible": "impossible",
+    "blocker": "{{by}} requires {{constraint}}",
+    "keepCompatibleImpossible": "There is no compatible version to keep — this package can only be skipped or forced.",
+    "forceWarning_one": "Forcing this breaks {{names}}, which declared the constraint above.",
+    "forceWarning_other": "Forcing this breaks {{names}}, which declared the constraints above.",
+    "resolving": "Resolving…",
+    "previewTitle": "Preview",
+    "emptyPreview": "nothing to change",
+    "emptyPreviewHint": "The selected packages are already at the versions the resolver would choose.",
+    "roundsLeft_one": "{{count}} decision round left.",
+    "roundsLeft_other": "{{count}} decision rounds left.",
+    "roundsExhausted": "No decision rounds left. Confirm what is here, or go back and select less.",
+    "confirm": "Confirm ({{count}} changes)",
+    "applyDecisions": "Apply choices",
+    "console": "Console",
+    "progress": "{{done}} of {{total}} complete",
+    "executing": "Applying changes…",
+    "stop": "Stop",
+    "stopping": "Stopping…",
+    "summaryTitle": "Done",
+    "counts": "{{ok}} successful, {{failed}} failed, {{skipped}} skipped",
+    "cancelledDetail": "You stopped this part-way. Packages already installed stayed installed, and one may have been left half-written — the snapshot below restores the environment exactly as it was.",
+    "snapshotTaken": "Snapshot taken before any change:",
+    "checkFailed_one": "{{count}} dependency problem remains after this run.",
+    "checkFailed_other": "{{count}} dependency problems remain after this run.",
+    "checkFinding": "{{pkg}} requires {{requirement}}",
+    "done": "Back to packages"
+  },
   "settings": {
     "title": "Settings",
     "engine": "Engine",

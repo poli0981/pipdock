@@ -360,3 +360,7 @@ export const useUiStore = create<UiState>((set) => ({
   nav: 'environments',
   setNav: (nav) => set({ nav }),
 }))
+
+// The plan store lives in its own file: it is the largest of them and the only one holding a live
+// event subscription. Re-exported so `@/stores` stays the single import site.
+export { CONSOLE_LIMIT, apply, usePlanStore, type ConsoleLine, type PlanPhase } from '@/stores/plan'
