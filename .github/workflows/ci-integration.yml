@@ -188,6 +188,42 @@ jobs:
           }
           .\target\debug\pipdock.exe list --env .itest --json | ConvertFrom-Json | Out-Null
 
+      # Two probe claims that only a real editable install can test: it must be listed once
+      # (its own .egg-info joins the venv's .dist-info on sys.path), and it must report no
+      # size (its RECORD lists the import shim, not the sources — a few hundred bytes for a
+      # project of any size, which is worse than reporting nothing).
+      - name: End-to-end — an editable install is listed once, and without a size
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force .itest-editable\src\edmod | Out-Null
+          # An array rather than a here-string: a here-string's closing '@ must sit at column 0
+          # after YAML strips this block's indentation, which makes it break on a re-indent.
+          Set-Content .itest-editable\pyproject.toml @(
+            '[build-system]',
+            'requires = ["setuptools>=64"]',
+            'build-backend = "setuptools.build_meta"',
+            '[project]',
+            'name = "edmod"',
+            'version = "1.0.0"'
+          )
+          Set-Content .itest-editable\src\edmod\__init__.py '"""edmod."""'
+          # 2 MiB of real content, so a wrong size would be unmistakable.
+          Set-Content .itest-editable\src\edmod\payload.py ('DATA = "' + ('y' * 2MB) + '"')
+          .itest\Scripts\python.exe -m pip install --quiet -e .itest-editable
+
+          $dists = .\target\debug\pipdock.exe list --env .itest --json | ConvertFrom-Json
+          $ed = @($dists | Where-Object { $_.name -eq 'edmod' })
+          if ($ed.Count -ne 1) {
+            throw "edmod should be listed once, got $($ed.Count) — probe.py is not deduplicating"
+          }
+          if ($null -ne $ed[0].sizeBytes) {
+            throw "an editable install must report no size, got $($ed[0].sizeBytes) bytes"
+          }
+          $sized = @($dists | Where-Object { $null -ne $_.sizeBytes })
+          if ($sized.Count -lt 1) { throw "no distribution reported a size at all" }
+          Write-Host "$($dists.Count) distributions, $($sized.Count) with a size, edmod correctly without"
+
   fixture-drift:
     name: Re-capture against the latest engines
     # Weekly rather than nightly: it hits PyPI hard enough that daily would be rude, and engine
