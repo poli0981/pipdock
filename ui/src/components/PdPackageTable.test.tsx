@@ -14,17 +14,16 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { PdPackageTable } from '@/components/PdPackageTable'
-import type { Dist, OutdatedDist, Pin } from '@/ipc'
+import type { Pin } from '@/ipc'
 import { joinRows, type LoadState, type PackageRow } from '@/screens/rows'
 import pinFixture from '@/test/fixtures/pin_list.json'
 import listFixture from '@/test/fixtures/pkg_list.json'
 import outdatedFixture from '@/test/fixtures/pkg_outdated.json'
 
-const { rows: ROWS } = joinRows(
-  listFixture as Dist[],
-  outdatedFixture as OutdatedDist[],
-  pinFixture as Pin[],
-)
+// Only the pins need a cast: `PinMode` is a union, and JSON import inference widens
+// `"exclude"` to `string`. The other two fixtures type-check as they stand, which is itself a
+// small check that they still match the generated types.
+const { rows: ROWS } = joinRows(listFixture, outdatedFixture, pinFixture as Pin[])
 
 function setup(overrides: Partial<Parameters<typeof PdPackageTable>[0]> = {}) {
   const props = {
