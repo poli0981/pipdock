@@ -55,7 +55,7 @@ Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMR
     width: VIEWPORT.width,
     height: VIEWPORT.height,
     toJSON: () => ({}),
-  } as DOMRect
+  }
 }
 
 export { VIEWPORT }
