@@ -9,9 +9,10 @@ import { PdStatusLine } from '@/components/PdStatusLine'
 import type { NavKey } from '@/components/nav'
 import { PdEnvironments } from '@/screens/PdEnvironments'
 import { PdPackages } from '@/screens/PdPackages'
+import { PdPlanPanel } from '@/screens/PdPlanPanel'
 import { PdSearch } from '@/screens/PdSearch'
 import { PdSettings } from '@/screens/PdSettings'
-import { useEnvStore, useLegalStore, useUiStore } from '@/stores'
+import { useEnvStore, useLegalStore, usePlanStore, useUiStore } from '@/stores'
 
 /**
  * Which screen each tab shows. A lookup rather than a ternary chain: the chain's last branch was a
@@ -39,6 +40,13 @@ export function App() {
   const accepted = useLegalStore((s) => s.accepted)
   const checkConsent = useLegalStore((s) => s.check)
   const selected = useEnvStore((s) => s.selected)
+  const loadPackages = useEnvStore((s) => s.loadPackages)
+  const loadOutdated = useEnvStore((s) => s.loadOutdated)
+  const clearSelection = useEnvStore((s) => s.clearSelection)
+  // A plan belongs to the app, not to a screen: there is one at a time (PD-RES-003) and it can be
+  // started from Updates *or* from the Search dock bay. Owning it here is what stops an install
+  // resolving into nowhere because the tab that renders the preview is not the tab you are on.
+  const planPhase = usePlanStore((s) => s.phase)
 
   useEffect(() => {
     void checkConsent()
@@ -95,11 +103,21 @@ export function App() {
             can observe, and nesting one inside an already-scrolling <main> gives two scrollbars
             and an outer one whose content is already the virtualizer's full height. */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {SCREENS[nav] ?? (
+          {planPhase !== 'idle' ? (
+            <PdPlanPanel
+              onFinished={() => {
+                // The environment changed under whatever screen is behind this, so re-read it
+                // rather than showing the versions from before the run.
+                clearSelection()
+                void loadPackages()
+                void loadOutdated()
+              }}
+            />
+          ) : (SCREENS[nav] ?? (
             <p className="h-full overflow-auto p-6 font-mono text-text-dim">
               {`▸ ${t(`nav.${nav}`)}`}
             </p>
-          )}
+          ))}
         </main>
       </div>
 
