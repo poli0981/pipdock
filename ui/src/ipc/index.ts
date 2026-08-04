@@ -7,8 +7,8 @@
  *
  * Data types are generated from the Rust definitions into `./generated.ts` by
  * `cargo run -p xtask -- bindings`, and `cargo test` fails while that file is stale. Command
- * *signatures* are not derivable from a schema, so the wrappers below are hand-written — there are
- * 26 of them and each has one caller.
+ * *signatures* are not derivable from a schema, so the wrappers below are hand-written, one per
+ * entry in `COMMANDS`.
  */
 
 import { invoke } from '@tauri-apps/api/core'
@@ -27,6 +27,7 @@ export const COMMANDS = [
   'pkg_list',
   'pkg_outdated',
   'index_search',
+  'index_refresh',
   'pkg_metadata',
   'plan_resolve',
   'plan_decide',
@@ -38,16 +39,19 @@ export const COMMANDS = [
   'pin_add',
   'pin_remove',
   'snapshot_list',
+  'snapshot_create',
   'snapshot_diff',
   'snapshot_rollback',
   'health_run',
   'health_fix',
+  'engine_info',
+  'pip_upgrade',
   'settings_get',
   'settings_set',
-  'logs_tail',
-  'pip_upgrade',
   'legal_consent_get',
   'legal_consent_set',
+  'logs_tail',
+  'report_bug_url',
 ] as const
 
 export type Command = (typeof COMMANDS)[number]

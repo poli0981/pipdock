@@ -106,8 +106,44 @@ logs/pipdock.<date>.log   # tracing rolling files, 14-day retention
 
 ## 7. Tauri IPC surface
 
-Commands (all `async`, all returning `Result<T, PdError>` where `PdError` carries a catalog code):
-`env_scan`, `env_add_manual`, `env_probe`, `pkg_list`, `pkg_outdated`, `index_search`, `pkg_metadata`, `plan_resolve`, `plan_execute`, `plan_cancel`, `uninstall_guard`, `uninstall_execute`, `pin_list|add|remove`, `snapshot_list|diff|rollback`, `health_run`, `health_fix`, `settings_get|set`, `logs_tail`, `pip_upgrade`, `legal_consent_get|set`.
+Commands return `Result<T, PdError>` where `PdError` carries a catalog code, and are `async` except `app_info`, which is a compile-time constant. Each is a **thin** wrapper over a `pipdock_core` function — a wrapper that starts making decisions is logic the CLI will not inherit, and G5 promises the two heads never diverge.
+
+This table is the surface. A command that is not listed here does not exist; adding one means amending this section in the same commit. It was written as a prose list of 26 with `a|b|c` groupings, which made the count ambiguous and let two Stage 1 additions land undocumented — hence the table.
+
+| Command | Returns | Purpose |
+|---|---|---|
+| `app_info` | `AppInfo` | PipDock's version, and the hash of the legal documents this build ships against. |
+| `env_scan` | `EnvRow[]` | Discover environments, streaming `scan-progress`. A probe failure is reported on its own row, never fatal to the scan. |
+| `env_add_manual` | `EnvRow` | Persist an interpreter chosen through *Browse…*. |
+| `env_probe` | `EnvRow` | Probe one interpreter without persisting it. |
+| `pkg_list` | `Dist[]` | Installed distributions, read from `probe.py` rather than the engine — see §4 and DATA-FLOW §7. |
+| `pkg_outdated` | `OutdatedDist[]` | Outdated distributions, via the configured engine. |
+| `index_search` | `Hit[]` | Fuzzy search over the in-memory name index. |
+| `index_refresh` | `RefreshReport` | Re-download the PEP 691 name index. |
+| `pkg_metadata` | `PackageMeta` | Cached PyPI metadata for the details panel, with its freshness. |
+| `plan_resolve` | `FlowStep` | Begin an update or install flow: dry-run resolve, then derive held-back items. |
+| `plan_decide` | `FlowStep` | Apply the user's 3-way conflict decisions and re-resolve. |
+| `plan_execute` | `ExecutionSummary` | Take the snapshot, then run the two-phase execution (§8). |
+| `plan_cancel` | `()` | Trip the running plan's cancellation token. |
+| `uninstall_guard` | `GuardReport` | Reverse-dependency check over a removal set. |
+| `uninstall_execute` | `ExecutionSummary` | Snapshot, then remove. |
+| `pin_list` | `Pin[]` | Pins for an environment. |
+| `pin_add` | `()` | Add or replace a pin. |
+| `pin_remove` | `bool` | Remove a pin; reports whether one existed. |
+| `snapshot_list` | `SnapshotMeta[]` | Snapshots for an environment. |
+| `snapshot_create` | `SnapshotMeta` | Take a snapshot on demand, outside any plan. |
+| `snapshot_diff` | `Diff` | The environment against a snapshot. |
+| `snapshot_rollback` | `ExecutionSummary` | Restore a snapshot — itself snapshotted first, per DATA-FLOW §8. |
+| `health_run` | `CheckReport` | Run the Code Health tools against a project folder. |
+| `health_fix` | `ExecutionSummary` | Apply the gated `ruff` fix. |
+| `engine_info` | `EngineInfo[]` | Detected version and availability per engine. Settings shows both, so this returns both. |
+| `pip_upgrade` | `ExecutionSummary` | Upgrade pip itself in the selected environment. |
+| `settings_get` | `Settings` | Read stored settings. |
+| `settings_set` | `Settings` | Persist settings, returning what was actually stored rather than what was sent. |
+| `legal_consent_get` | `ConsentState` | Whether the legal gate can be skipped for this build's documents. |
+| `legal_consent_set` | `Consent` | Record acceptance. |
+| `logs_tail` | `string[]` | Tail of the in-memory log ring buffer, for the console drawer. |
+| `report_bug_url` | `string` | Prefilled GitHub issue URL (ERROR-CATALOG §4). Built in Rust so it cannot drift from `pipdock self report-bug`. **Nothing is ever sent automatically.** |
 
 Events (Tauri event channel): `plan-progress { step, pkg, phase, line }` streams live subprocess output to the in-app console; `scan-progress`; `health-progress`. Long operations are cancellable: `plan_cancel` kills the current child process group and marks remaining steps `Skipped(UserCancelled)` — already-completed steps stay applied (snapshot covers full revert).
 
