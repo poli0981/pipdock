@@ -16,7 +16,6 @@ import { useTranslation } from 'react-i18next'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdPackageTable } from '@/components/PdPackageTable'
-import { PdPlanPanel } from '@/screens/PdPlanPanel'
 import { outdatedOnly, selectableForUpdate } from '@/screens/rows'
 import { useEnvStore, usePlanStore } from '@/stores'
 
@@ -45,7 +44,6 @@ export function PdPackages({ mode }: PdPackagesProps) {
   const selectAll = useEnvStore((s) => s.selectAll)
   const clearSelection = useEnvStore((s) => s.clearSelection)
   const togglePin = useEnvStore((s) => s.togglePin)
-  const planPhase = usePlanStore((s) => s.phase)
   const planResolve = usePlanStore((s) => s.resolve)
 
   // The row's handler must return void. Wrapped here rather than in the store so `togglePin` stays
@@ -71,21 +69,6 @@ export function PdPackages({ mode }: PdPackagesProps) {
   const { selectable, pinnedExcluded } = selectableForUpdate(visible)
   const title = mode === 'updates' ? t('packages.updatesTitle') : t('packages.installedTitle')
 
-  // The preview *replaces* the table (UI-SPEC §4) rather than sitting beside it: one plan, one
-  // screen, and nothing to mis-click while a decision is pending.
-  if (planPhase !== 'idle') {
-    return (
-      <PdPlanPanel
-        onFinished={() => {
-          // The environment changed under the table, so re-read it rather than showing the
-          // versions from before the run.
-          clearSelection()
-          void loadPackages()
-          void loadOutdated()
-        }}
-      />
-    )
-  }
 
   if (selected === null) {
     return (

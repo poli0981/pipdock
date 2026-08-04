@@ -46,6 +46,9 @@ export function PdSearch() {
   const packages = useEnvStore((s) => s.packages)
   const rows = useEnvStore((s) => s.rows)
   const envSelected = useEnvStore((s) => s.selected)
+  const loadedFor = useEnvStore((s) => s.loadedFor)
+  const loadPackages = useEnvStore((s) => s.loadPackages)
+  const loadOutdated = useEnvStore((s) => s.loadOutdated)
   const planResolve = usePlanStore((s) => s.resolve)
 
   const envRow = rows.find((r) => r.interpreter === envSelected)
@@ -55,6 +58,17 @@ export function PdSearch() {
   useEffect(() => {
     field.current?.focus()
   }, [])
+
+  // DATA-FLOW §4's installed chips need the installed set, and a user who opens Search first has
+  // never loaded it — the chips then silently never appear and every result offers [Add],
+  // including packages they already have. The store's own guard makes this free when Installed
+  // has already run.
+  useEffect(() => {
+    if (envSelected !== null && loadedFor !== envSelected) {
+      void loadPackages()
+      void loadOutdated()
+    }
+  }, [envSelected, loadedFor, loadPackages, loadOutdated])
 
   // What is already installed, so a result can say so instead of offering [Add].
   const installed = useMemo(
