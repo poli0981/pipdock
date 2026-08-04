@@ -150,6 +150,20 @@ pub trait Engine: Send + Sync {
     async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult>;
 }
 
+/// The adapter for `id`.
+///
+/// Both heads reach this point by different routes — the CLI from `--engine` or the stored
+/// setting, the GUI from the stored setting alone — and both then need a `Box<dyn Engine>`. The
+/// mapping itself lives here so neither can grow its own idea of what "uv" selects (G5). The CLI
+/// previously owned the only copy, along with a second declaration of the settings key it reads.
+#[must_use]
+pub fn for_id(id: EngineId) -> Box<dyn Engine> {
+    match id {
+        EngineId::Pip => Box::new(pip::PipEngine),
+        EngineId::Uv => Box::new(uv::UvEngine),
+    }
+}
+
 /// pip's floor for `install --dry-run --report -`. Below this, planning is impossible and the app
 /// offers a one-click pip upgrade (`PD-ENG-002`, DATA-FLOW §7).
 pub const PIP_MIN_VERSION_FOR_REPORT: (u32, u32) = (22, 2);
