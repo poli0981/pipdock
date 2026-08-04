@@ -273,6 +273,8 @@ pub fn json_schema(type_name: &str) -> Result<serde_json::Value> {
         "Hit" => crate::index::Hit,
         "PackageMeta" => crate::index::PackageMeta,
         "ProgressEvent" => crate::engine::ProgressEvent,
+        "FlowStep" => crate::flow::FlowStep,
+        "Intent" => crate::flow::Intent,
         "Code" => crate::errors::Code,
     }
 }
@@ -294,6 +296,8 @@ pub const SCHEMA_TYPES: &[&str] = &[
     "Hit",
     "PackageMeta",
     "ProgressEvent",
+    "FlowStep",
+    "Intent",
     "Code",
 ];
 

@@ -51,17 +51,25 @@ use tokio_util::sync::CancellationToken;
 /// Names arrive as strings and are parsed here rather than by the caller, so both heads get the
 /// same `PD-PKG-002` on a malformed name and SECURITY §2's "validated before it reaches argv"
 /// holds for the GUI as well as the CLI.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "intent",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum Intent {
     /// `pipdock update`
     Update {
         /// Every outdated package.
         all: bool,
         /// Specific packages.
+        #[serde(default)]
         pkgs: Vec<String>,
         /// Ad-hoc exclusions on top of pins.
+        #[serde(default)]
         except: Vec<String>,
         /// `--strategy latest`.
+        #[serde(default)]
         force_latest: bool,
     },
     /// `pipdock install`
@@ -72,7 +80,9 @@ pub enum Intent {
 }
 
 /// Why a flow ended before there was anything to confirm.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(rename_all = "kebab-case")]
 pub enum NothingReason {
     /// The request was empty once pins and `--except` were applied.
@@ -82,7 +92,16 @@ pub enum NothingReason {
 }
 
 /// What the flow needs next.
-#[derive(Debug)]
+///
+/// Crosses IPC, so the GUI's two decision points are a round trip apart (see the module docs).
+/// Tagged on `step` rather than externally, because the frontend switches on it and a bare
+/// `{ needsDecisions: { … } }` would make every consumer unwrap before it can look.
+#[derive(Debug, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(
+    tag = "step",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase"
+)]
 pub enum FlowStep {
     /// Conflicts need a per-package choice. Feed the answers to [`UpdateFlow::decide`].
     NeedsDecisions {
@@ -91,6 +110,9 @@ pub enum FlowStep {
         /// How many decision rounds have been applied.
         round: u8,
         /// Rounds still available before the cap (DATA-FLOW §3).
+        ///
+        /// Surfaced because `MAX_CONFLICT_ROUNDS` was invisible: the cap existed in core and
+        /// nothing told the user it was approaching, so they would hit the wall unwarned.
         rounds_remaining: u8,
     },
     /// The preview is ready to confirm.
