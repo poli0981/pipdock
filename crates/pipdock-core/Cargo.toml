@@ -35,3 +35,7 @@ tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
 
 [target."cfg(windows)".dependencies]
 winreg = "0.56.0"
+# Cancelling a build has to reach the compilers `python -m pip` spawns, not just pip itself, and
+# on Windows that means a Job Object. A safe wrapper rather than hand-written unsafe, because
+# `unsafe_code = "forbid"` in the workspace lints is absolute and worth keeping that way.
+win32job = "2.0.3"

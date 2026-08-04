@@ -191,30 +191,30 @@ impl Command {
         }
         // Both stop paths below work by dropping the future that owns the child, and a tokio
         // `Child` does *not* kill on drop by default. Without this the 600 s watchdog left pip
-        // running: the future went away, the process did not. That was a live leak independent
-        // of cancellation, and this is the whole fix for it.
+        // running: the future went away, the process did not.
         //
-        // Known limit, and it is worse than "the grandchild leaks": measured while writing the
-        // tests below, a `cmd.exe /C ping -n 30` cancelled after 200 ms took the full 30 s to
-        // return. Killing the shell does not kill `ping`, and the surviving grandchild holds the
-        // inherited stdout pipe open, so the read never reaches EOF. Cancellation is not just
-        // incomplete there — it does not appear to happen at all.
-        //
-        // Killing a whole tree on Windows needs a Job Object with
-        // JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE. `python -m pip` spawns build backends and
-        // compilers, so that is a real gap, tracked as follow-up. What this does cover is the
-        // common case — a network-blocked engine, which is the one users actually cancel.
+        // This reaches the direct child. Everything it spawned is [`TreeGuard`]'s job.
         cmd.kill_on_drop(true);
         cmd
     }
 
-    /// Run to completion, capturing output.
+    /// Run to completion, capturing output. See [`TreeGuard`] for what "stop" means here.
     ///
     /// # Errors
     /// `PD-ENG-001` when the program cannot be spawned, `PD-INT-001` when the watchdog fires.
     pub async fn run(&self) -> Result<Output> {
+        // Spawned rather than `.output()`ed, so the child can be put in a job before it is waited
+        // on. `.output()` owns the child and never lends out a handle.
+        let child = self.build().spawn().map_err(|e| {
+            PdError::new(
+                Code::EngNotFound,
+                format!("could not run {}: {e}", self.program.display()),
+            )
+        })?;
+        let tree = TreeGuard::attach(&child);
+
         let out = tokio::select! {
-            out = self.build().output() => out,
+            out = child.wait_with_output() => out,
             () = tokio::time::sleep(self.timeout) => {
                 return Err(self.stopped(&format!("timed out after {:?}", self.timeout)));
             }
@@ -222,6 +222,7 @@ impl Command {
                 return Err(self.stopped("cancelled"));
             }
         };
+        drop(tree);
         let out = out.map_err(|e| {
             PdError::new(
                 Code::EngNotFound,
@@ -257,6 +258,9 @@ impl Command {
                 format!("could not run {}: {e}", self.program.display()),
             )
         })?;
+        // Held until this function returns. Dropping it — which the timeout and cancel arms below
+        // do by returning — terminates the whole tree, not just `child`.
+        let _tree = TreeGuard::attach(&child);
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
@@ -330,6 +334,54 @@ impl Command {
             stdout,
             stderr,
         })
+    }
+}
+
+/// Kills a spawned command **and everything it spawned** when dropped.
+///
+/// `kill_on_drop` reaches the direct child only, and for an engine that is not enough:
+/// `python -m pip` spawns build backends and compilers for any source distribution, so killing
+/// pip leaves those running. Worse than a leak — a surviving grandchild holds the stdout pipe it
+/// inherited, so the parent's read never reaches EOF and cancellation does not appear to happen at
+/// all. Measured before this existed: `cmd.exe /C ping -n 30` cancelled after 200 ms took the full
+/// 30 s to return.
+///
+/// A Windows Job Object with `JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE` fixes it: a process assigned to
+/// a job puts its own children in the same job, and closing the last handle terminates all of
+/// them. Dropping this guard closes that handle.
+///
+/// Deferred from Stage 1 to the slice that could verify it — cancelling a build is the case that
+/// needs it, and S3 is where builds happen.
+#[cfg(windows)]
+struct TreeGuard(#[allow(dead_code, reason = "the drop is the whole point")] win32job::Job);
+
+#[cfg(windows)]
+impl TreeGuard {
+    /// Put `child`, and everything it goes on to spawn, into a job that dies with this guard.
+    ///
+    /// `None` when the job cannot be created or the process cannot be assigned — which is not
+    /// worth failing a command over, because the fallback is exactly the previous behaviour:
+    /// `kill_on_drop` still ends the direct child.
+    fn attach(child: &tokio::process::Child) -> Option<Self> {
+        let handle = child.raw_handle()?;
+        let mut info = win32job::ExtendedLimitInfo::new();
+        info.limit_kill_on_job_close();
+        let job = win32job::Job::create_with_limit_info(&info).ok()?;
+        // win32job takes the HANDLE as an isize; `raw_handle()` hands back a pointer.
+        job.assign_process(handle as isize).ok()?;
+        Some(Self(job))
+    }
+}
+
+/// Non-Windows builds have no job objects; v1 is Windows-only, and this keeps the call sites
+/// platform-free rather than sprinkling `cfg` through them.
+#[cfg(not(windows))]
+struct TreeGuard;
+
+#[cfg(not(windows))]
+impl TreeGuard {
+    fn attach(_child: &tokio::process::Child) -> Option<Self> {
+        None
     }
 }
 
@@ -427,14 +479,47 @@ mod tests {
 
     /// A command that sleeps far longer than any test should wait.
     ///
-    /// Spawned **directly**, not through `cmd.exe`. Wrapping it makes the sleeper a grandchild,
-    /// and killing the shell does not kill the grandchild — the run then blocks until the
-    /// grandchild exits on its own. That is exactly the process-tree limitation documented on
-    /// `build()`, and putting it in a test fixture would measure the limitation instead of the
-    /// behaviour under test.
+    /// Spawned **directly**, so this measures cancellation of the child itself.
+    /// [`a_slow_grandchild`] is the tree case.
     fn a_slow_command() -> Command {
         // `ping -n` is the sleep that exists on every Windows install.
         Command::new("ping").args(["-n", "30", "127.0.0.1"])
+    }
+
+    /// The same sleep, one level down: `cmd.exe` is the child, `ping` is the grandchild.
+    ///
+    /// The shape that matters in production — `python -m pip` is the child and a build backend is
+    /// the grandchild. `marker` is a loopback address used only to identify this exact process
+    /// again in [`grandchildren_alive`].
+    #[cfg(windows)]
+    fn a_slow_grandchild(marker: &str) -> Command {
+        Command::new("cmd").args(["/C", &format!("ping -n 30 {marker}")])
+    }
+
+    /// How many processes are still running with `marker` on their command line.
+    ///
+    /// **Wall-clock timing cannot answer this.** Both the cancel and the watchdog arm return as
+    /// soon as their future resolves, so `run()` comes back in milliseconds whether or not the
+    /// tree died — the first version of this test passed while taking 29 seconds, which is how
+    /// the mistake surfaced. Whether the grandchild is still alive is the only observable that
+    /// distinguishes the two outcomes, so ask the OS.
+    #[cfg(windows)]
+    fn grandchildren_alive(marker: &str) -> usize {
+        let out = std::process::Command::new("powershell")
+            .args([
+                "-NoProfile",
+                "-Command",
+                &format!(
+                    "@(Get-CimInstance Win32_Process -Filter \"Name='PING.EXE'\" | \
+                     Where-Object {{ $_.CommandLine -like '*{marker}*' }}).Count"
+                ),
+            ])
+            .output()
+            .expect("powershell runs");
+        String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse()
+            .unwrap_or(0)
     }
 
     #[tokio::test]
@@ -479,6 +564,54 @@ mod tests {
             started.elapsed() < Duration::from_secs(5),
             "the child outlived cancellation: the run took {:?}, and the command sleeps for 30 s",
             started.elapsed()
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn cancelling_kills_the_grandchildren_too() {
+        // The gap `TreeGuard` closes, and the one that matters for a real cancel: `python -m pip`
+        // spawns build backends, so killing pip alone leaves compilers running.
+        let marker = "127.0.0.77";
+        let token = CancellationToken::new();
+        let cmd = a_slow_grandchild(marker).cancel(token.clone());
+
+        let handle = tokio::spawn(async move { cmd.run().await });
+        tokio::time::sleep(Duration::from_millis(700)).await;
+        assert!(
+            grandchildren_alive(marker) > 0,
+            "the fixture never started, so this test proves nothing"
+        );
+
+        token.cancel();
+        let result = handle.await.expect("task joins");
+        assert!(result.is_err(), "a cancelled run must not report success");
+
+        // Termination is asynchronous; give the job a moment to take the tree down.
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert_eq!(
+            grandchildren_alive(marker),
+            0,
+            "a grandchild outlived cancellation — the job object did not take the tree with it"
+        );
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn the_watchdog_also_reaches_a_grandchild() {
+        // Same tree, stopped by the other path. Both exits work by dropping the future that owns
+        // the guard, but only one of them was ever exercised.
+        let marker = "127.0.0.78";
+        let cmd = a_slow_grandchild(marker).timeout(Duration::from_millis(600));
+
+        let result = cmd.run().await;
+        assert!(result.is_err(), "the watchdog must stop the run");
+
+        tokio::time::sleep(Duration::from_millis(800)).await;
+        assert_eq!(
+            grandchildren_alive(marker),
+            0,
+            "a grandchild outlived the watchdog"
         );
     }
 
