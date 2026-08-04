@@ -1,0 +1,57 @@
+{
+  "step": "needsDecisions",
+  "report": {
+    "changes": [
+      {
+        "name": "pandas",
+        "from": "2.1.4",
+        "to": "2.3.0",
+        "kind": "upgrade"
+      },
+      {
+        "name": "requests",
+        "from": "2.28.0",
+        "to": "2.32.3",
+        "kind": "upgrade"
+      },
+      {
+        "name": "urllib3",
+        "from": "2.2.0",
+        "to": "1.26.20",
+        "kind": "downgrade"
+      },
+      {
+        "name": "tzdata",
+        "to": "2025.1",
+        "kind": "new-dependency"
+      },
+      {
+        "name": "httpx",
+        "to": "0.28.1",
+        "kind": "new-install"
+      }
+    ],
+    "heldBack": [
+      {
+        "pkg": "numpy",
+        "resolved": "1.26.4",
+        "latest": "2.5.1",
+        "blockers": [
+          {
+            "by": "scipy",
+            "constraint": "numpy<1.28.0,>=1.21.6"
+          }
+        ]
+      }
+    ],
+    "impossible": {
+      "packages": [
+        "oldlib"
+      ],
+      "explanation": "no version of oldlib is compatible with python 3.12"
+    },
+    "raw": ""
+  },
+  "round": 0,
+  "roundsRemaining": 3
+}

@@ -1,0 +1,38 @@
+{
+  "planId": "update-abc12345",
+  "phase": "isolated",
+  "results": [
+    {
+      "pkg": "pandas",
+      "to": "2.3.0",
+      "status": "ok"
+    },
+    {
+      "pkg": "requests",
+      "to": "2.32.3",
+      "status": "ok"
+    },
+    {
+      "pkg": "oldlib",
+      "to": "2.0.0",
+      "status": "failed",
+      "code": "PD-BLD-002",
+      "stderrTail": "metadata-generation-failed"
+    },
+    {
+      "pkg": "httpx",
+      "to": "0.28.1",
+      "status": "skipped"
+    }
+  ],
+  "check": {
+    "ok": true,
+    "findings": []
+  },
+  "counts": {
+    "ok": 2,
+    "failed": 1,
+    "skipped": 1
+  },
+  "cancelled": true
+}
