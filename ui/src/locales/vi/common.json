@@ -132,6 +132,8 @@
     "PD-ENV-001": "Không tìm thấy hoặc không chạy được trình thông dịch đó.",
     "PD-ENV-002": "Bản Python này do hệ điều hành quản lý.",
     "PD-ENV-003": "PipDock không đọc được môi trường này.",
+    "PD-RES-003": "Đang có một kế hoạch chạy dở. Hãy đợi nó xong, hoặc dừng nó trước.",
+    "PD-SNP-001": "Không ghi được ảnh chụp, nên không có gì bị thay đổi.",
     "PD-INT-001": "PipDock gặp lỗi nội bộ.",
     "unknown": "Đã xảy ra lỗi ngoài dự kiến."
   }

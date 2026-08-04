@@ -10,11 +10,16 @@
 
 use pipdock_core::engine;
 use pipdock_core::envs::{self, ScanProgress};
+use pipdock_core::errors::Code;
+use pipdock_core::flow;
 use pipdock_core::model::EnvSource;
 use pipdock_core::pins::{self, Pin};
+use pipdock_core::plan::{Decision, ExecutionSummary};
 use pipdock_core::settings::{self, Consent, Settings};
-use pipdock_core::{PdError, PyEnv};
+use pipdock_core::snapshot;
+use pipdock_core::{PdError, PkgName, PyEnv};
 use tauri::Emitter as _;
+use tokio_util::sync::CancellationToken;
 
 use crate::state::AppState;
 
@@ -233,6 +238,173 @@ pub async fn pin_remove(
     let name = pipdock_core::PkgName::parse(&pkg)?;
     let store = state.store.lock().await;
     Ok(pins::remove(&store, &env_hash, &name)?)
+}
+
+/// What `plan_execute` returns: the summary, plus the snapshot it took first.
+///
+/// The snapshot id is not in `ExecutionSummary` because the CLI prints it *before* execution
+/// starts (DATA-FLOW §3 draws them as distinct states), and the summary sheet needs it afterwards
+/// to offer the rollback. One envelope beats a second command to go and look it up.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ExecutionOutcome {
+    /// The summary (DATA-FLOW §6).
+    pub summary: ExecutionSummary,
+    /// The snapshot taken before anything was mutated, absent only when waived.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub snapshot: Option<snapshot::Meta>,
+}
+
+/// Begin an update or install: resolve, and derive what needs a decision.
+///
+/// The first of the four calls that drive one `UpdateFlow` (DATA-FLOW §3). The flow is parked in
+/// `AppState` between them, because it is resumable and IPC is not.
+///
+/// # Errors
+/// `PD-RES-003` when a plan is already in flight, `PD-ENV-002` for a PEP 668 environment — checked
+/// before any engine command runs — and whatever the resolve itself raises.
+#[tauri::command]
+pub async fn plan_resolve(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+    intent: flow::Intent,
+) -> Wire<flow::FlowStep> {
+    // Claiming before any work means a second resolve is refused rather than racing this one.
+    // Whatever flow was parked is dropped: starting a new plan abandons the old preview, which is
+    // what the user just asked for.
+    let _ = state.claim().await?;
+
+    let cancel = CancellationToken::new();
+    state.set_cancel(Some(cancel));
+
+    // Both store reads happen up front and the guard is dropped before any await. `Store` is not
+    // `Sync`, so a future holding one is not `Send` and a Tauri command cannot return it — which
+    // is what forced `UpdateFlow::start` to take the pins rather than the store.
+    let (engine, env_pins) = {
+        let store = state.store.lock().await;
+        let engine = engine::for_id(settings::load(&store)?.engine);
+        let env_pins = pins::list(&store, &envs::env_hash(&env.interpreter))?;
+        (engine, env_pins)
+    };
+
+    match flow::UpdateFlow::start(env, engine, &intent, &env_pins).await {
+        Ok((flow, step)) => {
+            state.park(Box::new(flow)).await;
+            Ok(step)
+        }
+        Err(e) => {
+            // Every failure path releases the slot, or the session refuses plans forever.
+            state.release().await;
+            Err(e.into())
+        }
+    }
+}
+
+/// Apply the user's 3-way conflict choices and re-resolve (DATA-FLOW §3's decision loop).
+///
+/// # Errors
+/// `PD-RES-003` when another plan is in flight, `PD-PKG-002` for a name that is not a package,
+/// `PD-INT-001` when there is no plan to decide on.
+#[tauri::command]
+pub async fn plan_decide(
+    state: tauri::State<'_, AppState>,
+    decisions: std::collections::BTreeMap<String, Decision>,
+) -> Wire<flow::FlowStep> {
+    let mut flow = state.claim().await?.ok_or_else(no_plan)?;
+
+    let parsed = decisions
+        .into_iter()
+        .map(|(name, decision)| PkgName::parse(&name).map(|pkg| (pkg, decision)))
+        .collect::<pipdock_core::Result<std::collections::BTreeMap<_, _>>>();
+
+    let parsed = match parsed {
+        Ok(p) => p,
+        Err(e) => {
+            // The flow is still good — only the argument was bad, so park it rather than losing
+            // the preview the user is looking at.
+            state.park(flow).await;
+            return Err(e.into());
+        }
+    };
+
+    match flow.decide(&parsed).await {
+        Ok(step) => {
+            state.park(flow).await;
+            Ok(step)
+        }
+        Err(e) => {
+            state.release().await;
+            Err(e.into())
+        }
+    }
+}
+
+/// Take the snapshot, then run the plan (ARCHITECTURE §8's two phases).
+///
+/// Streams `plan-progress` throughout. **The snapshot is not optional here** — `--no-snapshot` is
+/// a CLI waiver for disposable environments and has no GUI surface, so DATA-FLOW §9.2 holds
+/// unconditionally: a snapshot failure aborts with `PD-SNP-001` and executes nothing.
+///
+/// # Errors
+/// `PD-SNP-001` when the snapshot cannot be written, `PD-RES-002` when the preview went stale or
+/// the environment drifted, `PD-INT-001` when there is no plan to execute.
+#[tauri::command]
+pub async fn plan_execute(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Wire<ExecutionOutcome> {
+    let mut flow = state.claim().await?.ok_or_else(no_plan)?;
+    state.set_cancel(Some(flow.cancel_handle()));
+
+    let snapshot = match flow
+        .take_snapshot(flow::SnapshotPolicy::Take, &state.app_data)
+        .await
+    {
+        Ok(meta) => meta,
+        Err(e) => {
+            state.release().await;
+            return Err(e.into());
+        }
+    };
+
+    // Forward every event to the webview. The receiver lives for the length of the execution and
+    // the sender dies with it, so this task ends on its own.
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let emitter = app.clone();
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            // A UI that stopped listening is not a reason to abandon the install.
+            let _ = emitter.emit("plan-progress", &event);
+        }
+    });
+
+    let result = flow.execute(tx).await;
+    state.release().await;
+
+    Ok(ExecutionOutcome {
+        summary: result?,
+        snapshot,
+    })
+}
+
+/// Stop the plan that is running (DATA-FLOW §3: allowed while resolving or executing).
+///
+/// Returns whether anything was actually in flight, so the UI can tell "stopped it" from "there
+/// was nothing to stop" rather than guessing.
+///
+/// Never fails: cancelling something that already finished is not an error, and making it one
+/// would mean the UI has to race the thing it is trying to stop.
+#[tauri::command]
+pub fn plan_cancel(state: tauri::State<'_, AppState>) -> bool {
+    state.cancel_current()
+}
+
+/// There is no parked plan — the UI called out of order, or a previous call already consumed it.
+fn no_plan() -> PdError {
+    PdError::new(
+        Code::IntUnexpected,
+        "no plan is in progress; resolve one first",
+    )
 }
 
 /// Read the stored settings.

@@ -99,6 +99,15 @@ pub enum Code {
     /// Plan older than 10 minutes, or the env's probe hash changed since the preview.
     #[serde(rename = "PD-RES-002")]
     ResPlanStale,
+    /// A plan is already resolving or executing in this session.
+    ///
+    /// The GUI drives one resumable flow across several IPC calls, so "start a plan" and "run the
+    /// plan" are different messages arriving at different times — nothing structurally stops a
+    /// second one arriving in between. Refusing is the only safe answer: two concurrent plans
+    /// would interleave engine commands against one environment, and DATA-FLOW §9.3's staleness
+    /// check would be comparing against a set the other plan is busy changing.
+    #[serde(rename = "PD-RES-003")]
+    ResPlanInFlight,
 
     // -- PD-BLD: build ------------------------------------------------------
     /// MSVC build tools required but absent.
@@ -195,6 +204,7 @@ impl Code {
             Self::EngUnclassified => "PD-ENG-999",
             Self::ResImpossible => "PD-RES-001",
             Self::ResPlanStale => "PD-RES-002",
+            Self::ResPlanInFlight => "PD-RES-003",
             Self::BldMsvcMissing => "PD-BLD-001",
             Self::BldBackendFailed => "PD-BLD-002",
             Self::BldWheelFailed => "PD-BLD-003",
@@ -230,7 +240,7 @@ impl Code {
             | Self::EngPipTooOld
             | Self::EngUvShapeUnknown
             | Self::EngUnclassified => Area::Eng,
-            Self::ResImpossible | Self::ResPlanStale => Area::Res,
+            Self::ResImpossible | Self::ResPlanStale | Self::ResPlanInFlight => Area::Res,
             Self::BldMsvcMissing | Self::BldBackendFailed | Self::BldWheelFailed => Area::Bld,
             Self::PkgRequiresPython
             | Self::PkgNotFound
@@ -259,6 +269,7 @@ impl Code {
         Self::EngUvShapeUnknown,
         Self::ResImpossible,
         Self::ResPlanStale,
+        Self::ResPlanInFlight,
         Self::BldMsvcMissing,
         Self::BldBackendFailed,
         Self::BldWheelFailed,
@@ -535,7 +546,7 @@ mod tests {
     fn every_variant_is_listed_in_all() {
         // `ALL` drives the fixture-coverage gate, so a variant missing from it would silently
         // escape that gate. There is no derive for "enumerate variants", hence this count check.
-        assert_eq!(Code::ALL.len(), 30, "add the new variant to Code::ALL");
+        assert_eq!(Code::ALL.len(), 31, "add the new variant to Code::ALL");
     }
 
     #[test]
@@ -685,7 +696,7 @@ mod tests {
         // Rust has 30, docs/ERROR-CATALOG.md tabulates 28 (it folds PD-HLT-001..003 into one
         // row) and CLAUDE.md used to say 25. Pin the number so the next person adding a code has
         // to notice the docs exist.
-        assert_eq!(Code::ALL.len(), 30);
+        assert_eq!(Code::ALL.len(), 31);
         let wire: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(
             wire.len(),

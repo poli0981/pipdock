@@ -142,6 +142,10 @@ fn no_code_without_a_fixture() {
             "plan: report older than PLAN_MAX_AGE or env drifted",
         ),
         (
+            "PD-RES-003",
+            "app::state: a second plan arrived while one was already in flight",
+        ),
+        (
             "PD-PKG-001",
             "compat: Requires-Python enforced by PipDock, not by the engine",
         ),

@@ -43,7 +43,6 @@ use crate::model::{Dist, OutdatedDist, PkgName, PyEnv, Spec};
 use crate::pins::{self, Pin};
 use crate::plan::{self, Decision, PlanRequest, ResolutionReport, Strategy};
 use crate::snapshot::{self, Snapshot, SnapshotProof};
-use crate::store::Store;
 use tokio_util::sync::CancellationToken;
 
 /// What the user asked for, before it becomes a [`PlanRequest`].
@@ -174,14 +173,20 @@ pub struct UpdateFlow {
 impl UpdateFlow {
     /// Probe, build the request, and resolve once.
     ///
+    /// Takes the pins rather than the [`Store`] they came from. That is not only tidier — it is
+    /// required. `Store` wraps a `rusqlite::Connection` and is `Send` but **not `Sync`**, so a
+    /// future holding a `&Store` across an await is not `Send`, and a Tauri command must be. The
+    /// caller reads the pins first, which is one synchronous line, and the flow no longer reaches
+    /// into a database at all — it can be driven in a test without one.
+    ///
     /// # Errors
     /// `PD-ENV-002` when the environment is externally managed (PEP 668), which is checked before
-    /// any engine command runs. Otherwise propagates probe, pin-store and engine failures.
+    /// any engine command runs. Otherwise propagates probe and engine failures.
     pub async fn start(
         env: PyEnv,
         engine: Box<dyn Engine>,
         intent: &Intent,
-        store: &Store,
+        pins: &[Pin],
     ) -> Result<(Self, FlowStep)> {
         let env_hash = crate::envs::env_hash(&env.interpreter);
 
@@ -199,9 +204,7 @@ impl UpdateFlow {
         // it a `python_version < "3.11"` branch is reported as a blocker on 3.12 (SP-5 dogfood).
         let graph = ReverseDeps::build_for(&probed.dists, &probed.env.python_version);
         let outdated = engine.list_outdated(&env).await?;
-        let pin_list = pins::list(store, &env_hash)?;
-
-        let (req, excluded_pins) = build_request(intent, &outdated, &pin_list)?;
+        let (req, excluded_pins) = build_request(intent, &outdated, pins)?;
         let plan_id = format!("update-{env_hash:.8}");
 
         let mut flow = Self {

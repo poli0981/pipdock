@@ -45,6 +45,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "PackageMeta",
     "ProgressEvent",
     "FlowStep",
+    "Decision",
     "Intent",
     "Code",
 ];
