@@ -1,0 +1,26 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "How fresh a metadata answer is, so the UI can badge it (UI-SPEC §7).",
+  "oneOf": [
+    {
+      "const": "fresh",
+      "description": "Fetched just now.",
+      "type": "string"
+    },
+    {
+      "const": "cached",
+      "description": "Served from cache, still inside the TTL.",
+      "type": "string"
+    },
+    {
+      "const": "stale",
+      "description": "Served from cache because the network was unreachable. The UI shows an offline badge and\nthe cached-at time rather than an error, because search itself still works.",
+      "type": "string"
+    }
+  ],
+  "title": "Freshness"
+}

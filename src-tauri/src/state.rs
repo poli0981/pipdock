@@ -17,6 +17,7 @@ use std::path::PathBuf;
 
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::flow::UpdateFlow;
+use pipdock_core::index::NameIndex;
 use pipdock_core::store::Store;
 use tokio_util::sync::CancellationToken;
 
@@ -46,12 +47,41 @@ impl PlanSlot {
     }
 }
 
+/// How far the in-memory name index has got.
+///
+/// **Measured on the real 858k-project index: `NameIndex::load` costs 613 ms** — twelve times the
+/// entire per-keystroke budget, and SP-3 had already ruled out the alternative (scanning SQLite
+/// per keystroke measured 218 ms against 50 ms). So it is loaded once and held, and the only
+/// question was when to pay for it.
+///
+/// The answer is on demand, with this state as the honest account of it: a user who never opens
+/// Search never pays, and one who does gets the field immediately with a note rather than a
+/// frozen window. Typing two or three characters takes about as long as the load, so in practice
+/// the note is rarely seen — but `index_search` must **never** wait for it, which is what having
+/// a state rather than an `Option<NameIndex>` and a lock enforces.
+pub enum IndexSlot {
+    /// Not asked for yet.
+    Cold,
+    /// A load is running. Searches answer `Warming` rather than blocking.
+    Warming,
+    /// Ready to search.
+    Ready(Box<NameIndex>),
+    /// The load failed — most often because the index has never been refreshed.
+    Failed(String),
+}
+
 /// Everything a command may need that outlives one call.
 pub struct AppState {
     /// `%LOCALAPPDATA%\PipDock`.
     pub app_data: PathBuf,
     /// Settings, pins, recents and the package index.
     pub store: tokio::sync::Mutex<Store>,
+    /// The 858k-name search index, once something has asked for it.
+    ///
+    /// A `std::sync::Mutex` rather than tokio's: it is only ever held to read or replace the slot,
+    /// never across an await, and a search that had to await a lock would be a search that can be
+    /// queued behind the 613 ms load — the exact thing this design exists to prevent.
+    pub index: std::sync::Mutex<IndexSlot>,
     /// The plan being driven across several IPC calls.
     pub plan: tokio::sync::Mutex<PlanSlot>,
     /// The token for whatever engine work is in flight.
@@ -73,9 +103,69 @@ impl AppState {
         Ok(Self {
             app_data,
             store: tokio::sync::Mutex::new(store),
+            index: std::sync::Mutex::new(IndexSlot::Cold),
             plan: tokio::sync::Mutex::new(PlanSlot::Idle),
             cancel: std::sync::Mutex::new(None),
         })
+    }
+
+    /// Claim the index slot for a load, if one is not already done or running.
+    ///
+    /// Returns `true` when the caller is now responsible for loading. Idempotent, so calling it on
+    /// every Search render is harmless — which is what lets the screen ask without coordinating.
+    pub fn begin_index_load(&self) -> bool {
+        let Ok(mut slot) = self.index.lock() else {
+            return false;
+        };
+        if matches!(*slot, IndexSlot::Cold | IndexSlot::Failed(_)) {
+            *slot = IndexSlot::Warming;
+            return true;
+        }
+        false
+    }
+
+    /// Publish the result of a load.
+    pub fn finish_index_load(&self, loaded: pipdock_core::Result<NameIndex>) {
+        if let Ok(mut slot) = self.index.lock() {
+            *slot = match loaded {
+                Ok(index) => IndexSlot::Ready(Box::new(index)),
+                Err(e) => IndexSlot::Failed(e.message),
+            };
+        }
+    }
+
+    /// Search, without ever waiting for a load.
+    ///
+    /// `None` means "not ready" — the caller reports that as a state rather than an error, because
+    /// warming is not a failure and a spinner that says so is better than a stall.
+    pub fn search_index(&self, query: &str, limit: usize) -> Option<Vec<pipdock_core::index::Hit>> {
+        let slot = self.index.lock().ok()?;
+        match &*slot {
+            IndexSlot::Ready(index) => Some(index.search(query, limit)),
+            IndexSlot::Cold | IndexSlot::Warming | IndexSlot::Failed(_) => None,
+        }
+    }
+
+    /// Why the index could not be loaded, when that is the state it is in.
+    ///
+    /// Reported as a state on the search result rather than as a command error: "the index has
+    /// never been refreshed" is an action the user can take, and an error row would tell them
+    /// something went wrong instead.
+    pub fn index_failure(&self) -> Option<String> {
+        match &*self.index.lock().ok()? {
+            IndexSlot::Failed(why) => Some(why.clone()),
+            IndexSlot::Cold | IndexSlot::Warming | IndexSlot::Ready(_) => None,
+        }
+    }
+
+    /// Drop the loaded index, so the next search reloads it.
+    ///
+    /// Called after `index_refresh`: leaving the old names in memory would mean a refresh that
+    /// reports thousands of new projects and a search that cannot find any of them.
+    pub fn invalidate_index(&self) {
+        if let Ok(mut slot) = self.index.lock() {
+            *slot = IndexSlot::Cold;
+        }
     }
 
     /// Claim the plan slot for engine work, returning whatever flow was waiting there.

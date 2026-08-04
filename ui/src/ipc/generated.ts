@@ -211,6 +211,12 @@ export type FlowStep =
   | { report: ResolutionReport; step: 'roundsExhausted' }
   | { reason: NothingReason; step: 'nothing' };
 
+/** How fresh a metadata answer is, so the UI can badge it (UI-SPEC §7). */
+export type Freshness =
+  | 'fresh'
+  | 'cached'
+  | 'stale';
+
 /**
  * What the uninstall guard found.
  *
@@ -397,6 +403,16 @@ export interface PyEnv {
   pythonVersion: string;
   /** Where this env came from. */
   source: EnvSource;
+}
+
+/** What a refresh did. */
+export interface RefreshReport {
+  /** How long the whole refresh took. */
+  elapsedMs: number;
+  /** Projects ingested. */
+  projects: number;
+  /** Bytes received on the wire. */
+  wireBytes: number;
 }
 
 /**
