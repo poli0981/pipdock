@@ -204,6 +204,11 @@ export const useEnvStore = create<EnvState>((set, get) => ({
   ...NO_PACKAGES,
 
   scan: async () => {
+    // Discovery spawns probe.py once per candidate interpreter, so a duplicate scan is the most
+    // expensive thing the app can do twice. `PdEnvironments` has started two on every mount since
+    // Stage 1 — StrictMode runs effects twice in development — which was invisible because both
+    // produce the same rows.
+    if (get().scanning) return
     set({ scanning: true, error: null })
     try {
       const rows = await envScan()
@@ -239,9 +244,14 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     ),
 
   loadPackages: async () => {
-    const { selected, rows } = get()
+    const { selected, rows, listing } = get()
     const row = rows.find((r) => r.interpreter === selected)
     if (selected === null || row?.env === undefined) return
+    // Already in flight. `loadedFor` is only set once the await resolves, so a screen effect
+    // firing twice before then — which StrictMode does on every mount in development — would
+    // otherwise spawn probe.py twice for the same environment. That is the exact cost the
+    // RECORD-parsing work in the probe existed to avoid.
+    if (listing === 'loading') return
 
     set({ listing: 'loading', listError: null })
     try {
@@ -253,9 +263,11 @@ export const useEnvStore = create<EnvState>((set, get) => ({
   },
 
   loadOutdated: async () => {
-    const { selected, rows } = get()
+    const { selected, rows, outdatedStatus } = get()
     const row = rows.find((r) => r.interpreter === selected)
     if (selected === null || row?.env === undefined) return
+    // Same guard as `loadPackages`, and it matters more here: this one hits the network.
+    if (outdatedStatus === 'loading') return
 
     set({ outdatedStatus: 'loading', outdatedError: null })
     try {
