@@ -5,9 +5,23 @@ import { NAV_KEYS } from '@/components/nav'
 import { PdLegalGate } from '@/components/PdLegalGate'
 import { PdSidebar } from '@/components/PdSidebar'
 import { PdStatusLine } from '@/components/PdStatusLine'
+import type { NavKey } from '@/components/nav'
 import { PdEnvironments } from '@/screens/PdEnvironments'
+import { PdPackages } from '@/screens/PdPackages'
 import { PdSettings } from '@/screens/PdSettings'
 import { useEnvStore, useLegalStore, useUiStore } from '@/stores'
+
+/**
+ * Which screen each tab shows. A lookup rather than a ternary chain: the chain's last branch was a
+ * hand-maintained negation of every key above it, so adding a screen meant editing two places and
+ * forgetting the second showed both at once. Tabs with no entry fall through to the placeholder.
+ */
+const SCREENS: Partial<Record<NavKey, React.ReactNode>> = {
+  environments: <PdEnvironments />,
+  installed: <PdPackages mode="installed" />,
+  updates: <PdPackages mode="updates" />,
+  settings: <PdSettings />,
+}
 
 /**
  * The app shell — UI-SPEC §3.
@@ -66,13 +80,11 @@ export function App() {
             can observe, and nesting one inside an already-scrolling <main> gives two scrollbars
             and an outer one whose content is already the virtualizer's full height. */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {nav === 'environments' ? <PdEnvironments /> : null}
-          {nav === 'settings' ? <PdSettings /> : null}
-          {nav !== 'environments' && nav !== 'settings' ? (
+          {SCREENS[nav] ?? (
             <p className="h-full overflow-auto p-6 font-mono text-text-dim">
               {`▸ ${t(`nav.${nav}`)}`}
             </p>
-          ) : null}
+          )}
         </main>
       </div>
 

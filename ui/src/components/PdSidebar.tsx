@@ -1,10 +1,10 @@
 import { useTranslation } from 'react-i18next'
 
 import { NAV_KEYS, type NavKey } from '@/components/nav'
-import { useUiStore } from '@/stores'
+import { useEnvStore, useUiStore } from '@/stores'
 
 /** Tabs whose screens land in a later milestone. Kept in place, not hidden. */
-const NOT_YET: readonly NavKey[] = ['installed', 'updates', 'search', 'pins', 'health', 'security']
+const NOT_YET: readonly NavKey[] = ['search', 'pins', 'health', 'security']
 
 /**
  * The sidebar — UI-SPEC §3 and §8.
@@ -17,6 +17,8 @@ export function PdSidebar() {
   const { t } = useTranslation()
   const nav = useUiStore((s) => s.nav)
   const setNav = useUiStore((s) => s.setNav)
+  // UI-SPEC §3's layout sketch shows `Updates (7)`. A primitive, so this selector is stable.
+  const updatesCount = useEnvStore((s) => s.updatesCount)
 
   return (
     <nav aria-label={t('app.name')} className="w-48 shrink-0 border-r border-border p-2">
@@ -35,7 +37,14 @@ export function PdSidebar() {
                   active ? 'bg-surface-2 text-accent' : 'text-text-dim hover:bg-surface-2'
                 } ${NOT_YET.includes(key) ? 'opacity-60' : ''}`}
               >
-                <span>{t(`nav.${key}`)}</span>
+                <span>
+                  {t(`nav.${key}`)}
+                  {key === 'updates' && updatesCount > 0 ? (
+                    <span className="ml-1 font-mono text-data text-warn">
+                      {`(${String(updatesCount)})`}
+                    </span>
+                  ) : null}
+                </span>
                 <span aria-hidden="true" className="font-mono text-data opacity-50">
                   {`^${index + 1}`}
                 </span>
