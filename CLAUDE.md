@@ -12,9 +12,11 @@ The design is fully specified. Read in this order; do not invent behaviour that 
 3. `docs/DATA-FLOW.md` — update/install/uninstall/rollback state machines, engine command mapping, **invariants §9**
 4. `docs/UI-SPEC.md` — design tokens, screens, click budgets, keyboard map
 5. `docs/CLI-SPEC.md` — commands, flags, exit codes, JSON contracts
-6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **30 in Rust**
-   (`Code::ALL`, pinned by a test); the doc tabulates 28 because it folds `PD-HLT-001..003` into
-   one row
+6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **31 in Rust**
+   (`Code::ALL`, pinned by two tests); the doc tabulates 29 because it folds `PD-HLT-001..003`
+   into one row. Adding a code means the catalog, `Code::ALL`, both counts, the
+   "no code without a fixture" gate in `classifier_corpus.rs`, both locale catalogs, and a
+   re-blessed `golden__schema-Code.snap` — the gate will tell you which you forgot
 7. `docs/CODE-HEALTH-SPEC.md`, `docs/SECURITY.md`, `docs/TESTING.md`, `docs/RELEASE-CI.md`, `docs/I18N.md`, `docs/ROADMAP.md`
 8. `legal/` — EULA, Disclaimer, Privacy, Third-Party Notices (public; the in-app legal gate links to these GitHub URLs)
 
