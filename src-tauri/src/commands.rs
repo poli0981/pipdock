@@ -8,8 +8,10 @@
 //! `Serialize` error type, and the frontend contract in `ui/src/ipc` is a flat
 //! `{ code, message, stderrTail }`. One conversion here beats a shape the UI has to unwrap.
 
+use pipdock_core::engine;
 use pipdock_core::envs::{self, ScanProgress};
 use pipdock_core::model::EnvSource;
+use pipdock_core::pins::{self, Pin};
 use pipdock_core::settings::{self, Consent, Settings};
 use pipdock_core::{PdError, PyEnv};
 use tauri::Emitter as _;
@@ -145,6 +147,92 @@ pub async fn env_probe(interpreter: String) -> Wire<EnvRow> {
         env: Some(probed.env),
         error: None,
     })
+}
+
+/// Everything installed in one environment — the Installed table (UI-SPEC §4).
+///
+/// Goes through `envs::probe`, **not** `Engine::list_installed`. The probe carries
+/// `requires_dist`, which `list --format=json` zeroes out, and it is the source the
+/// reverse-dependency graph and the uninstall guard are built from; it is also the only producer
+/// of `size_bytes`. `pipdock list` makes the same choice, and if these two disagreed the Installed
+/// screen and the guard protecting it would disagree about which packages exist (DATA-FLOW §7).
+///
+/// Takes the whole `PyEnv` rather than a path so it can be handed straight back from `env_scan`,
+/// and so the `source` chip survives the round trip instead of being re-guessed as `Manual`.
+///
+/// # Errors
+/// `PD-ENV-001` when the interpreter has gone, `PD-ENV-003` when the probe output is unreadable.
+#[tauri::command]
+pub async fn pkg_list(env: PyEnv) -> Wire<Vec<pipdock_core::Dist>> {
+    Ok(envs::probe(&env.interpreter, env.source).await?.dists)
+}
+
+/// Installed packages with a newer release available.
+///
+/// Kept separate from [`pkg_list`] per ARCHITECTURE §7, and because it is the one of the two that
+/// touches the network: the Installed table renders from `pkg_list` immediately and badges itself
+/// when this resolves. It takes a `PyEnv` for the same reason — building one here would mean a
+/// second probe on the slower of the two calls.
+///
+/// The engine is the configured one, read from the store on every call so flipping the Settings
+/// radio takes effect on the next refresh. The store guard is dropped before the engine runs;
+/// holding it across the await would compile, pass every test, and freeze `settings_get` and the
+/// pin commands for the length of a network round trip.
+///
+/// # Errors
+/// `PD-ENG-001` when the configured engine cannot be spawned — uv is a standalone binary and is
+/// often not on PATH — and the `PD-NET-*` family when the index is unreachable.
+#[tauri::command]
+pub async fn pkg_outdated(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+) -> Wire<Vec<pipdock_core::OutdatedDist>> {
+    let engine = {
+        let store = state.store.lock().await;
+        engine::for_id(settings::load(&store)?.engine)
+    };
+    Ok(engine.list_outdated(&env).await?)
+}
+
+/// Pins for an environment, ordered by package name.
+///
+/// The 🔒 chip and *Select all*'s "N pinned excluded" note both read this. Neither is the
+/// enforcement point: DATA-FLOW §9.5 is enforced by `pins::filter_upgrades` when a plan is built.
+///
+/// # Errors
+/// `PD-INT-001` when the pin table cannot be read.
+#[tauri::command]
+pub async fn pin_list(state: tauri::State<'_, AppState>, env_hash: String) -> Wire<Vec<Pin>> {
+    let store = state.store.lock().await;
+    Ok(pins::list(&store, &env_hash)?)
+}
+
+/// Add or replace a pin.
+///
+/// # Errors
+/// `PD-PKG-002` when the name or the held version is not well formed — `Pin` arrives from the
+/// frontend, and a `Hold` pin becomes a `PinnedSpec` that reaches argv (SECURITY §2).
+/// `PD-INT-001` when the write fails.
+#[tauri::command]
+pub async fn pin_add(state: tauri::State<'_, AppState>, env_hash: String, pin: Pin) -> Wire<()> {
+    let store = state.store.lock().await;
+    pins::add(&store, &env_hash, &pin)?;
+    Ok(())
+}
+
+/// Remove a pin, reporting whether one existed.
+///
+/// # Errors
+/// `PD-PKG-002` when `pkg` is not a valid distribution name; `PD-INT-001` when the delete fails.
+#[tauri::command]
+pub async fn pin_remove(
+    state: tauri::State<'_, AppState>,
+    env_hash: String,
+    pkg: String,
+) -> Wire<bool> {
+    let name = pipdock_core::PkgName::parse(&pkg)?;
+    let store = state.store.lock().await;
+    Ok(pins::remove(&store, &env_hash, &name)?)
 }
 
 /// Read the stored settings.

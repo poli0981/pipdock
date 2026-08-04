@@ -14,7 +14,7 @@
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 
-import type { EngineId, EnvSource, PyEnv } from './generated'
+import type { Dist, EngineId, EnvSource, OutdatedDist, Pin, PyEnv } from './generated'
 
 export type * from './generated'
 
@@ -140,6 +140,35 @@ export const envScan = (): Promise<EnvRow[]> => invoke('env_scan')
 
 export const envProbe = (interpreter: string): Promise<EnvRow> =>
   invoke('env_probe', { interpreter })
+
+/**
+ * Everything installed in `env` — the Installed table.
+ *
+ * Pass back the `PyEnv` from `envScan`/`envProbe` rather than a bare path: the source chip
+ * survives the round trip, and the Rust side does not have to guess it. Re-probes, so it is the
+ * fresh listing rather than whatever the last scan saw.
+ */
+export const pkgList = (env: PyEnv): Promise<Dist[]> => invoke('pkg_list', { env })
+
+/**
+ * Installed packages with a newer release available, via the configured engine.
+ *
+ * Separate from `pkgList` because it is the one that touches the network. Render the installed
+ * rows from `pkgList` first and badge them when this resolves — a failure here costs badges, not
+ * the table.
+ */
+export const pkgOutdated = (env: PyEnv): Promise<OutdatedDist[]> => invoke('pkg_outdated', { env })
+
+/** Pins for an environment, ordered by package name. `envHash` comes from `EnvRow`. */
+export const pinList = (envHash: string): Promise<Pin[]> => invoke('pin_list', { envHash })
+
+/** Add or replace a pin. Rejects with `PD-PKG-002` if the name or held version is malformed. */
+export const pinAdd = (envHash: string, pin: Pin): Promise<void> =>
+  invoke('pin_add', { envHash, pin })
+
+/** Remove a pin, resolving to whether one existed. */
+export const pinRemove = (envHash: string, pkg: string): Promise<boolean> =>
+  invoke('pin_remove', { envHash, pkg })
 
 export const settingsGet = (): Promise<Settings> => invoke('settings_get')
 

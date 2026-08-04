@@ -97,13 +97,47 @@ pub fn list(store: &Store, env_hash: &str) -> Result<Vec<Pin>> {
     Ok(out)
 }
 
+/// Reject a held version that is not shaped like one.
+///
+/// SECURITY §2 promises versions are validated before they enter argv, and a `Hold` pin is
+/// exactly that path: [`hold_requirements`] turns it into a [`PinnedSpec`] rendered as
+/// `name==version` in a mutating command. `PkgName` enforces its own grammar on construction,
+/// but `Version` is a transparent newtype over whatever the engine reported — so the one place a
+/// *user* supplies a version is the one place that claim needs enforcing.
+///
+/// Deliberately a character-class check and not a full PEP 440 parse. The job is to refuse
+/// whitespace, quotes, path separators and control characters, not to second-guess an epoch or a
+/// local-version segment that the resolver understands better than PipDock does. Rejecting a
+/// legitimate version would be the worse failure: it would make a package unpinnable.
+fn validated_hold(version: &Version) -> Result<&str> {
+    let raw = version.0.as_str();
+    let invalid = || {
+        PdError::new(
+            Code::PkgNotFound,
+            format!("invalid version for a pin: {raw:?}"),
+        )
+    };
+    let bytes = raw.as_bytes();
+    if bytes.is_empty() || !bytes[0].is_ascii_alphanumeric() {
+        return Err(invalid());
+    }
+    if !bytes
+        .iter()
+        .all(|&b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+' | b'!'))
+    {
+        return Err(invalid());
+    }
+    Ok(raw)
+}
+
 /// Add or replace a pin.
 ///
 /// # Errors
-/// `PD-INT-001` when the write fails.
+/// `PD-PKG-002` when a `Hold` names a version that is not well formed; `PD-INT-001` when the
+/// write fails.
 pub fn add(store: &Store, env_hash: &str, pin: &Pin) -> Result<()> {
     let version = match &pin.mode {
-        PinMode::Hold { version } => Some(version.0.as_str()),
+        PinMode::Hold { version } => Some(validated_hold(version)?),
         PinMode::Exclude => None,
     };
     store
@@ -218,6 +252,48 @@ mod tests {
             mode: PinMode::Exclude,
             reason: reason.map(str::to_owned),
         }
+    }
+
+    #[test]
+    fn a_held_version_is_shape_checked_before_it_can_reach_argv() {
+        let store = Store::in_memory().expect("store");
+        let hold = |v: &str| Pin {
+            pkg: pkg("numpy"),
+            mode: PinMode::Hold {
+                version: Version(v.into()),
+            },
+            reason: None,
+        };
+
+        // Real versions, including the awkward corners of PEP 440, must stay pinnable: an
+        // over-strict check would make a package impossible to hold, which is worse than lax.
+        for good in [
+            "1.26.4",
+            "2.0.0rc1",
+            "1!2.0",
+            "1.0+local.7",
+            "v1.2",
+            "0.10.12",
+        ] {
+            add(&store, "envA", &hold(good)).unwrap_or_else(|e| panic!("{good:?}: {e:?}"));
+        }
+
+        for bad in [
+            "",
+            " 1.0",
+            "1.0 ",
+            "-1.0",
+            "1.0;rm",
+            "1.0/../x",
+            "--upgrade",
+            "1.0\n2.0",
+        ] {
+            let err = add(&store, "envA", &hold(bad)).expect_err("{bad:?} should be rejected");
+            assert_eq!(err.code.as_str(), "PD-PKG-002", "for {bad:?}");
+        }
+
+        // An Exclude pin has no version, so it is unaffected either way.
+        add(&store, "envA", &exclude("requests", None)).expect("exclude still adds");
     }
 
     #[test]
