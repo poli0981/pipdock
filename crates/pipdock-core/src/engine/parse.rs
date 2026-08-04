@@ -376,6 +376,9 @@ pub fn list_json(stdout: &str) -> Result<Vec<Dist>> {
                 version: Version(v.get("version")?.as_str()?.to_owned()),
                 requires_dist: Vec::new(),
                 requires_python: None,
+                // Neither engine reports an installed size, so this listing can never carry one.
+                // Another reason the Installed screen reads the probe rather than the engine.
+                size_bytes: None,
             })
         })
         .collect())
@@ -494,6 +497,7 @@ mod tests {
                 version: Version((*v).to_owned()),
                 requires_dist: Vec::new(),
                 requires_python: None,
+                size_bytes: None,
             })
             .collect()
     }

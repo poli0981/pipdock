@@ -221,6 +221,7 @@ mod tests {
             version: Version(version.into()),
             requires_dist: requires.iter().map(|s| (*s).to_owned()).collect(),
             requires_python: None,
+            size_bytes: None,
         }
     }
 

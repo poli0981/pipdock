@@ -383,6 +383,7 @@ async fn a_preview_made_before_the_environment_changed_is_refused() {
         version: Version("1.0".into()),
         requires_dist: Vec::new(),
         requires_python: None,
+        size_bytes: None,
     }];
     let err = execute(
         &FakeEngine::new(&[]),
@@ -409,12 +410,14 @@ async fn reordering_the_installed_set_is_not_drift() {
         version: Version("1.0".into()),
         requires_dist: Vec::new(),
         requires_python: None,
+        size_bytes: None,
     };
     let b = Dist {
         name: PkgName::parse("bbb").unwrap(),
         version: Version("2.0".into()),
         requires_dist: Vec::new(),
         requires_python: None,
+        size_bytes: None,
     };
     let plan = AcceptedPlan::accept(
         report(&[("idna", "3.18")]),

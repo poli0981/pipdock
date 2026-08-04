@@ -158,6 +158,9 @@ pub fn parse_probe(stdout: &str, interpreter: &Path, source: EnvSource) -> Resul
                 .get("requires_python")
                 .and_then(serde_json::Value::as_str)
                 .map(str::to_owned),
+            // Absent on a schema-1 probe and null whenever the probe judged the number
+            // unknowable; both arrive here as `None`, which is the honest answer either way.
+            size_bytes: entry.get("size_bytes").and_then(serde_json::Value::as_u64),
         });
     }
 
@@ -436,11 +439,12 @@ mod tests {
     #[test]
     fn parses_a_real_probe_document() {
         let doc = r#"{
-            "schema": 1, "python": "3.12.4", "prefix": "C:\\proj\\.venv",
+            "schema": 2, "python": "3.12.4", "prefix": "C:\\proj\\.venv",
             "is_venv": true, "externally_managed": false, "hidden_user_site": null,
             "dists": [
               {"name":"requests","version":"2.32.3",
-               "requires_dist":["urllib3<3,>=1.21.1"],"requires_python":">=3.8"},
+               "requires_dist":["urllib3<3,>=1.21.1"],"requires_python":">=3.8",
+               "size_bytes":131072},
               {"name":null,"error":"KeyError: broken"}
             ]}"#;
         let got = parse_probe(doc, Path::new("python.exe"), EnvSource::Manual).expect("parse");
@@ -452,6 +456,25 @@ mod tests {
         assert_eq!(got.dists.len(), 1);
         assert_eq!(got.dists[0].name.as_str(), "requests");
         assert_eq!(got.dists[0].requires_dist, ["urllib3<3,>=1.21.1"]);
+        assert_eq!(got.dists[0].size_bytes, Some(131_072));
+    }
+
+    #[test]
+    fn an_unknowable_size_arrives_as_none_not_zero() {
+        // Three ways the probe declines to guess, and one older probe that never knew to.
+        // `Some(0)` would render as "0 B" in the Installed table, which is a claim; `None`
+        // renders as "—", which is the truth.
+        let doc = r#"{
+            "schema": 2, "python": "3.12.4", "prefix": "C:\\proj\\.venv",
+            "externally_managed": false, "hidden_user_site": null,
+            "dists": [
+              {"name":"editable-one","version":"1.0.0","size_bytes":null},
+              {"name":"legacy-egg","version":"0.9.0"},
+              {"name":"schema-one-probe","version":"2.0.0"}
+            ]}"#;
+        let got = parse_probe(doc, Path::new("python.exe"), EnvSource::Manual).expect("parse");
+        assert_eq!(got.dists.len(), 3);
+        assert!(got.dists.iter().all(|d| d.size_bytes.is_none()));
     }
 
     #[test]

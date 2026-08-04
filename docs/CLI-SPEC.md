@@ -73,6 +73,8 @@ requests  held back at 2.30.0 (latest 2.32.3) — blocked by apiclient 1.4 (requ
 
 `--json` payloads are the serde-serialized core types (`Dist`, `OutdatedDist`, `ResolutionReport`, `ExecutionSummary`, `CheckReport`) — schema documented by `pipdock schema <type>` which prints the JSON Schema generated from the Rust types, so scripts can pin against it. Streaming commands (`update`, `install`, `health`) with `--json` emit NDJSON events matching the GUI's `plan-progress` payloads, terminated by a final `summary` object.
 
+`Dist.sizeBytes` is present only when it can be known: it is summed from the distribution's RECORD manifest, which `.egg-info` distributions do not have and which a PEP 660 editable install fills with its import shim rather than its sources. The field is **omitted** in those cases rather than reported as `0`, and it is always omitted on a `Dist` that came from `<engine> list` — neither engine reports a size. Where present it is a lower bound: uncompressed bytes as recorded at install time, excluding `__pycache__` written afterwards. `pipdock list`'s human table does not show it, as it already omits `requiresDist` and `requiresPython`.
+
 ## 7. Examples
 
 ```bash

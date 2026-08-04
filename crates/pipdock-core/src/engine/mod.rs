@@ -330,6 +330,7 @@ mod tests {
             version: Version(version.into()),
             requires_dist: Vec::new(),
             requires_python: None,
+            size_bytes: None,
         }
     }
 

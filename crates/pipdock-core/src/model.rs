@@ -253,6 +253,18 @@ pub struct Dist {
     /// Raw `Requires-Python` specifier, when declared.
     #[serde(default)]
     pub requires_python: Option<String>,
+    /// Installed size in bytes, summed from the distribution's RECORD manifest.
+    ///
+    /// `None` means "not knowable", and is deliberately not `0`: `.egg-info` distributions have
+    /// no RECORD, and a PEP 660 editable install has one that lists only its import shim, so
+    /// summing it reports a few hundred bytes for a project of any size. Only `probe.py` can
+    /// supply this — `<engine> list --format=json` does not report it — so it is always `None`
+    /// on a `Dist` that came from an engine.
+    ///
+    /// A lower bound even when present: uncompressed bytes as recorded at install time,
+    /// excluding `__pycache__` written afterwards.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub size_bytes: Option<u64>,
 }
 
 /// An installed distribution with a newer release available.
