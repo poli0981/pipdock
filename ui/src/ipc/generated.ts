@@ -319,6 +319,24 @@ export interface PlanRequest {
   upgrades?: PkgName[];
 }
 
+/**
+ * One event on the `plan-progress` channel (ARCHITECTURE §7).
+ *
+ * Deferred from Stage 1 to the slice that could verify it. It was a bare line, which made two
+ * documented features unimplementable: UI-SPEC §3's per-package section markers in the console
+ * drawer had nothing to mark a section with, and §8's "13 of 15 complete" live region had no
+ * event that meant "one finished". Neither can be recovered from the text — an engine's output
+ * does not reliably say which package it is about, and counting lines is not counting steps.
+ *
+ * A tagged lifecycle instead: every step emits exactly one [`Self::StepStarted`], any number of
+ * [`Self::Line`]s, and exactly one [`Self::StepFinished`]. That makes the drawer's grouping and
+ * the live region's counter both mechanical rather than inferred.
+ */
+export type ProgressEvent =
+  | { kind: 'stepStarted'; phase: ExecMode; pkg?: PkgName | null; step: number; total: number }
+  | { kind: 'line'; line: string; phase: ExecMode; pkg?: PkgName | null; step: number; stream: Stream }
+  | { kind: 'stepFinished'; phase: ExecMode; pkg?: PkgName | null; status: StepStatus; step: number; total: number };
+
 /** A Python environment PipDock can act on. */
 export interface PyEnv {
   /**
@@ -431,6 +449,17 @@ export type StepStatus =
 export type Strategy =
   | 'compatible'
   | { 'force-latest': { overrides: PkgName[] } };
+
+/**
+ * Which stream a line came from.
+ *
+ * The console drawer renders them differently, and for uv the distinction is load-bearing in a
+ * way it is not for pip: uv writes its **plan** to stderr (SP-1), so "stderr" here does not mean
+ * "something went wrong".
+ */
+export type Stream =
+  | 'stdout'
+  | 'stderr';
 
 /** What caused a snapshot to be taken. Shown as the trigger label on the timeline (UI-SPEC §4). */
 export type Trigger =

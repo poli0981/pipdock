@@ -1,0 +1,204 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "ExecMode": {
+      "description": "Which of the two execution phases produced a result (ARCHITECTURE §8).",
+      "oneOf": [
+        {
+          "const": "batch",
+          "description": "Phase A: one engine invocation for the whole pinned set.",
+          "type": "string"
+        },
+        {
+          "const": "isolated",
+          "description": "Phase B: per-package sequential retry after Phase A failed. Skip-and-continue.",
+          "type": "string"
+        }
+      ]
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "StepStatus": {
+      "description": "Outcome of a single package's step.",
+      "oneOf": [
+        {
+          "const": "ok",
+          "description": "Applied successfully.",
+          "type": "string"
+        },
+        {
+          "const": "failed",
+          "description": "Failed; carries a catalog code. Does **not** abort the batch.",
+          "type": "string"
+        },
+        {
+          "const": "skipped",
+          "description": "Not attempted — user cancelled, or dropped by a Skip decision.",
+          "type": "string"
+        }
+      ]
+    },
+    "Stream": {
+      "description": "Which stream a line came from.\n\nThe console drawer renders them differently, and for uv the distinction is load-bearing in a\nway it is not for pip: uv writes its **plan** to stderr (SP-1), so \"stderr\" here does not mean\n\"something went wrong\".",
+      "oneOf": [
+        {
+          "const": "stdout",
+          "description": "The engine's stdout.",
+          "type": "string"
+        },
+        {
+          "const": "stderr",
+          "description": "The engine's stderr.",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "One event on the `plan-progress` channel (ARCHITECTURE §7).\n\nDeferred from Stage 1 to the slice that could verify it. It was a bare line, which made two\ndocumented features unimplementable: UI-SPEC §3's per-package section markers in the console\ndrawer had nothing to mark a section with, and §8's \"13 of 15 complete\" live region had no\nevent that meant \"one finished\". Neither can be recovered from the text — an engine's output\ndoes not reliably say which package it is about, and counting lines is not counting steps.\n\nA tagged lifecycle instead: every step emits exactly one [`Self::StepStarted`], any number of\n[`Self::Line`]s, and exactly one [`Self::StepFinished`]. That makes the drawer's grouping and\nthe live region's counter both mechanical rather than inferred.",
+  "oneOf": [
+    {
+      "description": "A step is about to run. Opens a section in the console drawer.",
+      "properties": {
+        "kind": {
+          "const": "stepStarted",
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/$defs/ExecMode",
+          "description": "Which execution phase is running."
+        },
+        "pkg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PkgName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The package this step is for, absent for a batch covering the whole set."
+        },
+        "step": {
+          "description": "Zero-based index of the step within the plan.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "description": "How many steps the plan has, so the caller can render progress without counting.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "step",
+        "total",
+        "phase"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "One line of the engine's output, verbatim and never localized (I18N §2).",
+      "properties": {
+        "kind": {
+          "const": "line",
+          "type": "string"
+        },
+        "line": {
+          "description": "The line itself.",
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/$defs/ExecMode",
+          "description": "Which execution phase is running."
+        },
+        "pkg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PkgName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The package this line belongs to, absent for batch-wide output."
+        },
+        "step": {
+          "description": "Zero-based index of the step within the plan.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "stream": {
+          "$ref": "#/$defs/Stream",
+          "description": "Which stream produced it."
+        }
+      },
+      "required": [
+        "kind",
+        "step",
+        "phase",
+        "stream",
+        "line"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "A step has finished. Closes its section, and advances the live region's counter.",
+      "properties": {
+        "kind": {
+          "const": "stepFinished",
+          "type": "string"
+        },
+        "phase": {
+          "$ref": "#/$defs/ExecMode",
+          "description": "Which execution phase produced it."
+        },
+        "pkg": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/PkgName"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "The package this step was for."
+        },
+        "status": {
+          "$ref": "#/$defs/StepStatus",
+          "description": "How it ended."
+        },
+        "step": {
+          "description": "Zero-based index of the step within the plan.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "total": {
+          "description": "How many steps the plan has.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "kind",
+        "step",
+        "total",
+        "phase",
+        "status"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "ProgressEvent"
+}
