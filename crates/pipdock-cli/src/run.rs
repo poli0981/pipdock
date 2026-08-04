@@ -7,7 +7,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use pipdock_core::engine::{Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
+use pipdock_core::engine::{self, Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::flow::{
@@ -19,7 +19,7 @@ use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
 /// translating what the user asked for into a `PlanRequest` is flow logic the GUI needs too.
 pub use pipdock_core::flow::Intent;
 use pipdock_core::store::Store;
-use pipdock_core::{index, pins, plan, snapshot};
+use pipdock_core::{index, pins, plan, settings, snapshot};
 
 use crate::{EngineArg, Exit, GlobalOpts};
 
@@ -29,31 +29,21 @@ use crate::{EngineArg, Exit, GlobalOpts};
 /// `--engine` flag overrides for one invocation.
 #[must_use]
 pub fn engine_for(opts: &GlobalOpts) -> Box<dyn Engine> {
-    match opts.engine {
-        Some(EngineArg::Uv) => Box::new(UvEngine),
-        Some(EngineArg::Pip) => Box::new(PipEngine),
+    let id = match opts.engine {
+        Some(EngineArg::Uv) => EngineId::Uv,
+        Some(EngineArg::Pip) => EngineId::Pip,
         // No flag: use what the user configured. Falling back to pip rather than probing for uv
         // here keeps a read-only command from silently changing behaviour based on PATH; first-run
         // uv detection belongs to Settings, where the choice is shown and can be changed.
-        None => match configured_engine() {
-            Some(EngineId::Uv) => Box::new(UvEngine),
-            _ => Box::new(PipEngine),
-        },
-    }
-}
-
-/// `kv` key holding the configured engine.
-const KEY_ENGINE: &str = "settings.engine";
-
-/// The engine the user configured, if any. A store that cannot be opened is not worth failing a
-/// command over — the default is safe.
-fn configured_engine() -> Option<EngineId> {
-    let store = Store::open(&app_data_dir()).ok()?;
-    match store.get(KEY_ENGINE).ok()??.as_str() {
-        "uv" => Some(EngineId::Uv),
-        "pip" => Some(EngineId::Pip),
-        _ => None,
-    }
+        //
+        // A store that cannot be opened is not worth failing a command over, and `settings::load`
+        // already answers pip for a missing or unrecognized value — so one `map_or` covers every
+        // way this can go wrong.
+        None => Store::open(&app_data_dir())
+            .and_then(|store| settings::load(&store))
+            .map_or(EngineId::Pip, |s| s.engine),
+    };
+    engine::for_id(id)
 }
 
 /// `pipdock engine <pip|uv>` — set the configured engine.
@@ -70,10 +60,7 @@ pub async fn engine_set(opts: &GlobalOpts, engine: EngineArg) -> Result<Exit> {
     // Availability is checked against the selected environment when there is one; uv is a
     // standalone binary, so it can be checked without one.
     let info = match select_env(opts).await {
-        Ok(env) => match id {
-            EngineId::Pip => PipEngine.info(&env).await,
-            EngineId::Uv => UvEngine.info(&env).await,
-        },
+        Ok(env) => engine::for_id(id).info(&env).await,
         Err(e) if id == EngineId::Uv => {
             let env = PyEnv {
                 interpreter: PathBuf::new(),
@@ -99,7 +86,13 @@ pub async fn engine_set(opts: &GlobalOpts, engine: EngineArg) -> Result<Exit> {
         ));
     }
 
-    Store::open(&app_data_dir())?.set(KEY_ENGINE, id.as_str())?;
+    // Through `settings::save`, not a raw kv write: the GUI's Settings screen reads this back with
+    // `settings::load`, and a key written by one head that the other cannot find is the failure
+    // mode `core::settings` exists to prevent.
+    let store = Store::open(&app_data_dir())?;
+    let mut settings = settings::load(&store)?;
+    settings.engine = id;
+    settings::save(&store, &settings)?;
     println!(
         "engine set to {} {}",
         id.as_str(),
@@ -370,13 +363,12 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
 }
 
 /// The app data root, `%LOCALAPPDATA%\PipDock` (ARCHITECTURE §6).
-#[must_use]
-pub fn app_data_dir() -> PathBuf {
-    std::env::var_os("LOCALAPPDATA")
-        .map(PathBuf::from)
-        .unwrap_or_else(std::env::temp_dir)
-        .join(pipdock_core::APP_DATA_DIR_NAME)
-}
+///
+/// Re-exported rather than computed here. The CLI carried a byte-for-byte copy of the core's
+/// version, which is the same failure `KEY_ENGINE` was: two functions deriving one path are one
+/// edit away from the two heads reading different directories, and the pins and snapshots the
+/// user was relying on silently not being there.
+pub use pipdock_core::store::default_app_data as app_data_dir;
 
 /// `pipdock snapshot list`
 ///
