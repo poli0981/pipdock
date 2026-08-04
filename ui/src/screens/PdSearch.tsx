@@ -82,7 +82,7 @@ export function PdSearch() {
         />
 
         <div className="mt-1 flex shrink-0 items-center gap-2 text-data text-text-dim">
-          {/* Warming is a state, not a failure: the index is 858k names and takes ~613 ms to
+          {/* Warming is a state, not a failure: the index is 864k names and takes ~140 ms to
               load, and saying so beats a field that silently returns nothing. */}
           {!ready && unavailable === null ? <span>{t('search.warming')}</span> : null}
           {searching ? <span>{t('search.searching')}</span> : null}
