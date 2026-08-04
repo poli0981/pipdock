@@ -1,0 +1,15 @@
+[
+  {
+    "pkg": "numpy",
+    "mode": {
+      "hold": {
+        "version": "1.26.4"
+      }
+    },
+    "reason": "scipy 1.11.4 needs numpy < 1.28"
+  },
+  {
+    "pkg": "scipy",
+    "mode": "exclude"
+  }
+]

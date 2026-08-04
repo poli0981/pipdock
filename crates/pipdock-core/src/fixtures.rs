@@ -1,0 +1,201 @@
+//! The payloads the frontend's L3 tests mock `@/ipc` with.
+//!
+//! TESTING §2 asks for "IPC mocked at the typed wrapper layer with recorded core payloads — the
+//! same JSON as L1 fixtures, guaranteeing UI and core agree on shapes". Hand-writing that JSON
+//! would defeat the guarantee: rename a field in `model.rs` and the component tests keep passing
+//! against a shape the app never sends. So the fixtures are **serialized from the real types**,
+//! and a test fails when the committed files no longer match — the same mechanism, and the same
+//! reasoning, as [`crate::bindings`].
+//!
+//! Generated into `ui/` rather than read out of `crates/` behind a Vite alias, for the same reason
+//! `generated.ts` is: one directory the frontend owns, no build-time path that has to agree with
+//! `vite.config.ts`.
+//!
+//! The *shapes* come from the types. The *contents* are a deliberate scenario, modelled on the
+//! SP-5 dogfood environment, chosen so every rule S2's table has to implement is exercised by at
+//! least one row:
+//!
+//! | Row | Exercises |
+//! |---|---|
+//! | `numpy` | outdated **and** held at a version — the `UPDATE` badge and a `Hold` 🔒 together |
+//! | `scipy` | outdated and `Exclude`-pinned — excluded from *Select all* |
+//! | `pandas` | outdated and unpinned — the one *Select all* may actually take |
+//! | `requests` | outdated and unpinned, so "N pinned excluded" is 2 of 4 rather than 1 of 2 |
+//! | `certifi` | up to date — the dimming rule |
+//! | `editable-lib` | up to date and **no `sizeBytes`** — the em-dash cell |
+
+use crate::model::{Dist, OutdatedDist, PkgName, Version};
+use crate::pins::{Pin, PinMode};
+
+/// Directory the fixtures are written to, relative to the repository root.
+pub const OUTPUT_DIR: &str = "ui/src/test/fixtures";
+
+/// Build a `Dist` the way the probe would.
+fn dist(name: &str, version: &str, requires: &[&str], size: Option<u64>) -> Dist {
+    Dist {
+        // Every name here is a literal in this file, so a parse failure is a typo in the fixture
+        // rather than anything a user could cause.
+        name: PkgName::parse(name).unwrap_or_else(|e| panic!("fixture name {name:?}: {e:?}")),
+        version: Version(version.to_owned()),
+        requires_dist: requires.iter().map(|s| (*s).to_owned()).collect(),
+        requires_python: Some(">=3.10".to_owned()),
+        size_bytes: size,
+    }
+}
+
+fn outdated(name: &str, current: &str, latest: &str) -> OutdatedDist {
+    OutdatedDist {
+        name: PkgName::parse(name).unwrap_or_else(|e| panic!("fixture name {name:?}: {e:?}")),
+        current: Version(current.to_owned()),
+        latest: Version(latest.to_owned()),
+    }
+}
+
+/// What `pkg_list` returns.
+fn pkg_list() -> Vec<Dist> {
+    vec![
+        dist("certifi", "2024.2.2", &[], Some(163_840)),
+        // No size: an editable install's RECORD lists its import shim, not its sources, so the
+        // probe reports nothing rather than a few hundred bytes (see `probe.py`).
+        dist("editable-lib", "0.3.0", &[], None),
+        dist("numpy", "1.26.4", &[], Some(62_914_560)),
+        dist(
+            "pandas",
+            "2.1.4",
+            &["numpy<2,>=1.26.0", "python-dateutil>=2.8.2"],
+            Some(46_137_344),
+        ),
+        dist("requests", "2.28.0", &["urllib3<3,>=1.21.1"], Some(133_120)),
+        dist(
+            "scipy",
+            "1.11.4",
+            &["numpy<1.28.0,>=1.21.6"],
+            Some(58_720_256),
+        ),
+    ]
+}
+
+/// What `pkg_outdated` returns — a strict subset of the names above, which is the join the
+/// Installed table performs.
+fn pkg_outdated() -> Vec<OutdatedDist> {
+    vec![
+        outdated("numpy", "1.26.4", "2.5.1"),
+        outdated("pandas", "2.1.4", "2.3.0"),
+        outdated("requests", "2.28.0", "2.32.3"),
+        outdated("scipy", "1.11.4", "1.14.1"),
+    ]
+}
+
+/// What `pin_list` returns. Two of the four outdated rows are pinned, so *Select all* has a
+/// non-trivial number to report and the two `PinMode` variants are both on screen.
+fn pin_list() -> Vec<Pin> {
+    vec![
+        Pin {
+            pkg: PkgName::parse("numpy").unwrap_or_else(|_| unreachable!()),
+            mode: PinMode::Hold {
+                version: Version("1.26.4".to_owned()),
+            },
+            reason: Some("scipy 1.11.4 needs numpy < 1.28".to_owned()),
+        },
+        Pin {
+            pkg: PkgName::parse("scipy").unwrap_or_else(|_| unreachable!()),
+            mode: PinMode::Exclude,
+            reason: None,
+        },
+    ]
+}
+
+/// Every fixture, as `(file name, contents)`.
+///
+/// # Errors
+/// Propagates serialization failures, which can only mean a type in this module stopped being
+/// `Serialize` — a compile-time mistake surfacing at runtime.
+pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
+    Ok(vec![
+        ("pkg_list.json", render(&pkg_list())?),
+        ("pkg_outdated.json", render(&pkg_outdated())?),
+        ("pin_list.json", render(&pin_list())?),
+    ])
+}
+
+/// Pretty JSON with a trailing newline, so the files read as source and diff cleanly.
+fn render<T: serde::Serialize>(value: &T) -> serde_json::Result<String> {
+    let mut out = serde_json::to_string_pretty(value)?;
+    out.push('\n');
+    Ok(out)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_committed_ipc_fixtures_are_current() {
+        // The same guarantee as `bindings::the_committed_bindings_are_current`, for the same
+        // reason: without it the L3 tests drift silently into asserting against a shape the app
+        // does not send, and stay green while doing it.
+        let root = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..");
+        for (name, expected) in ipc_fixtures().expect("fixtures serialize") {
+            let path = root.join(OUTPUT_DIR).join(name);
+            let committed = std::fs::read_to_string(&path).unwrap_or_else(|e| {
+                panic!(
+                    "{} is missing ({e}); run `cargo run -p xtask -- ipc-fixtures`",
+                    path.display()
+                )
+            });
+            assert_eq!(
+                committed.replace("\r\n", "\n"),
+                expected,
+                "{name} is stale — run `cargo run -p xtask -- ipc-fixtures`"
+            );
+        }
+    }
+
+    #[test]
+    fn the_scenario_still_exercises_every_rule_the_table_implements() {
+        // Guards the fixture *contents*, not just their shape. Editing the scenario without
+        // reading this is how a component test quietly stops covering the case it names.
+        let (dists, outdated, pins) = (pkg_list(), pkg_outdated(), pin_list());
+
+        let outdated_names: Vec<&str> = outdated.iter().map(|o| o.name.as_str()).collect();
+        let pinned_names: Vec<&str> = pins.iter().map(|p| p.pkg.as_str()).collect();
+
+        // Every outdated row must have an installed row, or the join drops it.
+        for name in &outdated_names {
+            assert!(
+                dists.iter().any(|d| &d.name.as_str() == name),
+                "{name} is outdated but not installed — the join would lose it"
+            );
+        }
+        // Something up to date, so the dimming rule has a subject.
+        assert!(
+            dists
+                .iter()
+                .any(|d| !outdated_names.contains(&d.name.as_str())),
+            "no up-to-date row, so nothing exercises dimming"
+        );
+        // Something with no size, so the em-dash cell has a subject.
+        assert!(
+            dists.iter().any(|d| d.size_bytes.is_none()),
+            "no row without a size, so nothing exercises the unknown-size cell"
+        );
+        // Both pin modes on screen, so the 🔒 chip has to tell them apart.
+        assert!(pins.iter().any(|p| matches!(p.mode, PinMode::Exclude)));
+        assert!(pins.iter().any(|p| matches!(p.mode, PinMode::Hold { .. })));
+        // Pinned *and* outdated, so "N pinned excluded" is a real subtraction rather than 0.
+        let excluded = outdated_names
+            .iter()
+            .filter(|n| pinned_names.contains(n))
+            .count();
+        assert_eq!(
+            excluded, 2,
+            "Select all should exclude exactly 2 of the outdated rows"
+        );
+        assert!(
+            outdated_names.len() > excluded,
+            "Select all would select nothing"
+        );
+    }
+}

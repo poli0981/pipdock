@@ -1,0 +1,22 @@
+[
+  {
+    "name": "numpy",
+    "current": "1.26.4",
+    "latest": "2.5.1"
+  },
+  {
+    "name": "pandas",
+    "current": "2.1.4",
+    "latest": "2.3.0"
+  },
+  {
+    "name": "requests",
+    "current": "2.28.0",
+    "latest": "2.32.3"
+  },
+  {
+    "name": "scipy",
+    "current": "1.11.4",
+    "latest": "1.14.1"
+  }
+]
