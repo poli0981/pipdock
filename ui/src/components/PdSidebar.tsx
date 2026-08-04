@@ -4,7 +4,7 @@ import { NAV_KEYS, type NavKey } from '@/components/nav'
 import { useEnvStore, useUiStore } from '@/stores'
 
 /** Tabs whose screens land in a later milestone. Kept in place, not hidden. */
-const NOT_YET: readonly NavKey[] = ['search', 'pins', 'health', 'security']
+const NOT_YET: readonly NavKey[] = ['pins', 'health', 'security']
 
 /**
  * The sidebar — UI-SPEC §3 and §8.

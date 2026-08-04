@@ -153,6 +153,35 @@
     "checkFinding": "{{pkg}} requires {{requirement}}",
     "done": "Back to packages"
   },
+  "search": {
+    "title": "Search",
+    "placeholder": "Search PyPI…",
+    "warming": "Preparing the package index…",
+    "searching": "Searching…",
+    "indexMissing": "The package index has not been downloaded yet.",
+    "refreshIndex": "Download the index",
+    "refreshing": "Downloading…",
+    "noResults": "nothing matches “{{query}}”",
+    "noResultsHint": "Check the spelling, or refresh the index if the package is new.",
+    "installed": "INSTALLED",
+    "add": "Add",
+    "queued": "Queued",
+    "dockBay": "To install",
+    "latest": "latest",
+    "versionFor": "Version for {{pkg}}",
+    "remove": "Remove {{pkg}} from the queue",
+    "install_one": "Install {{count}} package",
+    "install_other": "Install {{count}} packages",
+    "noEnvironment": "Pick an environment first.",
+    "requiresPython": "Needs Python {{spec}}",
+    "freshness": {
+      "fresh": "just fetched",
+      "cached": "cached",
+      "stale": "cached — could not refresh"
+    },
+    "offline": "OFFLINE",
+    "offlineDetail": "No connection. Search still works from the local index; installing and metadata do not."
+  },
   "settings": {
     "title": "Settings",
     "engine": "Engine",

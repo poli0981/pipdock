@@ -146,6 +146,34 @@
     "checkFinding": "{{pkg}} yêu cầu {{requirement}}",
     "done": "Quay lại danh sách gói"
   },
+  "search": {
+    "title": "Tìm kiếm",
+    "placeholder": "Tìm trên PyPI…",
+    "warming": "Đang chuẩn bị danh mục gói…",
+    "searching": "Đang tìm…",
+    "indexMissing": "Danh mục gói chưa được tải về.",
+    "refreshIndex": "Tải danh mục",
+    "refreshing": "Đang tải…",
+    "noResults": "không có gì khớp “{{query}}”",
+    "noResultsHint": "Hãy kiểm tra chính tả, hoặc tải lại danh mục nếu gói này mới.",
+    "installed": "ĐÃ CÀI",
+    "add": "Thêm",
+    "queued": "Đã thêm",
+    "dockBay": "Sẽ cài",
+    "latest": "mới nhất",
+    "versionFor": "Phiên bản cho {{pkg}}",
+    "remove": "Bỏ {{pkg}} khỏi danh sách",
+    "install_other": "Cài {{count}} gói",
+    "noEnvironment": "Hãy chọn một môi trường trước.",
+    "requiresPython": "Cần Python {{spec}}",
+    "freshness": {
+      "fresh": "vừa tải",
+      "cached": "đã lưu",
+      "stale": "đã lưu — không làm mới được"
+    },
+    "offline": "NGOẠI TUYẾN",
+    "offlineDetail": "Không có kết nối. Tìm kiếm vẫn chạy từ danh mục cục bộ; cài đặt và metadata thì không."
+  },
   "settings": {
     "title": "Cài đặt",
     "engine": "Bộ máy",
