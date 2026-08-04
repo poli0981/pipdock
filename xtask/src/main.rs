@@ -28,14 +28,50 @@ fn main() -> ExitCode {
                 ExitCode::FAILURE
             }
         },
+        Some("ipc-fixtures") => match ipc_fixtures() {
+            Ok(written) => {
+                for (name, changed) in written {
+                    println!(
+                        "{} {}/{name}",
+                        if changed { "wrote" } else { "unchanged" },
+                        pipdock_core::fixtures::OUTPUT_DIR
+                    );
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("error: {e}");
+                ExitCode::FAILURE
+            }
+        },
         other => {
             if let Some(name) = other {
                 eprintln!("error: unknown task {name:?}");
             }
-            eprintln!("usage: cargo run -p xtask -- bindings");
+            eprintln!("usage: cargo run -p xtask -- <bindings|ipc-fixtures>");
             ExitCode::FAILURE
         }
     }
+}
+
+/// Regenerate the L3 mock payloads. Returns which files changed.
+fn ipc_fixtures() -> Result<Vec<(&'static str, bool)>, Box<dyn std::error::Error>> {
+    let dir = repo_root().join(pipdock_core::fixtures::OUTPUT_DIR);
+    std::fs::create_dir_all(&dir)?;
+
+    let mut out = Vec::new();
+    for (name, generated) in pipdock_core::fixtures::ipc_fixtures()? {
+        let path = dir.join(name);
+        // Normalised, so a CRLF checkout does not look like a change on every run.
+        let current = std::fs::read_to_string(&path).unwrap_or_default();
+        if current.replace("\r\n", "\n") == generated {
+            out.push((name, false));
+            continue;
+        }
+        std::fs::write(&path, generated)?;
+        out.push((name, true));
+    }
+    Ok(out)
 }
 
 /// Regenerate the TypeScript bindings. Returns whether the file changed.

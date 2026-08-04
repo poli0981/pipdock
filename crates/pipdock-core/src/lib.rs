@@ -29,6 +29,7 @@ pub mod engine;
 pub mod envs;
 pub mod errors;
 pub mod exec;
+pub mod fixtures;
 pub mod flow;
 pub mod graph;
 pub mod health;
