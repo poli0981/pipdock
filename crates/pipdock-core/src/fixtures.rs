@@ -105,6 +105,93 @@ fn pin_list() -> Vec<Pin> {
     ]
 }
 
+/// What `plan_resolve` returns for the same scenario: a preview that needs decisions.
+///
+/// Covers **all four** `ChangeKind` variants, a held-back package with a real blocker, and an
+/// impossible one — so the preview's grouping and the conflict control's two states each have a
+/// subject. `Downgrade` in particular: it is the variant UI-SPEC had no section for, and a
+/// compatible resolve produces it routinely.
+fn flow_step() -> crate::flow::FlowStep {
+    use crate::plan::{Blocker, Change, ChangeKind, HeldBack, ImpossibleDetail, ResolutionReport};
+
+    let pkg = |n: &str| PkgName::parse(n).unwrap_or_else(|e| panic!("fixture name {n:?}: {e:?}"));
+    let change = |name: &str, from: Option<&str>, to: &str, kind: ChangeKind| Change {
+        name: pkg(name),
+        from: from.map(|v| Version(v.to_owned())),
+        to: Version(to.to_owned()),
+        kind,
+    };
+
+    crate::flow::FlowStep::NeedsDecisions {
+        report: ResolutionReport {
+            changes: vec![
+                change("pandas", Some("2.1.4"), "2.3.0", ChangeKind::Upgrade),
+                change("requests", Some("2.28.0"), "2.32.3", ChangeKind::Upgrade),
+                // The case that had no home: satisfying pandas 2.3 means moving this *down*.
+                change("urllib3", Some("2.2.0"), "1.26.20", ChangeKind::Downgrade),
+                change("tzdata", None, "2025.1", ChangeKind::NewDependency),
+                change("httpx", None, "0.28.1", ChangeKind::NewInstall),
+            ],
+            held_back: vec![HeldBack {
+                pkg: pkg("numpy"),
+                resolved: Version("1.26.4".to_owned()),
+                latest: Version("2.5.1".to_owned()),
+                blockers: vec![Blocker {
+                    by: Some(pkg("scipy")),
+                    constraint: "numpy<1.28.0,>=1.21.6".to_owned(),
+                }],
+            }],
+            impossible: Some(ImpossibleDetail {
+                explanation: "no version of oldlib is compatible with python 3.12".to_owned(),
+                packages: vec![pkg("oldlib")],
+            }),
+            raw: String::new(),
+        },
+        round: 0,
+        rounds_remaining: 3,
+    }
+}
+
+/// What `plan_execute` returns after a run that was stopped part-way.
+///
+/// The cancelled case on purpose: it is the one DATA-FLOW §6 does not work through, the one whose
+/// copy was deferred out of Stage 1, and the one where the counts and the rows are most likely to
+/// disagree — thirteen applied, one failed, the rest never attempted.
+fn execution_summary() -> crate::plan::ExecutionSummary {
+    use crate::model::{CheckReport, ExecMode, StepResult, StepStatus};
+
+    let pkg = |n: &str| PkgName::parse(n).unwrap_or_else(|e| panic!("fixture name {n:?}: {e:?}"));
+    let step = |name: &str, to: &str, status: StepStatus| StepResult {
+        pkg: pkg(name),
+        from: None,
+        to: Some(Version(to.to_owned())),
+        status,
+        code: (status == StepStatus::Failed).then_some(crate::errors::Code::BldBackendFailed),
+        stderr_tail: (status == StepStatus::Failed)
+            .then(|| "metadata-generation-failed".to_owned()),
+    };
+
+    let results = vec![
+        step("pandas", "2.3.0", StepStatus::Ok),
+        step("requests", "2.32.3", StepStatus::Ok),
+        step("oldlib", "2.0.0", StepStatus::Failed),
+        step("httpx", "0.28.1", StepStatus::Skipped),
+    ];
+    let counts = crate::plan::ExecutionSummary::tally(&results);
+
+    crate::plan::ExecutionSummary {
+        plan_id: "update-abc12345".to_owned(),
+        phase: ExecMode::Isolated,
+        results,
+        check: CheckReport {
+            ok: true,
+            findings: Vec::new(),
+        },
+        counts,
+        cancelled: true,
+    }
+}
+
 /// Every fixture, as `(file name, contents)`.
 ///
 /// # Errors
@@ -115,6 +202,8 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("pkg_list.json", render(&pkg_list())?),
         ("pkg_outdated.json", render(&pkg_outdated())?),
         ("pin_list.json", render(&pin_list())?),
+        ("flow_step.json", render(&flow_step())?),
+        ("execution_summary.json", render(&execution_summary())?),
     ])
 }
 
