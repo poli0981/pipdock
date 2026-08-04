@@ -100,7 +100,7 @@ Rendered as: **"13 successful, 2 failed, 1 skipped"** with an expandable row per
 
 | Operation | pip (`<py> -m pip …`) | uv (`uv pip … --python <py>`) | Adapter notes |
 |---|---|---|---|
-| List installed | `list --format=json` | `list --format=json` | shapes differ slightly; normalize to `Dist` |
+| List installed | *(not used — see below)* | *(not used — see below)* | `Engine::list_installed` exists and normalizes both shapes to `Dist`, but only `resolve()` calls it, to build SP-1's guard set |
 | List outdated | `list --outdated --format=json` | `list --outdated --format=json` | uv output pinned in SP-1 fixtures |
 | Dry-run resolve | `install -U --dry-run --quiet --report -` (JSON to stdout) | `uv pip install -U --dry-run` (**text plan; no stable JSON report**) | uv adapter parses text; exact format frozen via SP-1 fixtures + snapshot tests |
 | Install pinned | `install pkg==v [--no-deps in Phase A per-report set]` | `uv pip install pkg==v` | Phase A passes the full pinned set in one call |
@@ -108,6 +108,8 @@ Rendered as: **"13 successful, 2 failed, 1 skipped"** with an expandable row per
 | Env check | `check` | `uv pip check` | normalize findings |
 | Freeze (snapshots) | `freeze --all` | `uv pip freeze` | pip's `--all` includes pip/setuptools; record engine in snapshot meta |
 | Upgrade pip | `install -U pip` | *(n/a — surface "pip upkeep" only when pip engine active or pip present in env)* | |
+
+**Neither head lists installed packages through the engine.** `pipdock list` and `pkg_list` both read `probe.py` instead, because the probe carries `Requires-Dist` — which `list --format=json` does not report, and which the reverse-dependency graph, the uninstall guard and blocker attribution are all built from. Reading the engine here would give the Installed screen a different package set than the guard that protects it. The `-I` trade-off this buys is documented in ARCHITECTURE §4 and surfaced as `hidden_user_site`.
 
 Version floors: pip ≥ 22.2 for `--dry-run --report` (offer in-app pip upgrade when older); uv minimum pinned after SP-1.
 
