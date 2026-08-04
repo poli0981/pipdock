@@ -192,6 +192,19 @@ export interface ExecutionSummary {
 }
 
 /**
+ * What the flow needs next.
+ *
+ * Crosses IPC, so the GUI's two decision points are a round trip apart (see the module docs).
+ * Tagged on `step` rather than externally, because the frontend switches on it and a bare
+ * `{ needsDecisions: { … } }` would make every consumer unwrap before it can look.
+ */
+export type FlowStep =
+  | { report: ResolutionReport; round: number; roundsRemaining: number; step: 'needsDecisions' }
+  | { report: ResolutionReport; step: 'needsConfirm' }
+  | { report: ResolutionReport; step: 'roundsExhausted' }
+  | { reason: NothingReason; step: 'nothing' };
+
+/**
  * What the uninstall guard found.
  *
  * Rationale from DATA-FLOW §5: bare `pip uninstall` performs **no** dependency check at all, so
@@ -241,11 +254,27 @@ export interface ImpossibleDetail {
   packages?: PkgName[];
 }
 
+/**
+ * What the user asked for, before it becomes a [`PlanRequest`].
+ *
+ * Names arrive as strings and are parsed here rather than by the caller, so both heads get the
+ * same `PD-PKG-002` on a malformed name and SECURITY §2's "validated before it reaches argv"
+ * holds for the GUI as well as the CLI.
+ */
+export type Intent =
+  | { all: boolean; except?: string[]; forceLatest?: boolean; intent: 'update'; pkgs?: string[] }
+  | { intent: 'install'; specs: string[] };
+
 /** How a hit matched, in ranking order. */
 export type MatchKind =
   | 'exact'
   | 'prefix'
   | 'fuzzy';
+
+/** Why a flow ended before there was anything to confirm. */
+export type NothingReason =
+  | 'nothing-to-do'
+  | 'everything-skipped';
 
 /** An installed distribution with a newer release available. */
 export interface OutdatedDist {

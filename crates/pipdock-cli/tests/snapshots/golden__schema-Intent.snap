@@ -1,0 +1,71 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What the user asked for, before it becomes a [`PlanRequest`].\n\nNames arrive as strings and are parsed here rather than by the caller, so both heads get the\nsame `PD-PKG-002` on a malformed name and SECURITY §2's \"validated before it reaches argv\"\nholds for the GUI as well as the CLI.",
+  "oneOf": [
+    {
+      "description": "`pipdock update`",
+      "properties": {
+        "all": {
+          "description": "Every outdated package.",
+          "type": "boolean"
+        },
+        "except": {
+          "default": [],
+          "description": "Ad-hoc exclusions on top of pins.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "forceLatest": {
+          "default": false,
+          "description": "`--strategy latest`.",
+          "type": "boolean"
+        },
+        "intent": {
+          "const": "update",
+          "type": "string"
+        },
+        "pkgs": {
+          "default": [],
+          "description": "Specific packages.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "intent",
+        "all"
+      ],
+      "type": "object"
+    },
+    {
+      "description": "`pipdock install`",
+      "properties": {
+        "intent": {
+          "const": "install",
+          "type": "string"
+        },
+        "specs": {
+          "description": "`name` or `name==version`.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "intent",
+        "specs"
+      ],
+      "type": "object"
+    }
+  ],
+  "title": "Intent"
+}
