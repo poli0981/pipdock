@@ -356,6 +356,7 @@ mod tests {
             version: Version(version.into()),
             requires_dist: requires.iter().map(|s| (*s).to_owned()).collect(),
             requires_python: None,
+            size_bytes: None,
         }
     }
 
@@ -606,6 +607,7 @@ mod tests {
                     version: Version("1.0".into()),
                     requires_dist: vec!["urllib3".into()],
                     requires_python: None,
+                    size_bytes: None,
                 }
             }))
             .collect();
