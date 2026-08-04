@@ -3,11 +3,13 @@ import { useTranslation } from 'react-i18next'
 
 import { NAV_KEYS } from '@/components/nav'
 import { PdLegalGate } from '@/components/PdLegalGate'
+import { PdOfflineBanner } from '@/components/PdOfflineBanner'
 import { PdSidebar } from '@/components/PdSidebar'
 import { PdStatusLine } from '@/components/PdStatusLine'
 import type { NavKey } from '@/components/nav'
 import { PdEnvironments } from '@/screens/PdEnvironments'
 import { PdPackages } from '@/screens/PdPackages'
+import { PdSearch } from '@/screens/PdSearch'
 import { PdSettings } from '@/screens/PdSettings'
 import { useEnvStore, useLegalStore, useUiStore } from '@/stores'
 
@@ -20,6 +22,7 @@ const SCREENS: Partial<Record<NavKey, React.ReactNode>> = {
   environments: <PdEnvironments />,
   installed: <PdPackages mode="installed" />,
   updates: <PdPackages mode="updates" />,
+  search: <PdSearch />,
   settings: <PdSettings />,
 }
 
@@ -44,6 +47,17 @@ export function App() {
   // UI-SPEC §8: Ctrl+1..8 select tabs, positionally over NAV_KEYS.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // UI-SPEC §8: `/` focuses search. Guarded against text fields, or it would be impossible to
+      // type a slash into a version specifier.
+      const target = e.target as HTMLElement | null
+      const typing =
+        target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
+      if (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey && typing !== true) {
+        e.preventDefault()
+        setNav('search')
+        return
+      }
+
       if (!e.ctrlKey || e.altKey || e.metaKey) return
       const index = Number.parseInt(e.key, 10) - 1
       const key = NAV_KEYS[index]
@@ -69,7 +83,8 @@ export function App() {
     <div className="flex h-full flex-col bg-bg text-text">
       <header className="flex items-center justify-between border-b border-border px-4 py-2">
         <span className="font-mono text-accent">{t('app.name')}</span>
-        <span className="font-mono text-data text-text-dim">
+        <span className="flex items-center gap-2 font-mono text-data text-text-dim">
+          <PdOfflineBanner />
           {selected ?? t('status.noEnvironment')}
         </span>
       </header>

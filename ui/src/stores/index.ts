@@ -364,3 +364,12 @@ export const useUiStore = create<UiState>((set) => ({
 // The plan store lives in its own file: it is the largest of them and the only one holding a live
 // event subscription. Re-exported so `@/stores` stays the single import site.
 export { CONSOLE_LIMIT, apply, usePlanStore, type ConsoleLine, type PlanPhase } from '@/stores/plan'
+
+// Search and the dock bay, in their own file for the same reason as the plan store.
+export {
+  SEARCH_DEBOUNCE_MS,
+  SEARCH_LIMIT,
+  queueSpecs,
+  useIndexStore,
+  type QueuedPackage,
+} from '@/stores/index-search'
