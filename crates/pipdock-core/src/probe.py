@@ -172,10 +172,20 @@ def _dists() -> list[dict[str, object]]:
     A single unreadable distribution must not fail the whole probe -- broken
     metadata in one package is common and the user still needs the rest of the
     list. Such entries are reported with an `error` field instead.
+
+    Distributions are deduplicated by normalized name, **first occurrence winning**.
+    `importlib.metadata.distributions()` walks sys.path in order and yields one entry per
+    metadata directory it finds, so a package discoverable twice is reported twice -- most
+    commonly after `pip install -e`, where the project's own src/<name>.egg-info joins the
+    venv's .dist-info via the .pth file. `pip list` shows such a package once, and so must
+    PipDock: a duplicate row means an ambiguous key when the Installed table joins against
+    the outdated set, and two rows the user cannot tell apart. First-wins matches sys.path
+    precedence, which is the copy an `import` would actually resolve to.
     """
     from importlib.metadata import distributions
 
     out: list[dict[str, object]] = []
+    seen: set[str] = set()
     for dist in distributions():
         try:
             meta = dist.metadata
@@ -188,9 +198,13 @@ def _dists() -> list[dict[str, object]]:
             raw_name = meta.get("Name")
             if not raw_name:
                 continue
+            name = _normalize(raw_name)
+            if name in seen:
+                continue
+            seen.add(name)
             out.append(
                 {
-                    "name": _normalize(raw_name),
+                    "name": name,
                     "version": dist.version or "",
                     "requires_dist": list(dist.requires or []),
                     "requires_python": meta.get("Requires-Python"),
