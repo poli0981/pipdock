@@ -28,7 +28,7 @@ export function PdSettings() {
   }, [load])
 
   return (
-    <section aria-labelledby="settings-title">
+    <section aria-labelledby="settings-title" className="h-full overflow-auto p-6">
       <h1 id="settings-title" className="text-accent">
         {t('settings.title')}
       </h1>

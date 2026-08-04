@@ -62,11 +62,16 @@ export function App() {
 
       <div className="flex min-h-0 flex-1">
         <PdSidebar />
-        <main className="min-w-0 flex-1 overflow-auto p-6">
+        {/* Each screen owns its own scroll container. A virtualizer needs a scroll element it
+            can observe, and nesting one inside an already-scrolling <main> gives two scrollbars
+            and an outer one whose content is already the virtualizer's full height. */}
+        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {nav === 'environments' ? <PdEnvironments /> : null}
           {nav === 'settings' ? <PdSettings /> : null}
           {nav !== 'environments' && nav !== 'settings' ? (
-            <p className="font-mono text-text-dim">{`▸ ${t(`nav.${nav}`)}`}</p>
+            <p className="h-full overflow-auto p-6 font-mono text-text-dim">
+              {`▸ ${t(`nav.${nav}`)}`}
+            </p>
           ) : null}
         </main>
       </div>

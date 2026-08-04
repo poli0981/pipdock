@@ -66,6 +66,42 @@
     "unusable": "Không đọc được trình thông dịch này.",
     "selected": "Đang chọn"
   },
+  "packages": {
+    "installedTitle": "Đã cài",
+    "updatesTitle": "Cập nhật",
+    "tableLabel": "Các gói",
+    "column": {
+      "name": "Gói",
+      "version": "Phiên bản",
+      "latest": "Mới nhất",
+      "size": "Dung lượng",
+      "status": "Trạng thái"
+    },
+    "badge": {
+      "update": "UPDATE",
+      "pinned": "đã ghim",
+      "pinnedDetail": "Đã ghim: không nằm trong các lần cập nhật hàng loạt. Bạn vẫn có thể cập nhật riêng gói này.",
+      "heldDetail": "Giữ ở {{version}}: không nằm trong cập nhật hàng loạt, và luôn được giữ ở phiên bản này trong mọi kế hoạch."
+    },
+    "actions": {
+      "pin": "Ghim gói này",
+      "unpin": "Bỏ ghim",
+      "updateSelected": "Cập nhật các gói đã chọn",
+      "clearSelection": "Bỏ chọn"
+    },
+    "updateSelectedSoon": "Xem trước và áp dụng cập nhật sẽ có ở phiên bản sau.",
+    "selected_other": "Đã chọn {{count}}",
+    "pinnedExcluded_other": "{{count}} gói đã ghim bị loại trừ",
+    "checkingUpdates": "Đang kiểm tra cập nhật…",
+    "loading": "Đang đọc môi trường…",
+    "empty": "chưa có gói nào được cài ở đây",
+    "emptyHint": "Môi trường này chưa có gì cả.",
+    "updatesEmpty": "tất cả các gói đều đã mới nhất",
+    "noEnvironment": "chưa chọn môi trường",
+    "noEnvironmentHint": "Hãy chọn một môi trường ở màn hình Môi trường.",
+    "outdatedFailed": "Không kiểm tra được cập nhật, nên chưa gói nào được gắn nhãn.",
+    "orphanOutdated_other": "{{count}} gói có bản cập nhật nhưng không có trong danh sách này."
+  },
   "settings": {
     "title": "Cài đặt",
     "engine": "Bộ máy",

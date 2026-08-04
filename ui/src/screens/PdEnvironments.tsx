@@ -13,6 +13,7 @@ import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { onScanProgress, type EnvRow } from '@/ipc'
 import { useEnvStore } from '@/stores'
@@ -110,7 +111,7 @@ export function PdEnvironments() {
   }, [scan, setProgress])
 
   return (
-    <section aria-labelledby="env-title">
+    <section aria-labelledby="env-title" className="h-full overflow-auto p-6">
       <div className="flex items-center justify-between">
         <h1 id="env-title" className="text-accent">
           {t('env.title')}
@@ -142,11 +143,7 @@ export function PdEnvironments() {
       ) : null}
 
       {!scanning && rows.length === 0 && error === null ? (
-        <div className="mt-8 text-center">
-          {/* UI-SPEC §7: one mono glyph, one sentence, one action. */}
-          <p className="font-mono text-text-dim">{`▸ ${t('env.empty')}`}</p>
-          <p className="mt-1 text-data text-text-dim">{t('env.emptyHint')}</p>
-        </div>
+        <PdEmptyState message={t('env.empty')} hint={t('env.emptyHint')} />
       ) : null}
 
       <ul className="mt-4 space-y-2">
