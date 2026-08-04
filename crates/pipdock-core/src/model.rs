@@ -105,19 +105,30 @@ impl PyEnv {
 /// Constructing one is the *only* way a package name reaches an argv array, which is what makes
 /// SECURITY §2's "validated before it reaches argv" claim structural rather than aspirational.
 #[derive(
-    Debug,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    serde::Serialize,
-    serde::Deserialize,
-    schemars::JsonSchema,
+    Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, schemars::JsonSchema,
 )]
 #[serde(transparent)]
 pub struct PkgName(String);
+
+/// Deserialize through [`PkgName::parse`], so the claim above survives contact with IPC.
+///
+/// The derived implementation would have accepted any string at all — `#[serde(transparent)]`
+/// hands the inner `String` straight through. Every *other* construction path already goes through
+/// `parse`: the probe (`envs::parse_probe`), both engine JSON parsers, and the pin store all call
+/// it. Deserialization was the one door left open, and it is the one a Tauri command opens: a
+/// `Pin` arriving from the frontend carries a `PkgName` that no code path had validated, and
+/// `pins::hold_requirements` turns it into a `PinnedSpec` that reaches argv.
+///
+/// Normalization applies here too, so `"Zope.Interface"` on the wire becomes `zope-interface` —
+/// the same identity every other producer would have given it.
+impl<'de> serde::Deserialize<'de> for PkgName {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        let raw = String::deserialize(deserializer)?;
+        Self::parse(&raw).map_err(|e| serde::de::Error::custom(e.message))
+    }
+}
 
 impl PkgName {
     /// Validate and normalize a distribution name.
@@ -373,6 +384,39 @@ mod tests {
         let err = PkgName::parse("--upgrade").expect_err("flag-like name must be rejected");
         assert_eq!(err.code, Code::PkgNotFound);
         assert_eq!(err.code.as_str(), "PD-PKG-002");
+    }
+
+    #[test]
+    fn deserializing_a_name_applies_the_same_grammar_as_parsing() {
+        // The derived `Deserialize` accepted anything, because `#[serde(transparent)]` hands the
+        // inner String straight through. These are the strings a Tauri command could be handed.
+        for raw in ["--upgrade", "has space", "sla/sh", "", "requests>=2"] {
+            let json = serde_json::to_string(raw).unwrap_or_else(|_| unreachable!());
+            assert!(
+                serde_json::from_str::<PkgName>(&json).is_err(),
+                "{raw:?} should not survive deserialization"
+            );
+        }
+    }
+
+    #[test]
+    fn a_deserialized_name_is_normalized_like_every_other_producer() {
+        let got: PkgName =
+            serde_json::from_str("\"Zope.Interface\"").unwrap_or_else(|_| unreachable!());
+        assert_eq!(got.as_str(), "zope-interface");
+        // Same identity the probe and both engine parsers would have produced, which is what
+        // makes the client-side join on this name safe.
+        assert_eq!(
+            got,
+            PkgName::parse("zope_interface").unwrap_or_else(|_| unreachable!())
+        );
+    }
+
+    #[test]
+    fn a_pin_from_the_wire_cannot_smuggle_a_name_into_argv() {
+        // pins::hold_requirements turns a Hold pin into a PinnedSpec, which reaches argv.
+        let json = r#"{"pkg":"--break-system-packages","mode":"exclude"}"#;
+        assert!(serde_json::from_str::<crate::pins::Pin>(json).is_err());
     }
 
     #[test]
