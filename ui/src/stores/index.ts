@@ -21,13 +21,22 @@ import {
   isPdError,
   legalConsentGet,
   legalConsentSet,
+  pinAdd,
+  pinList,
+  pinRemove,
+  pkgList,
+  pkgOutdated,
   settingsGet,
   settingsSet,
+  type Dist,
   type EnvRow,
+  type OutdatedDist,
   type PdError,
+  type Pin,
   type ScanProgress,
   type Settings,
 } from '@/ipc'
+import { joinRows, type LoadState, type PackageRow } from '@/screens/rows'
 
 /** Which resolver is active; shown in the status line (UI-SPEC §3). */
 export type EngineId = 'pip' | 'uv'
@@ -116,37 +125,185 @@ interface EnvState {
   scan: () => Promise<void>
   setProgress: (progress: ScanProgress) => void
   select: (interpreter: string) => void
+
+  // -- the package slice, for Installed and Updates ------------------------------------------
+
+  /** Raw responses, one field per command, kept so any one can be refreshed on its own. */
+  dists: Dist[]
+  outdated: OutdatedDist[]
+  pins: Pin[]
+
+  /**
+   * The joined rows, held as **state rather than derived in a selector**.
+   *
+   * Zustand v5 sits on `useSyncExternalStore`, so a selector returning a freshly built array
+   * hands React a new reference every call and either warns about `getSnapshot` caching or
+   * re-renders forever. Recomputed by the actions below via the pure `joinRows`.
+   */
+  packages: PackageRow[]
+  /** Outdated names with no installed row — see `joinRows`. */
+  orphanOutdated: string[]
+  /** Count for the sidebar badge. A primitive, so reading it needs no memo. */
+  updatesCount: number
+  /** Which interpreter `packages` describes, so switching tabs does not refetch. */
+  loadedFor: string | null
+
+  listing: LoadState
+  listError: PdError | null
+  /**
+   * Tracked separately from `listing` because `pkg_outdated` is the networked half. A PyPI
+   * failure must cost badges, not the table.
+   */
+  outdatedStatus: LoadState
+  outdatedError: PdError | null
+
+  selection: Set<string>
+
+  /** `pkg_list` + `pin_list` for the selected environment. */
+  loadPackages: () => Promise<void>
+  /** `pkg_outdated`, retryable on its own without re-reading the environment. */
+  loadOutdated: () => Promise<void>
+  toggle: (name: string) => void
+  selectAll: (names: readonly string[]) => void
+  clearSelection: () => void
+  togglePin: (name: string) => Promise<void>
 }
 
-export const useEnvStore = create<EnvState>((set) => ({
+/** Everything the package slice resets to. Named so a future field cannot be forgotten. */
+const NO_PACKAGES = {
+  dists: [] as Dist[],
+  outdated: [] as OutdatedDist[],
+  pins: [] as Pin[],
+  packages: [] as PackageRow[],
+  orphanOutdated: [] as string[],
+  updatesCount: 0,
+  loadedFor: null,
+  listing: 'idle' as LoadState,
+  listError: null,
+  outdatedStatus: 'idle' as LoadState,
+  outdatedError: null,
+  selection: new Set<string>(),
+}
+
+/** Recompute the joined view from the three raw responses. */
+function joined(dists: Dist[], outdated: OutdatedDist[], pins: Pin[]) {
+  const { rows, orphanOutdated } = joinRows(dists, outdated, pins)
+  return {
+    packages: rows,
+    orphanOutdated,
+    updatesCount: rows.filter((r) => r.latest !== undefined).length,
+  }
+}
+
+export const useEnvStore = create<EnvState>((set, get) => ({
   rows: [],
   selected: null,
   scanning: false,
   progress: null,
   error: null,
+  ...NO_PACKAGES,
 
   scan: async () => {
     set({ scanning: true, error: null })
     try {
       const rows = await envScan()
-      set((state) => ({
-        rows,
-        scanning: false,
-        progress: null,
-        // Keep the current selection if it survived the rescan; otherwise fall back to the first
-        // usable row, so the status line is never empty while something is available.
-        selected:
+      set((state) => {
+        const selected =
+          // Keep the current selection if it survived the rescan; otherwise fall back to the first
+          // usable row, so the status line is never empty while something is available.
           state.selected !== null && rows.some((r) => r.interpreter === state.selected)
             ? state.selected
-            : (rows.find((r) => r.env !== undefined)?.interpreter ?? null),
-      }))
+            : (rows.find((r) => r.env !== undefined)?.interpreter ?? null)
+        return {
+          rows,
+          scanning: false,
+          progress: null,
+          selected,
+          // A rescan can move the selection, and the package slice belongs to whichever
+          // environment was selected when it was read.
+          ...(selected === state.loadedFor ? {} : NO_PACKAGES),
+        }
+      })
     } catch (e) {
       set({ scanning: false, progress: null, error: asPdError(e) })
     }
   },
 
   setProgress: (progress) => set({ progress }),
-  select: (interpreter) => set({ selected: interpreter }),
+
+  // Clearing the package slice here is load-bearing: without it, switching environments shows the
+  // previous one's packages under the new one's name. Invisible to any test that loads one env.
+  select: (interpreter) =>
+    set((state) =>
+      state.selected === interpreter ? {} : { selected: interpreter, ...NO_PACKAGES },
+    ),
+
+  loadPackages: async () => {
+    const { selected, rows } = get()
+    const row = rows.find((r) => r.interpreter === selected)
+    if (selected === null || row?.env === undefined) return
+
+    set({ listing: 'loading', listError: null })
+    try {
+      const [dists, pins] = await Promise.all([pkgList(row.env), pinList(row.envHash)])
+      set({ dists, pins, ...joined(dists, get().outdated, pins), listing: 'ready', loadedFor: selected })
+    } catch (e) {
+      set({ listing: 'error', listError: asPdError(e) })
+    }
+  },
+
+  loadOutdated: async () => {
+    const { selected, rows } = get()
+    const row = rows.find((r) => r.interpreter === selected)
+    if (selected === null || row?.env === undefined) return
+
+    set({ outdatedStatus: 'loading', outdatedError: null })
+    try {
+      const outdated = await pkgOutdated(row.env)
+      set({ outdated, ...joined(get().dists, outdated, get().pins), outdatedStatus: 'ready' })
+    } catch (e) {
+      // The installed table stays; only the badges are missing. This is the whole reason
+      // `pkg_list` and `pkg_outdated` are two commands.
+      set({ outdatedStatus: 'error', outdatedError: asPdError(e) })
+    }
+  },
+
+  toggle: (name) =>
+    set((state) => {
+      const next = new Set(state.selection)
+      if (!next.delete(name)) next.add(name)
+      return { selection: next }
+    }),
+
+  selectAll: (names) => set({ selection: new Set(names) }),
+  clearSelection: () => set({ selection: new Set<string>() }),
+
+  togglePin: async (name) => {
+    const { selected, rows, pins, dists, outdated } = get()
+    const row = rows.find((r) => r.interpreter === selected)
+    if (row === undefined) return
+
+    const existing = pins.find((p) => p.pkg === name)
+    try {
+      if (existing === undefined) {
+        // From a row, a pin is always `Exclude` — "do not sweep this up". Holding at a version
+        // needs a reason field, which UI-SPEC §4 puts on the Pins screen (S5).
+        await pinAdd(row.envHash, { pkg: name, mode: 'exclude' })
+      } else {
+        await pinRemove(row.envHash, name)
+      }
+      const fresh = await pinList(row.envHash)
+      set((state) => ({
+        pins: fresh,
+        ...joined(dists, outdated, fresh),
+        // A newly pinned package must leave the selection, or Select all's count and what is
+        // actually ticked disagree.
+        selection: new Set([...state.selection].filter((n) => !fresh.some((p) => p.pkg === n))),
+      }))
+    } catch (e) {
+      set({ listError: asPdError(e) })
+    }
+  },
 }))
 
 interface LegalState {
