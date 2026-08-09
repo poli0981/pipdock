@@ -53,4 +53,6 @@ GUI: `code · localized one-liner · [Details ⌄ stderr tail ≤ 40 lines] · [
 2. **Report bug** builds a prefilled GitHub new-issue URL against `.github/ISSUE_TEMPLATE/bug_report.yml`:
    `https://github.com/poli0981/pipdock/issues/new?template=bug_report.yml&pd-version=…&os=…&engine=…&python=…&error-code=…&log-excerpt=…`
 3. URL budget: GitHub rejects very long URLs, so `log-excerpt` is truncated to ≈ 6 000 characters (tail-biased); the full log is simultaneously copied to the clipboard and the dialog says so ("paste into the issue if asked").
-4. Nothing is ever sent automatically — the user reviews the issue form in their browser. This is the entire "telemetry" story.
+4. Nothing is ever sent automatically — the user reviews the issue form in their browser. This is the entire "telemetry" story, and the row says so beside the button rather than leaving the user to guess what "Report bug" does.
+
+Built in `pipdock_core::report` and called by both heads, so `pipdock self report-bug` and the GUI's `report_bug_url` cannot drift apart the day the template gains a field. The GUI's ring buffer is fed from **three** places, not one: the `plan-progress` forwarder, and `plan_resolve`'s success *and* failure paths — a resolve emits no progress events at all, and a plan that would not resolve is the commonest thing anyone reports. The CLI has no ring until M3's logging subsystem, so its excerpt is empty and the URL simply omits the parameter.

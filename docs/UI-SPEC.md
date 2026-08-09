@@ -45,7 +45,18 @@ Type: **Inter** (UI), **JetBrains Mono** (package names, versions, console, stat
 └──────────────────────────────────────────────────────────────┘
 ```
 
-Sidebar is icon+label, collapsible to icons. Status line (mono) always shows env · python · engine · state, plus a log-drawer toggle. The **console drawer** slides up over the status line during execution, streaming `plan-progress` lines with per-package section markers; collapsible, never modal.
+Sidebar is icon+label, collapsible to icons. Status line (mono) always shows env · python · engine · state, plus a log-drawer toggle.
+
+**`⚠ n` is the number of error rows currently on screen** — defined in S7, having been drawn in this
+diagram and specified nowhere since. It is deliberately *not* a session tally: that would read
+`⚠ 47` after a batch where 47 packages failed, stay there, and tell the user nothing the summary in
+front of them does not. Counting live rows means it returns to zero when the problems do, so the
+number and the screen always agree. `PdSummarySheet`'s per-package rows opt out — one failed run is
+one problem, not forty-seven. **This definition is an invention**; nothing specified it.
+
+The log toggle opens the console drawer, and is disabled when no run is in progress. Until M3's
+logging subsystem exists the drawer is the only log surface there is, and a toggle that opened an
+empty panel would be the same empty gesture the plain-text version was. The **console drawer** slides up over the status line during execution, streaming `plan-progress` lines with per-package section markers; collapsible, never modal.
 
 ## 4. Screens
 
