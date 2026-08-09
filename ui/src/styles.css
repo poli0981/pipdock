@@ -98,11 +98,65 @@
     }
   }
 
-  /* UI-SPEC §8: Windows high-contrast mode falls back to system colors. */
+  /* UI-SPEC §8: Windows high-contrast mode falls back to system colors.
+   *
+   * Forced-colors does not *ignore* the palette — it overrides the properties it knows about and
+   * leaves the rest, so a token still resolves and still loses. Rebinding every `--color-*` to a
+   * system keyword is what makes the whole app follow, rather than the handful of properties the
+   * UA happens to force.
+   *
+   * Two cases the UA cannot rescue on its own, both load-bearing:
+   *
+   * - **A tinted background carries no meaning here.** `bg-danger/20` on *Force latest* and on
+   *   *Remove anyway* is erased, leaving them visually identical to Cancel — a destructive button
+   *   that looks like the safe one. They get a border instead, which forced-colors keeps.
+   * - **Selection is a background too.** A selected row is `bg-surface-2`, which flattens into
+   *   every other row; an outline survives.
+   */
   @media (forced-colors: active) {
+    :root {
+      --color-bg: Canvas;
+      --color-surface: Canvas;
+      --color-surface-2: Canvas;
+      --color-border: CanvasText;
+      --color-text: CanvasText;
+      --color-text-dim: GrayText;
+      --color-accent: LinkText;
+      --color-accent-dim: LinkText;
+      /* No system keyword means "warning" or "danger", so both take the one that means
+       * "this is not ordinary text" rather than pretending to a distinction the mode does not
+       * have. The copy already says which is which. */
+      --color-warn: CanvasText;
+      --color-danger: CanvasText;
+      --color-info: CanvasText;
+    }
+
     body {
       background-color: Canvas;
       color: CanvasText;
+    }
+
+    /* The focus ring UI-SPEC §8 says is never removed. */
+    :focus-visible {
+      outline: 2px solid Highlight;
+      outline-offset: 2px;
+    }
+
+    /* A row's focus ring sits inside it, or the virtualizer's absolute positioning clips it. */
+    [role='row']:focus-visible {
+      outline-offset: -2px;
+    }
+
+    [aria-selected='true'],
+    [aria-current='true'] {
+      outline: 1px solid Highlight;
+    }
+
+    /* Destructive controls, which are otherwise indistinguishable once their tint is dropped. */
+    button[data-action='force'],
+    button[data-action='uninstall'],
+    button[data-action='rollback'] {
+      border: 2px solid CanvasText;
     }
   }
 }
