@@ -8,7 +8,7 @@
 2. The data-flow invariants (DATA-FLOW §9): no mutation without accepted plan + snapshot.
 3. Conflict presentation: held-back attribution sentences must match fixture ground truth.
 4. Skip-and-continue semantics and summary counts.
-5. Reverse-dependency guard correctness.
+5. Reverse-dependency guard correctness — including that it is *enforced*, not merely reported: a removal the user never accepted must be refused (`GuardAck`, PD-RES-004), and widening a removal must re-run the guard rather than proceed.
 
 ## 2. Layers
 

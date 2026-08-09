@@ -83,6 +83,18 @@ Selection → [Uninstall] → GuardCheck: reverse-dep graph over full removal se
 
 Rationale: bare `pip uninstall` performs **no** dependency check — this guard is a core value-add.
 
+**The dialog is not the enforcement point.** *Remove dependents too* is the caller running the guard
+*again* over the widened set, because pulling Y in can break Z and stopping after one level hands the
+user a set that still breaks something. And the removal itself refuses to run unless the guard was
+clear or the user explicitly accepted the breakage — `flow::GuardAck`, checked in
+`UninstallFlow::execute` the way `SnapshotProof` is, so a caller that never looked at the report
+cannot proceed by omission. Attempting it anyway is **PD-RES-004**, raised before the snapshot is
+written so a plan that will not run leaves nothing behind.
+
+A removal is blocked on a PEP 668 environment exactly as an update is: §2's preamble is "all mutating
+flows", and removing from a system Python is the more dangerous of the two, since no resolver stands
+between the user and the damage.
+
 ## 6. Summary model (owner requirement)
 
 ```json
@@ -125,7 +137,11 @@ Snapshot selected → Diff = (current freeze) vs (snapshot freeze)
 
 ## 9. Data-flow invariants (enforced in `pipdock-core`, tested)
 
-1. No mutating engine call without a `ResolutionReport` accepted in this session.
+1. No mutating engine call without an **accepted proof** for this session: a `ResolutionReport` for
+   a resolve-shaped plan (update, install), a `GuardReport` plus a `GuardAck` for a removal (§5), a
+   `RollbackPlan` for a restore (§8). Originally written as "a `ResolutionReport`", which the
+   uninstall path cannot produce — there is nothing to resolve — leaving the one flow with no
+   preview also the one flow the invariant did not describe.
 2. No mutating engine call without a successful snapshot write.
 3. `plan_execute` refuses a report older than 10 minutes or if the env's probe hash changed (env drifted → re-resolve).
 4. Every failure surfaced to UI/CLI carries a catalog code.

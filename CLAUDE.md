@@ -12,11 +12,12 @@ The design is fully specified. Read in this order; do not invent behaviour that 
 3. `docs/DATA-FLOW.md` — update/install/uninstall/rollback state machines, engine command mapping, **invariants §9**
 4. `docs/UI-SPEC.md` — design tokens, screens, click budgets, keyboard map
 5. `docs/CLI-SPEC.md` — commands, flags, exit codes, JSON contracts
-6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **31 in Rust**
-   (`Code::ALL`, pinned by two tests); the doc tabulates 29 because it folds `PD-HLT-001..003`
+6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **32 in Rust**
+   (`Code::ALL`, pinned by two tests); the doc tabulates 30 because it folds `PD-HLT-001..003`
    into one row. Adding a code means the catalog, `Code::ALL`, both counts, the
-   "no code without a fixture" gate in `classifier_corpus.rs`, both locale catalogs, and a
-   re-blessed `golden__schema-Code.snap` — the gate will tell you which you forgot
+   "no code without a fixture" gate in `classifier_corpus.rs`, both locale catalogs, and
+   re-blessed goldens — `golden__schema-Code.snap` **and every schema that embeds it**
+   (`StepResult`, `ExecutionSummary`) — the gate will tell you which you forgot
 7. `docs/CODE-HEALTH-SPEC.md`, `docs/SECURITY.md`, `docs/TESTING.md`, `docs/RELEASE-CI.md`, `docs/I18N.md`, `docs/ROADMAP.md`
 8. `legal/` — EULA, Disclaimer, Privacy, Third-Party Notices (public; the in-app legal gate links to these GitHub URLs)
 
@@ -63,15 +64,17 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 complete. M2 Stages 1–4 done** (IPC bridge 2026-07-30; Installed+Updates, the mutation spine
+**M1 complete. M2 Stages 1–5 done** (IPC bridge 2026-07-30; Installed+Updates, the mutation spine
 and search+install all 2026-08-04). The app discovers, lists, previews, decides, executes, streams,
 summarises and installs over real commands. **"Update everything" is 4 clicks and "install one" is
 4 clicks**, both counted by hand in the running app; search is **22 ms median per keystroke**
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-Next is **S5 — uninstall, the guard dialog and the Pins screen**, and it is a small one: the pin
-commands already exist from S2, and DATA-FLOW §5's three-option dialog is fully specified.
+Next is **S6 — snapshots, the env detail and rollback**. S5 landed `Session::Rollback` and
+`RollbackFlow::cancel_handle`, so S6 adds a call site rather than another widening; what it needs is
+`RollbackPreview` crossing IPC, the five `snapshot_*` commands, and the env-detail surface UI-SPEC §4
+assumes and which does not exist.
 
 Three rules from S2/S3 that bind everything after them:
 
@@ -86,6 +89,12 @@ Three rules from S2/S3 that bind everything after them:
   (inside core) it serializes every other command behind a network call. Read what you need, drop
   the guard, then await. This is why `UpdateFlow::start` takes pins rather than a `&Store`, and why
   `index::metadata`/`refresh` take the app-data path. It has bitten twice; assume it will again.
+- **A dialog is not an enforcement point.** DATA-FLOW §5's three options are what the user *sees*;
+  what stops a removal is `GuardAck` inside `UninstallFlow::execute`, beside `SnapshotProof`. The
+  same shape twice: the report and the proof are produced in one call and consumed in another, so
+  the only way "somebody forgot to look" cannot happen is a value the executing call demands. Any
+  future flow with a decision between two IPC messages needs its own.
+
 - **Measure in `--release`, and say which build a number came from.** A debug build measures bounds
   checks: the same index load is 572 ms in debug and 140 ms in release, and the same keystroke is
   176 ms against 16 ms. A design was justified with a figure four times too large before anyone
@@ -95,7 +104,7 @@ Things worth knowing before you change any of it:
 
 - **`cargo test` fails when `ui/src/ipc/generated.ts` is stale.** Fix with
   `cargo run -p xtask -- bindings`; the failure names that command and the first differing line.
-- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 46 snapshots) are the CLI's output
+- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 52 snapshots) are the CLI's output
   contract.** A diff there is a real behaviour change — re-bless deliberately, never reflexively.
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no

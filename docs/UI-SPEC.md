@@ -51,7 +51,10 @@ Sidebar is icon+label, collapsible to icons. Status line (mono) always shows env
 
 **Environments.** Auto-discovered list (source chip: registry / py launcher / uv / manual) with python version and package count; PEP 668 envs carry a red `MANAGED` chip and a disabled state explaining PD-ENV-002. Actions: *Browse…*, *Rescan*, star-as-default.
 
-**Installed.** Virtualized table: name (mono) · version · latest · size · chips. When the env's `hidden_user_site` is non-null (non-venv system Pythons only — see SECURITY §2), an inline `--color-info` note above the table says user-account packages are not listed and names the path; it is informational, never a block, and never appears for a venv. Up-to-date rows use `--color-text-dim` (owner's "dimmed" requirement); outdated rows show an `UPDATE` badge; pinned rows a 🔒 `--color-info` chip. Row actions: pin/unpin, uninstall, details. Multi-select via checkboxes; bulk action bar appears on selection.
+**Installed.** Virtualized table: name (mono) · version · latest · size · chips. When the env's `hidden_user_site` is non-null (non-venv system Pythons only — see SECURITY §2), an inline `--color-info` note above the table says user-account packages are not listed and names the path; it is informational, never a block, and never appears for a venv. Up-to-date rows use `--color-text-dim` (owner's "dimmed" requirement); outdated rows show an `UPDATE` badge; pinned rows a 🔒 `--color-info` chip. Row actions: pin/unpin and uninstall, as two inline buttons rather than a `⋮` menu. A menu would
+spend one click opening and one choosing, leaving one of §5's three for a confirm that has to name
+what breaks; "details" has no panel to open yet, and when it does all three fold into a menu with the
+budget intact. Neither button is a tab stop — the row is (see §8). Multi-select via checkboxes; bulk action bar appears on selection.
 
 **Updates.** Same table filtered to outdated, badge count in sidebar. Header: *Select all* (excludes pinned; shows "3 pinned excluded"), *Update selected*. After resolve → **Preview panel** replaces the table: grouped sections — *Will upgrade* (A `1.2 → 2.0`), *Will downgrade*, *Will install*, *New dependencies*, *Needs decision* (held-back in `--color-warn` with one-line blocker sentence; impossible in `--color-danger`). Each needs-decision row hosts a segmented control: **Keep compatible · Skip · Force latest** (Force opens an inline confirm naming what breaks). Footer: `Confirm (n changes)` / `Back`.
 
@@ -63,7 +66,13 @@ Sidebar is icon+label, collapsible to icons. Status line (mono) always shows env
 
 **Search.** Search field autofocused; results stream under 50 ms per keystroke from the local index. Result row: name · summary (from cached metadata) · latest · `INSTALLED ✓`/`UPDATE` chip when applicable · **[Add]**. Right detail panel: description, requires-python, license, links. Queue ("**dock bay**") docks along the right edge as a slim column of added packages with editable version fields and `Install (n)`.
 
-**Pins.** Pin list with reason field; (P1) auto-suggest section: "`urllib3` — 12 packages depend on it. Pin?".
+**Pins.** Pin list with reason field, committed on blur; unpin per row. **Exclude pins only**: a
+`Hold` pin is rendered faithfully if one exists, but creating one is not offered, because
+`pins::hold_requirements` has no caller and `engine::plan_requirements` restates every package at its
+*installed* version — a hold at any other version is a promise nothing keeps, and the CLI cannot
+create one either. With no environment selected the screen says so rather than "no pins": pins are
+keyed by `env_hash`, so that is not an empty list. (P1) auto-suggest section: "`urllib3` — 12
+packages depend on it. Pin?".
 
 **Snapshots** (surfaced under Environments → env detail): timeline of snapshots with trigger label, diff viewer (added/removed/changed in mono), `Rollback…` with its own preview per DATA-FLOW §8.
 
@@ -75,12 +84,15 @@ Sidebar is icon+label, collapsible to icons. Status line (mono) always shows env
 
 ## 5. Click budgets (owner ceiling: 5)
 
+Every click counts, including the one that opens the tab — except on Environments, which is where the
+app lands. Counted by hand in the running app, never inferred from the markup.
+
 | Flow | Clicks | Path |
 |---|---|---|
 | Update everything | **4** | Updates → Select all → Update → Confirm (app auto-scans on env open) |
 | Update everything, 1 conflict kept compatible | **4** | default choice needs no extra click |
 | Install one package | **4** + typing | Search (autofocus) → result [Add] → Install → Confirm |
-| Uninstall one package | **3** | Installed row ⋮ → Uninstall → Confirm |
+| Uninstall one package | **3** | Installed → row ✕ → *Remove* (4 when the guard trips: → *Remove the dependents too* → *Remove*) |
 | Rollback last snapshot | **4** | Env detail → snapshot → Rollback → Confirm |
 | Switch engine | **3** | Settings → engine radio → (auto-saved) back |
 | Run Code Health | **3** | Health → Run (folder persisted) → view |
@@ -88,6 +100,15 @@ Sidebar is icon+label, collapsible to icons. Status line (mono) always shows env
 ## 6. Component inventory (prefix `Pd`)
 
 `PdSidebar`, `PdStatusLine`, `PdEnvSwitcher`, `PdPackageTable` (virtualized), `PdPackageRow`, `PdBadge`, `PdPreviewDiff`, `PdConflictRow` (segmented 3-way), `PdDockBay` (queue), `PdConsoleDrawer`, `PdSummarySheet`, `PdSnapshotTimeline`, `PdHealthReport`, `PdLegalGate`, `PdEmptyState`, `PdOfflineBanner`.
+
+**13 of those 16 exist** as of S5. Absent: `PdEnvSwitcher` and `PdSnapshotTimeline`, which arrive
+with the env detail in S6, and `PdHealthReport`, which arrives with Code Health in M3. (ROADMAP and
+CLAUDE.md both claimed 16 of 16 after S4; the count had quietly folded in components that are not on
+this list.) Four components not on this list have
+turned out to be load-bearing and are listed here so the inventory stays honest: `PdErrorRow`
+(ERROR-CATALOG §3's row, used by every error surface), `PdDialog` (the shared modal §7's destructive
+confirms need), `PdUninstallDialog` (§5's three options) and `PdPinChip` (the 🔒 chip, shared by the
+table and the Pins screen).
 
 ## 7. States & feedback
 
