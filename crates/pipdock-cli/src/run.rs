@@ -1173,9 +1173,21 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
             );
         } else {
             for (pkg, broken) in &report.breaks {
+                // Names alone say what breaks; the specifier says whether the user can live with
+                // it. `pandas 2.1.4 (<2,>=1.26.0)` is checkable against what they know.
                 let list = broken
                     .iter()
-                    .map(ToString::to_string)
+                    .map(|b| {
+                        let named = match &b.version {
+                            Some(v) => format!("{} {v}", b.pkg),
+                            None => b.pkg.to_string(),
+                        };
+                        if b.constraint.is_empty() {
+                            named
+                        } else {
+                            format!("{named} ({})", b.constraint)
+                        }
+                    })
                     .collect::<Vec<_>>()
                     .join(", ");
                 println!("removing {pkg} breaks {list}");

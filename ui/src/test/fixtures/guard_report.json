@@ -1,0 +1,24 @@
+{
+  "removing": [
+    "numpy"
+  ],
+  "breaks": {
+    "numpy": [
+      {
+        "pkg": "pandas",
+        "version": "2.1.4",
+        "constraint": "<2,>=1.26.0"
+      },
+      {
+        "pkg": "scipy",
+        "version": "1.11.4",
+        "constraint": "<1.28.0,>=1.21.6"
+      }
+    ]
+  },
+  "withDependents": [
+    "numpy",
+    "pandas",
+    "scipy"
+  ]
+}

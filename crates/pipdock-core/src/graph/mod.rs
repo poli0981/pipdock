@@ -186,20 +186,49 @@ impl ReverseDeps {
         out.into_iter().collect()
     }
 
+    /// Packages that would break if `pkg` were removed, each with the requirement it declared.
+    ///
+    /// The same set as [`Self::dependents_of`], carrying the reason. DATA-FLOW §5's dialog says
+    /// *"Removing X breaks Y (requires X>=1)"* — a bare list of names tells the user what will
+    /// break but not whether they can live with it, and the specifier is the only thing that
+    /// distinguishes "needs any version of this" from "needs exactly this one".
+    ///
+    /// A dependent appears once per **distinct** in-force constraint. Two marker-gated branches
+    /// that both apply are two genuine constraints, but an exact duplicate is metadata noise.
+    #[must_use]
+    pub fn breaking_dependents(&self, pkg: &PkgName) -> Vec<BrokenDependent> {
+        let mut out: BTreeSet<BrokenDependent> = BTreeSet::new();
+        if let Some(list) = self.edges.get(pkg) {
+            for (dependent, req) in list {
+                if req.applies_in(self.env.as_ref()) {
+                    out.insert(BrokenDependent {
+                        pkg: dependent.clone(),
+                        version: self.versions.get(dependent).cloned(),
+                        constraint: req.constraint.clone(),
+                    });
+                }
+            }
+        }
+        out.into_iter().collect()
+    }
+
     /// Dependents of the whole removal set, excluding members of the set itself.
     ///
     /// DATA-FLOW §5 evaluates the guard **once, against the full set**: removing A and B together
     /// is fine when only B depends on A, and asking per package would raise a warning the user
     /// cannot act on.
     #[must_use]
-    pub fn dependents_of_set(&self, removing: &[PkgName]) -> BTreeMap<PkgName, Vec<PkgName>> {
+    pub fn dependents_of_set(
+        &self,
+        removing: &[PkgName],
+    ) -> BTreeMap<PkgName, Vec<BrokenDependent>> {
         let set: BTreeSet<&PkgName> = removing.iter().collect();
         let mut out = BTreeMap::new();
         for pkg in removing {
-            let breaks: Vec<PkgName> = self
-                .dependents_of(pkg)
+            let breaks: Vec<BrokenDependent> = self
+                .breaking_dependents(pkg)
                 .into_iter()
-                .filter(|d| !set.contains(d))
+                .filter(|d| !set.contains(&d.pkg))
                 .collect();
             if !breaks.is_empty() {
                 out.insert(pkg.clone(), breaks);
@@ -288,6 +317,37 @@ impl ReverseDeps {
     }
 }
 
+/// One installed package that a removal would break, and the requirement that says so.
+///
+/// `constraint` is the **bare specifier tail** — `"<2,>=1.26.0"`, not `"numpy<2,>=1.26.0"` —
+/// because [`Requirement::parse`] splits the distribution name off and the name is already the key
+/// of [`GuardReport::breaks`]. The head that goes in front of it is the package being removed, so
+/// the caller has both halves and can join them the way its own language does. Rust does not
+/// assemble the sentence: I18N §1 keeps every word of phrasing in the frontend catalogs, and a
+/// specifier is data, like a version or a path.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct BrokenDependent {
+    /// The installed package that would be left with a missing dependency.
+    pub pkg: PkgName,
+    /// Its installed version, when the graph knows it — so the dialog can say `pandas 2.1.4`
+    /// rather than bare `pandas`, which is what makes the constraint checkable by hand.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The version specifier it declared, e.g. `"<2,>=1.26.0"`. Empty when unconstrained.
+    pub constraint: String,
+}
+
 /// What the uninstall guard found.
 ///
 /// Rationale from DATA-FLOW §5: bare `pip uninstall` performs **no** dependency check at all, so
@@ -301,8 +361,8 @@ impl ReverseDeps {
 pub struct GuardReport {
     /// The set the user asked to remove.
     pub removing: Vec<PkgName>,
-    /// For each package that has them, the installed packages that would break.
-    pub breaks: BTreeMap<PkgName, Vec<PkgName>>,
+    /// For each package that has them, the installed packages that would break and why.
+    pub breaks: BTreeMap<PkgName, Vec<BrokenDependent>>,
     /// The removal set expanded to include everything that depends on it, transitively — the
     /// "remove dependents too" option.
     pub with_dependents: Vec<PkgName>,
@@ -316,9 +376,12 @@ impl GuardReport {
     }
 
     /// Every package that would break, de-duplicated across the removal set.
+    ///
+    /// Names only: a package can appear under two removals with two different constraints, and
+    /// callers that want a count or a set want it counted once.
     #[must_use]
     pub fn all_broken(&self) -> Vec<PkgName> {
-        let set: BTreeSet<&PkgName> = self.breaks.values().flatten().collect();
+        let set: BTreeSet<&PkgName> = self.breaks.values().flatten().map(|b| &b.pkg).collect();
         set.into_iter().cloned().collect()
     }
 
@@ -445,10 +508,68 @@ mod tests {
         let g = ReverseDeps::build(&[dist("x", "1.0", &[]), dist("y", "2.0", &["x>=1"])]);
 
         let alone = g.dependents_of_set(&[pkg("x")]);
-        assert_eq!(alone.get(&pkg("x")), Some(&vec![pkg("y")]));
+        assert_eq!(
+            alone.get(&pkg("x")),
+            Some(&vec![BrokenDependent {
+                pkg: pkg("y"),
+                version: Some("2.0".to_owned()),
+                constraint: ">=1".to_owned(),
+            }])
+        );
 
         let together = g.dependents_of_set(&[pkg("x"), pkg("y")]);
         assert!(together.is_empty(), "removing both together breaks nothing");
+    }
+
+    #[test]
+    fn the_guard_carries_the_requirement_that_justifies_it() {
+        // DATA-FLOW §5's dialog is "Removing X breaks Y (requires X>=1), Z" — the parenthetical is
+        // the point, and an unconstrained dependent must not invent one.
+        let g = ReverseDeps::build(&[
+            dist("x", "1.0", &[]),
+            dist("y", "2.0", &["x>=1"]),
+            dist("z", "3.0", &["x"]),
+        ]);
+        let broken = g.breaking_dependents(&pkg("x"));
+
+        assert_eq!(broken.len(), 2);
+        assert_eq!(broken[0].pkg, pkg("y"));
+        assert_eq!(broken[0].version.as_deref(), Some("2.0"));
+        assert_eq!(broken[0].constraint, ">=1");
+        assert_eq!(broken[1].pkg, pkg("z"));
+        assert_eq!(broken[1].constraint, "", "z declares no specifier");
+    }
+
+    #[test]
+    fn a_dependent_appears_once_per_distinct_constraint() {
+        // The SP-5 bug in miniature: pandas declares numpy under four marker-gated branches. Only
+        // the ones in force count, and two identical in-force entries are one constraint.
+        let g = ReverseDeps::build_for(
+            &[
+                dist("numpy", "1.26.4", &[]),
+                dist(
+                    "pandas",
+                    "2.1.4",
+                    &[
+                        "numpy<2,>=1.22.4; python_version < \"3.11\"",
+                        "numpy<2,>=1.26.0; python_version >= \"3.12\"",
+                        "numpy<2,>=1.26.0",
+                    ],
+                ),
+            ],
+            "3.12.4",
+        );
+
+        let broken = g.breaking_dependents(&pkg("numpy"));
+        assert_eq!(
+            broken,
+            [BrokenDependent {
+                pkg: pkg("pandas"),
+                version: Some("2.1.4".to_owned()),
+                constraint: "<2,>=1.26.0".to_owned(),
+            }],
+            "the 3.11-gated branch does not apply, and the two that do are one constraint"
+        );
     }
 
     #[test]
