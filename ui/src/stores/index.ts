@@ -218,8 +218,18 @@ const NO_PACKAGES = {
   outdatedStatus: 'idle' as LoadState,
   outdatedError: null,
   selection: new Set<string>(),
-  // The timeline belongs to an environment as much as the package list does; leaving it behind on
-  // a switch would offer one environment's snapshots under another's name.
+}
+
+/**
+ * Everything the snapshot slice resets to.
+ *
+ * **Separate from `NO_PACKAGES`, and that separation is load-bearing.** The package slice is keyed
+ * to `selected` and the timeline to `openFor`, which move independently — so folding the timeline
+ * into the package reset meant `scan()` wiped a freshly-loaded timeline whenever the *package*
+ * slice happened to be stale. After a rollback that is exactly the case: the summary triggers a
+ * refetch and a rescan at once, and the rescan resolved second.
+ */
+const NO_SNAPSHOTS = {
   snapshots: [] as SnapshotMeta[],
   snapshotsFor: null,
   snapshotsLoading: 'idle' as LoadState,
@@ -247,6 +257,7 @@ export const useEnvStore = create<EnvState>((set, get) => ({
   error: null,
   openFor: null,
   ...NO_PACKAGES,
+  ...NO_SNAPSHOTS,
 
   scan: async () => {
     // Discovery spawns probe.py once per candidate interpreter, so a duplicate scan is the most
@@ -349,14 +360,25 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     )
   },
 
-  openEnv: (interpreter) => set({ openFor: interpreter }),
+  openEnv: (interpreter) =>
+    set((state) => ({
+      openFor: interpreter,
+      // Clear only when opening a *different* environment. Re-opening the one already loaded
+      // keeps its timeline, which is what makes going back from a rollback instant.
+      ...(state.snapshotsFor === interpreter ? {} : NO_SNAPSHOTS),
+    })),
   closeEnv: () => set({ openFor: null, selectedSnapshot: null, diff: null }),
 
   loadSnapshots: async (force = false) => {
-    const { openFor, rows, snapshotsFor } = get()
+    const { openFor, rows, snapshotsFor, snapshotsLoading } = get()
     const row = rows.find((r) => r.interpreter === openFor)
     if (row === undefined) return
     if (!force && snapshotsFor === openFor) return
+    // Checked *synchronously*, because `snapshotsFor` is only written after the await: React runs
+    // effects twice in development, and the second run reaches that check before the first has
+    // answered. This is Stage 2's double fetch exactly — it was invisible then too, because both
+    // calls return the same rows.
+    if (snapshotsLoading === 'loading') return
 
     set({ snapshotsLoading: 'loading', snapshotsError: null })
     try {
