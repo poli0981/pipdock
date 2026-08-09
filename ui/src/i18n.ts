@@ -1,6 +1,8 @@
 import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
+import { pseudoCatalog } from './i18n.pseudo'
+
 import enCommon from './locales/en/common.json'
 import enErrors from './locales/en/errors.json'
 import viCommon from './locales/vi/common.json'
@@ -47,6 +49,15 @@ export const resources = {
   vi: { common: { ...viCommon, ...viErrors } },
 } as const
 
+/**
+ * I18N §5's pseudo-locale, in development only.
+ *
+ * Registered as a resource but deliberately **not** in `SUPPORTED_LOCALES`, so Settings never
+ * offers it, `resolveLocale` never returns it, and the i18n parity test never compares against it.
+ * `import.meta.env.DEV` keeps it out of a production bundle entirely.
+ */
+export const PSEUDO_LOCALE = 'en-XA'
+
 void i18n.use(initReactI18next).init({
   resources,
   lng: resolveLocale(typeof navigator === 'undefined' ? undefined : navigator.language),
@@ -62,5 +73,22 @@ void i18n.use(initReactI18next).init({
     console.warn(`[i18n] missing key ${ns}:${key} for ${lngs.join(',')}`)
   },
 })
+
+if (import.meta.env.DEV) {
+  i18n.addResourceBundle(
+    PSEUDO_LOCALE,
+    'common',
+    pseudoCatalog(resources.en.common),
+    true,
+    true,
+  )
+  // `e.code`, not `e.key`: on an AltGr layout the character produced by Alt+P is not "p".
+  window.addEventListener('keydown', (e) => {
+    if (e.ctrlKey && e.altKey && e.code === 'KeyP') {
+      e.preventDefault()
+      void i18n.changeLanguage(i18n.language === PSEUDO_LOCALE ? FALLBACK_LOCALE : PSEUDO_LOCALE)
+    }
+  })
+}
 
 export default i18n
