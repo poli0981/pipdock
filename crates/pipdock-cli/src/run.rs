@@ -19,7 +19,7 @@ use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
 /// translating what the user asked for into a `PlanRequest` is flow logic the GUI needs too.
 pub use pipdock_core::flow::Intent;
 use pipdock_core::store::Store;
-use pipdock_core::{index, pins, plan, settings, snapshot};
+use pipdock_core::{index, pins, plan, report, settings, snapshot};
 
 use crate::{EngineArg, Exit, GlobalOpts};
 
@@ -869,38 +869,31 @@ pub async fn report_bug(opts: &GlobalOpts) -> Result<Exit> {
     let env = select_env(opts).await.ok();
     let engine = engine_for(opts);
 
-    let python = env
-        .as_ref()
-        .map(|e| e.python_version.clone())
-        .unwrap_or_default();
     let engine_version = match &env {
-        Some(e) => engine.info(e).await.version.unwrap_or_default(),
-        None => String::new(),
+        Some(e) => engine.info(e).await.version,
+        None => None,
     };
-
-    let mut url = format!(
-        "https://github.com/poli0981/pipdock/issues/new?template=bug_report.yml\
-         &pd-version={}&os={}&engine={}",
-        urlencode(env!("CARGO_PKG_VERSION")),
-        urlencode(&os_description()),
-        urlencode(engine.id().as_str()),
+    // Built by `pipdock_core::report`, which the GUI's `report_bug_url` also calls. Two builders
+    // means two URLs that agree until the template gains a field — and this is the one nobody
+    // would notice had drifted.
+    let url = report::bug_report_url(
+        &report::BugReport {
+            python: env.as_ref().map(|e| e.python_version.clone()),
+            engine: Some(engine.id()),
+            engine_version,
+            code: None,
+            // The CLI has no ring buffer; M3's logging subsystem is what fills this in.
+            log: String::new(),
+        },
+        &os_description(),
     );
-    if !python.is_empty() {
-        url.push_str(&format!(
-            "&python={}",
-            urlencode(&format!(
-                "Python {python} · {} {engine_version}",
-                engine.id().as_str()
-            ))
-        ));
-    }
 
     println!("{url}");
     if !opts.quiet {
         eprintln!(
-            "\nOpen that in a browser to review the prefilled issue. Nothing is sent until you \
-             submit it yourself.\nCheck the log excerpt for paths or names you would rather not \
-             make public."
+            "
+Open that in a browser to review the prefilled issue. Nothing is sent until you              submit it yourself.
+Check the log excerpt for paths or names you would rather not              make public."
         );
     }
     Ok(Exit::Success)
@@ -909,20 +902,6 @@ pub async fn report_bug(opts: &GlobalOpts) -> Result<Exit> {
 /// Percent-encode a query-string value.
 ///
 /// Hand-rolled rather than pulling a dependency for one call site: the alphabet is small and the
-/// consequence of getting it wrong is a broken link, not a security hole.
-fn urlencode(raw: &str) -> String {
-    let mut out = String::with_capacity(raw.len());
-    for byte in raw.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => {
-                out.push(byte as char);
-            }
-            b' ' => out.push('+'),
-            _ => out.push_str(&format!("%{byte:02X}")),
-        }
-    }
-    out
-}
 
 fn os_description() -> String {
     // The issue template asks for a Windows version; without a dependency the best honest answer

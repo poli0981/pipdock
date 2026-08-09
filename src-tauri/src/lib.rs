@@ -53,6 +53,7 @@ pub fn run() {
             commands::snapshot_diff,
             commands::snapshot_rollback_preview,
             commands::snapshot_rollback,
+            commands::report_bug_url,
             commands::index_search,
             commands::index_refresh,
             commands::pkg_metadata,

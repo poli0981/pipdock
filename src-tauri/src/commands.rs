@@ -18,7 +18,7 @@ use pipdock_core::plan::{Decision, ExecutionSummary};
 use pipdock_core::settings::{self, Consent, Settings};
 use pipdock_core::snapshot;
 use pipdock_core::{PdError, PkgName, PyEnv};
-use tauri::Emitter as _;
+use tauri::{Emitter as _, Manager as _};
 use tokio_util::sync::CancellationToken;
 
 use crate::state::{AppState, Session};
@@ -367,6 +367,8 @@ pub async fn plan_resolve(
     // Whatever flow was parked is dropped: starting a new plan abandons the old preview, which is
     // what the user just asked for.
     let _ = state.claim().await?;
+    // A bug report carries one run, so the ring starts here rather than at execute.
+    state.log.clear();
 
     let cancel = CancellationToken::new();
     state.set_cancel(Some(cancel));
@@ -383,10 +385,17 @@ pub async fn plan_resolve(
 
     match flow::UpdateFlow::start(env, engine, &intent, &env_pins).await {
         Ok((flow, step)) => {
+            // The engine's own output, kept for a report. A resolve emits no progress events, so
+            // without this the commonest thing anyone reports — a plan that would not resolve —
+            // would attach an empty excerpt.
+            state.log.push(flow.report().raw.as_str());
             state.park(Session::Update(Box::new(flow))).await;
             Ok(step)
         }
         Err(e) => {
+            if let Some(tail) = e.stderr_tail.as_deref() {
+                state.log.push(tail);
+            }
             // Every failure path releases the slot, or the session refuses plans forever.
             state.release().await;
             Err(e.into())
@@ -461,16 +470,8 @@ pub async fn plan_execute(
         }
     };
 
-    // Forward every event to the webview. The receiver lives for the length of the execution and
-    // the sender dies with it, so this task ends on its own.
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let emitter = app.clone();
-    tokio::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            // A UI that stopped listening is not a reason to abandon the install.
-            let _ = emitter.emit("plan-progress", &event);
-        }
-    });
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    forward_progress(&app, rx);
 
     let result = flow.execute(tx).await;
     state.release().await;
@@ -577,13 +578,8 @@ pub async fn uninstall_execute(
         }
     };
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let emitter = app.clone();
-    tokio::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            let _ = emitter.emit("plan-progress", &event);
-        }
-    });
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    forward_progress(&app, rx);
 
     let result = flow.execute(ack, tx).await;
     state.release().await;
@@ -716,13 +712,8 @@ pub async fn snapshot_rollback(
         }
     };
 
-    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
-    let emitter = app.clone();
-    tokio::spawn(async move {
-        while let Some(event) = rx.recv().await {
-            let _ = emitter.emit("plan-progress", &event);
-        }
-    });
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    forward_progress(&app, rx);
 
     let result = rollback.execute(tx).await;
     state.release().await;
@@ -731,6 +722,93 @@ pub async fn snapshot_rollback(
         summary: result?,
         snapshot: Some(snapshot),
     })
+}
+
+/// Forward `plan-progress` to the webview, teeing every line into the log ring.
+///
+/// One helper for all three executing commands. A UI that stopped listening is not a reason to
+/// abandon an install, so the emit result is dropped; the ring is fed regardless, because the
+/// report is most wanted precisely when nobody was watching.
+fn forward_progress(
+    app: &tauri::AppHandle,
+    mut rx: tokio::sync::mpsc::UnboundedReceiver<pipdock_core::engine::ProgressEvent>,
+) {
+    let emitter = app.clone();
+    let state = app.state::<AppState>();
+    let log = std::sync::Arc::clone(&state.log);
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if let Some(line) = event.line() {
+                log.push(line);
+            }
+            let _ = emitter.emit("plan-progress", &event);
+        }
+    });
+}
+
+/// A prefilled GitHub issue URL, and the log to put on the clipboard (ERROR-CATALOG §4).
+///
+/// Two fields because §4.3 splits them: the URL carries a truncated, tail-biased excerpt so GitHub
+/// accepts it, and the *full* log is copied separately with the dialog saying so. **Nothing is
+/// sent** — this returns a string.
+///
+/// Built by `pipdock_core::report`, the same function `pipdock self report-bug` calls, so the two
+/// heads cannot drift apart the day the template gains a field.
+///
+/// # Errors
+/// Never. Returns `Wire` because an async command taking a borrowed `State` must.
+#[tauri::command]
+pub async fn report_bug_url(
+    state: tauri::State<'_, AppState>,
+    env: Option<PyEnv>,
+    code: Option<String>,
+) -> Wire<BugReportLink> {
+    let log = state.log.read();
+    let engine = {
+        let store = state.store.lock().await;
+        settings::load(&store).map(|s| s.engine).ok()
+    };
+    let engine_version = match (&env, engine) {
+        (Some(e), Some(id)) => engine::for_id(id).info(e).await.version,
+        _ => None,
+    };
+
+    let report = pipdock_core::report::BugReport {
+        python: env.as_ref().map(|e| e.python_version.clone()),
+        engine,
+        engine_version,
+        // Parsed rather than taken on trust: the frontend hands back the string it rendered, and
+        // an unrecognised one is left off instead of pasted into a public URL.
+        code: code.as_deref().and_then(code_from_wire),
+        log: log.clone(),
+    };
+    Ok(BugReportLink {
+        url: pipdock_core::report::bug_report_url(&report, &os_description()),
+        log,
+    })
+}
+
+/// What `report_bug_url` returns.
+#[derive(serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BugReportLink {
+    /// The prefilled issue URL, with a truncated excerpt.
+    pub url: String,
+    /// The complete buffer, for the clipboard. Empty when nothing has run.
+    pub log: String,
+}
+
+/// Resolve a wire code string back to its variant.
+fn code_from_wire(code: &str) -> Option<pipdock_core::errors::Code> {
+    pipdock_core::errors::Code::ALL
+        .iter()
+        .copied()
+        .find(|c| c.as_str() == code)
+}
+
+/// A short OS description for the issue template.
+fn os_description() -> String {
+    format!("{} {}", std::env::consts::OS, std::env::consts::ARCH)
 }
 
 /// Read the stored settings.
