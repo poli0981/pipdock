@@ -335,6 +335,55 @@ pub enum IndexSlot {
     Failed(String),
 }
 
+/// The last of the engine output, for a bug report (ERROR-CATALOG §4.1).
+///
+/// A plain `String` truncated at line boundaries rather than a ring of lines: what §4 needs is a
+/// *tail under a byte budget*, and the budget is on the URL, not on a count of lines.
+///
+/// Fed from three places, not one. The obvious tap is `plan_execute`'s progress forwarder — but
+/// the commonest thing a user reports is a plan that would not resolve, and a resolve emits no
+/// progress events at all. So `plan_resolve` pushes the engine's own output on success and the
+/// stderr tail on failure, which is exactly the case where a report is worth filing.
+#[derive(Default)]
+pub struct LogRing(std::sync::Mutex<String>);
+
+impl LogRing {
+    /// Append, trimming the front to the budget at a line boundary.
+    pub fn push(&self, text: &str) {
+        let Ok(mut buf) = self.0.lock() else { return };
+        buf.push_str(text);
+        if !text.ends_with('\n') {
+            buf.push('\n');
+        }
+        if buf.len() <= pipdock_core::LOG_RING_BUFFER_BYTES {
+            return;
+        }
+        // Cut at a char boundary first — a Vietnamese path or a package description would panic a
+        // byte slice — then forward to the next newline so the buffer never opens mid-line.
+        let over = buf.len() - pipdock_core::LOG_RING_BUFFER_BYTES;
+        let start = (over..buf.len())
+            .find(|i| buf.is_char_boundary(*i))
+            .unwrap_or(buf.len());
+        let trimmed = &buf[start..];
+        *buf = match trimmed.find('\n') {
+            Some(i) if i + 1 < trimmed.len() => trimmed[i + 1..].to_owned(),
+            _ => trimmed.to_owned(),
+        };
+    }
+
+    /// Everything held. Empty when nothing has run yet.
+    pub fn read(&self) -> String {
+        self.0.lock().map(|b| b.clone()).unwrap_or_default()
+    }
+
+    /// Start again — called when a new plan begins, so a report carries one run.
+    pub fn clear(&self) {
+        if let Ok(mut buf) = self.0.lock() {
+            buf.clear();
+        }
+    }
+}
+
 /// Everything a command may need that outlives one call.
 pub struct AppState {
     /// `%LOCALAPPDATA%\PipDock`.
@@ -349,6 +398,8 @@ pub struct AppState {
     pub index: std::sync::Mutex<IndexSlot>,
     /// The mutation being driven across several IPC calls.
     pub sessions: Sessions<Session>,
+    /// Engine output from the current plan, for the bug-report deep link.
+    pub log: std::sync::Arc<LogRing>,
 }
 
 impl AppState {
@@ -364,6 +415,7 @@ impl AppState {
             store: tokio::sync::Mutex::new(store),
             index: std::sync::Mutex::new(IndexSlot::Cold),
             sessions: Sessions::default(),
+            log: std::sync::Arc::new(LogRing::default()),
         })
     }
 
