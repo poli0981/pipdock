@@ -6,6 +6,7 @@ import { PdLegalGate } from '@/components/PdLegalGate'
 import { PdOfflineBanner } from '@/components/PdOfflineBanner'
 import { PdSidebar } from '@/components/PdSidebar'
 import { PdStatusLine } from '@/components/PdStatusLine'
+import { PdUninstallDialog } from '@/components/PdUninstallDialog'
 import type { NavKey } from '@/components/nav'
 import { PdEnvironments } from '@/screens/PdEnvironments'
 import { PdPackages } from '@/screens/PdPackages'
@@ -48,6 +49,12 @@ export function App() {
   // started from Updates *or* from the Search dock bay. Owning it here is what stops an install
   // resolving into nowhere because the tab that renders the preview is not the tab you are on.
   const planPhase = usePlanStore((s) => s.phase)
+  const guard = usePlanStore((s) => s.guard)
+  const guardBusy = usePlanStore((s) => s.guardBusy)
+  const widen = usePlanStore((s) => s.widen)
+  const confirmUninstall = usePlanStore((s) => s.confirmUninstall)
+  const resetPlan = usePlanStore((s) => s.reset)
+  const guardOpen = planPhase === 'guard' && guard !== null
 
   useEffect(() => {
     void checkConsent()
@@ -56,6 +63,10 @@ export function App() {
   // UI-SPEC §8: Ctrl+1..8 select tabs, positionally over NAV_KEYS.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // A native <dialog> makes the rest of the document inert to pointers and to focus, but a
+      // window-level keydown listener is neither — so without this, Ctrl+3 changes the tab
+      // underneath an open guard dialog and the user answers it about a screen they left.
+      if (guardOpen) return
       // UI-SPEC §8: `/` focuses search. Guarded against text fields, or it would be impossible to
       // type a slash into a version specifier.
       const target = e.target as HTMLElement | null
@@ -79,7 +90,7 @@ export function App() {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [setNav])
+  }, [setNav, guardOpen])
 
   // Nothing is usable before the documents are accepted, so the gate replaces the shell rather
   // than overlaying a working app (UI-SPEC §4).
@@ -123,6 +134,24 @@ export function App() {
       </div>
 
       <PdStatusLine />
+
+      {/* Outside <main>, because the dialog opens *over* the table the user selected from — they
+          need to still see what they picked while deciding. Mounted here rather than in the row
+          that opened it: `PdPackageTable` renders a ~25-row window, so scrolling would unmount
+          the dialog's own parent underneath it. */}
+      {guardOpen ? (
+        <PdUninstallDialog
+          report={guard}
+          busy={guardBusy}
+          onCancel={resetPlan}
+          onWiden={() => {
+            void widen()
+          }}
+          onConfirm={(force) => {
+            void confirmUninstall(force)
+          }}
+        />
+      ) : null}
     </div>
   )
 }
