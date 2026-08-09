@@ -1,0 +1,20 @@
+PipDock — vendored font provenance
+==================================
+
+Both files are committed rather than pulled from a CDN or an npm package: the app runs behind a
+strict CSP with no external hosts, and two binaries carry no `npm audit` surface. Recorded here so a
+future reader can verify what was shipped without trusting this file's own claim.
+
+InterVariable.woff2
+  source:  rsms/inter v4.1 — Inter-4.1.zip, web/InterVariable.woff2
+  bytes:   352240
+  sha256:  693b77d4f32ee9b8bfc995589b5fad5e99adf2832738661f5402f9978429a8e3
+
+JetBrainsMono-Regular.woff2
+  source:  JetBrains/JetBrainsMono v2.304 — JetBrainsMono-2.304.zip, fonts/webfonts/JetBrainsMono-Regular.woff2
+  bytes:   92164
+  sha256:  a9cb1cd82332b23a47e3a1239d25d13c86d16c4220695e34b243effa999f45f2
+
+Licences are alongside, verbatim from each release: OFL-Inter.txt, OFL-JetBrainsMono.txt.
+Both are SIL Open Font License 1.1, which permits bundling in a binary and requires the licence to
+travel with it — which is what these files are for.

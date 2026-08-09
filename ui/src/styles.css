@@ -1,5 +1,38 @@
 @import 'tailwindcss';
 
+/* The two faces UI-SPEC §2 names, vendored rather than fetched.
+ *
+ * `--font-sans` and `--font-mono` below have named Inter and JetBrains Mono since the tokens were
+ * written, and both fell through to a system fallback the whole time, because no face was ever
+ * registered. These are the registrations; the `@theme` block is unchanged.
+ *
+ * Committed as two files rather than added as `@fontsource-*` devDependencies: the app runs behind
+ * a strict CSP with no external hosts, so a CDN is not an option, and two binaries carry no
+ * `npm audit` surface to maintain forever. Provenance and SHA-256 for both are in
+ * `legal/fonts/PROVENANCE.txt`, with the OFL text beside them — SIL OFL 1.1 permits the bundling
+ * and requires the licence to travel with it.
+ *
+ * `font-display: swap` on purpose: the shell renders in the fallback for the first frame rather
+ * than showing nothing. UI-SPEC §7's "never spinners longer than 300 ms without text" is the same
+ * instinct — blank is worse than approximate.
+ */
+@font-face {
+  font-family: 'Inter';
+  font-style: normal;
+  /* One variable file covering the whole range, so weights need no extra requests. */
+  font-weight: 100 900;
+  font-display: swap;
+  src: url('./assets/fonts/InterVariable.woff2') format('woff2');
+}
+
+@font-face {
+  font-family: 'JetBrains Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('./assets/fonts/JetBrainsMono-Regular.woff2') format('woff2');
+}
+
 /* Design tokens — UI-SPEC §2, "dark terminal-tech".
  *
  * Restrained phosphor-green on near-black, monospace where data lives, one accent doing real
