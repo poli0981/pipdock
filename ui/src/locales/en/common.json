@@ -155,6 +155,12 @@
     "checkFinding": "{{pkg}} requires {{requirement}}",
     "done": "Back to packages"
   },
+  "pins": {
+    "empty": "no pins in this environment",
+    "emptyHint": "Pin a package from the Installed table to keep bulk updates away from it.",
+    "reasonPlaceholder": "Why is this pinned?",
+    "reasonFor": "Reason for pinning {{pkg}}"
+  },
   "uninstall": {
     "title": "Remove packages",
     "titleBreaks": "This removal breaks other packages",

@@ -10,13 +10,14 @@
  * spends that click already ("app auto-scans on env open").
  */
 
-import { useCallback, useEffect } from 'react'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdPackageTable } from '@/components/PdPackageTable'
 import { outdatedOnly, selectableForUpdate } from '@/screens/rows'
+import { useEnvPackages } from '@/screens/useEnvPackages'
 import { useEnvStore, usePlanStore } from '@/stores'
 
 interface PdPackagesProps {
@@ -37,9 +38,6 @@ export function PdPackages({ mode }: PdPackagesProps) {
   const outdatedStatus = useEnvStore((s) => s.outdatedStatus)
   const outdatedError = useEnvStore((s) => s.outdatedError)
   const selection = useEnvStore((s) => s.selection)
-  const loadedFor = useEnvStore((s) => s.loadedFor)
-  const loadPackages = useEnvStore((s) => s.loadPackages)
-  const loadOutdated = useEnvStore((s) => s.loadOutdated)
   const toggle = useEnvStore((s) => s.toggle)
   const selectAll = useEnvStore((s) => s.selectAll)
   const clearSelection = useEnvStore((s) => s.clearSelection)
@@ -73,14 +71,7 @@ export function PdPackages({ mode }: PdPackagesProps) {
     [env, startUninstall],
   )
 
-  useEffect(() => {
-    // Guarded on `loadedFor` so switching between Installed and Updates does not refetch, and so
-    // the two screens mounting in turn do not both start a scan.
-    if (selected !== null && loadedFor !== selected) {
-      void loadPackages()
-      void loadOutdated()
-    }
-  }, [selected, loadedFor, loadPackages, loadOutdated])
+  useEnvPackages()
 
   const visible = mode === 'updates' ? outdatedOnly(packages) : packages
   const { selectable, pinnedExcluded } = selectableForUpdate(visible)

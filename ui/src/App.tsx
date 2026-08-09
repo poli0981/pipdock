@@ -10,6 +10,7 @@ import { PdUninstallDialog } from '@/components/PdUninstallDialog'
 import type { NavKey } from '@/components/nav'
 import { PdEnvironments } from '@/screens/PdEnvironments'
 import { PdPackages } from '@/screens/PdPackages'
+import { PdPins } from '@/screens/PdPins'
 import { PdPlanPanel } from '@/screens/PdPlanPanel'
 import { PdSearch } from '@/screens/PdSearch'
 import { PdSettings } from '@/screens/PdSettings'
@@ -26,6 +27,7 @@ const SCREENS: Partial<Record<NavKey, React.ReactNode>> = {
   installed: <PdPackages mode="installed" />,
   updates: <PdPackages mode="updates" />,
   search: <PdSearch />,
+  pins: <PdPins />,
   settings: <PdSettings />,
 }
 
