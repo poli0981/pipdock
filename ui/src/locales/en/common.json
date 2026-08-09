@@ -240,7 +240,9 @@
       "stale": "cached — could not refresh"
     },
     "offline": "OFFLINE",
-    "offlineDetail": "No connection. Search still works from the local index; installing and metadata do not."
+    "offlineDetail": "No connection. Search still works from the local index; installing and metadata do not.",
+    "idle": "search PyPI for something to install",
+    "idleHint": "Start typing a package name. Results come from the local index, so this works offline."
   },
   "settings": {
     "title": "Settings",

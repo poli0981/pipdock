@@ -746,6 +746,30 @@ fn forward_progress(
     });
 }
 
+/// Detected version and availability for **both** engines (ARCHITECTURE §7).
+///
+/// Both, not the configured one: Settings shows a radio with a version beside each option, so
+/// asking about the one already selected would leave the other blank until it was chosen.
+///
+/// Takes a `PyEnv` because `Engine::info` does in the trait and in both adapters — pip's version
+/// comes from `<python> -m pip --version`, so there is no env-free answer for it. Settings shows
+/// "pick an environment" until one is selected rather than reporting a pip that is not there.
+///
+/// # Errors
+/// Never: an engine that cannot be spawned reports `available: false`, which is the answer, not a
+/// failure. Returns `Wire` because an async command taking a borrowed `State` must.
+#[tauri::command]
+pub async fn engine_info(env: PyEnv) -> Wire<Vec<pipdock_core::model::EngineInfo>> {
+    let mut out = Vec::with_capacity(2);
+    for id in [
+        pipdock_core::model::EngineId::Pip,
+        pipdock_core::model::EngineId::Uv,
+    ] {
+        out.push(engine::for_id(id).info(&env).await);
+    }
+    Ok(out)
+}
+
 /// A prefilled GitHub issue URL, and the log to put on the clipboard (ERROR-CATALOG §4).
 ///
 /// Two fields because §4.3 splits them: the URL carries a truncated, tail-biased excerpt so GitHub

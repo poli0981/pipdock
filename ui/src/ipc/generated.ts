@@ -183,6 +183,16 @@ export type EngineId =
   | 'pip'
   | 'uv';
 
+/** Availability and version of an engine for a given environment. */
+export interface EngineInfo {
+  /** False means the binary or module could not be found (`PD-ENG-001`). */
+  available: boolean;
+  /** Which engine this describes. */
+  id: EngineId;
+  /** Reported version, absent when the engine is not available. */
+  version?: string | null;
+}
+
 /** How an environment was discovered. Surfaced as the source chip in the Environments screen. */
 export type EnvSource =
   | 'registry'

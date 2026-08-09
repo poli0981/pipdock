@@ -41,6 +41,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "GuardReport",
     "Diff",
     "SnapshotMeta",
+    "EngineInfo",
     "RollbackPlan",
     "RollbackPreview",
     "Hit",

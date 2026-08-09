@@ -1,0 +1,48 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "EngineId": {
+      "description": "Which resolver PipDock is driving.",
+      "oneOf": [
+        {
+          "const": "pip",
+          "description": "`<python> -m pip …`",
+          "type": "string"
+        },
+        {
+          "const": "uv",
+          "description": "`uv pip … --python <python>`",
+          "type": "string"
+        }
+      ]
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Availability and version of an engine for a given environment.",
+  "properties": {
+    "available": {
+      "description": "False means the binary or module could not be found (`PD-ENG-001`).",
+      "type": "boolean"
+    },
+    "id": {
+      "$ref": "#/$defs/EngineId",
+      "description": "Which engine this describes."
+    },
+    "version": {
+      "description": "Reported version, absent when the engine is not available.",
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  },
+  "required": [
+    "id",
+    "available"
+  ],
+  "title": "EngineInfo",
+  "type": "object"
+}
