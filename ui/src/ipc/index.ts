@@ -314,6 +314,23 @@ export const snapshotRollbackPreview = (env: PyEnv, id: string): Promise<Rollbac
  */
 export const snapshotRollback = (): Promise<ExecutionOutcome> => invoke('snapshot_rollback')
 
+/** What `reportBugUrl` returns — ERROR-CATALOG §4.3 splits the two deliberately. */
+export interface BugReportLink {
+  /** Prefilled GitHub issue URL, carrying a truncated tail-biased excerpt. */
+  url: string
+  /** The complete buffer, for the clipboard. Empty when nothing has run yet. */
+  log: string
+}
+
+/**
+ * Build the bug-report deep link. **Nothing is sent** — this returns a string.
+ *
+ * The URL carries a truncated excerpt because GitHub rejects very long ones; the full log comes
+ * back separately so the UI can put it on the clipboard and say it did (§4.3).
+ */
+export const reportBugUrl = (env?: PyEnv, code?: string): Promise<BugReportLink> =>
+  invoke('report_bug_url', { env: env ?? null, code: code ?? null })
+
 /**
  * Subscribe to execution progress. Returns the unlisten function.
  *

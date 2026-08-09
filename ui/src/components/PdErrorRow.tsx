@@ -1,19 +1,47 @@
 /**
  * The inline error row — ERROR-CATALOG §3.
  *
- * Shape is fixed: `code · localized one-liner · [Details ⌄ stderr tail] · [Copy full log]`. The
- * **code is never localized** (I18N §2) and the one-liner is looked up *from* the code, so an
- * unknown code degrades to a generic sentence rather than to a blank row or a raw key.
+ * Shape is fixed: `code · localized one-liner · [Details ⌄ stderr tail] · [Copy full log] ·
+ * [Report bug]`. The **code is never localized** (I18N §2) and the one-liner is looked up *from*
+ * the code, so an unknown code degrades to a generic sentence rather than to a blank row or a raw
+ * key. Every `Code::ALL` variant has copy in both locales as of S7, asserted by `i18n.test.ts`.
+ *
+ * *Copy full log* and *Report bug* both read `report_bug_url`, which is one call returning both
+ * halves — the truncated excerpt inside the URL and the complete buffer for the clipboard (§4.3).
+ * Neither sends anything: the URL opens in the user's browser with the issue form prefilled, and
+ * they submit it or do not. That is the whole of PipDock's telemetry story.
+ *
+ * The two buttons are rendered only when there is a log to offer. A *Copy full log* that copies
+ * nothing is worse than no button — it reports success over an empty clipboard.
  */
 
-import { useState } from 'react'
+import { writeText } from '@tauri-apps/plugin-clipboard-manager'
+import { openUrl } from '@tauri-apps/plugin-opener'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import type { PdError } from '@/ipc'
+import { reportBugUrl, type BugReportLink, type PdError } from '@/ipc'
 
 export function PdErrorRow({ error }: { error: PdError }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
+  const [link, setLink] = useState<BugReportLink | null>(null)
+  const [copied, setCopied] = useState(false)
+
+  // Asked for once per row rather than per click, so *Copy full log* can hide itself when there is
+  // nothing to copy. A failure here costs the two buttons and nothing else — an error row that
+  // errored while offering to report an error is not worth a second error row.
+  useEffect(() => {
+    let alive = true
+    void reportBugUrl(undefined, error.code)
+      .then((l) => {
+        if (alive) setLink(l)
+      })
+      .catch(() => undefined)
+    return () => {
+      alive = false
+    }
+  }, [error.code])
 
   // `errors.<code>` when the catalog has it, otherwise the generic line. Falling back to the raw
   // developer message would leak English into a VI build.
@@ -47,6 +75,38 @@ export function PdErrorRow({ error }: { error: PdError }) {
           ) : null}
         </>
       ) : null}
+
+      {link === null ? null : (
+        <div className="mt-2 flex flex-wrap items-center gap-3">
+          {link.log === '' ? null : (
+            <button
+              type="button"
+              onClick={() => {
+                void writeText(link.log).then(() => {
+                  setCopied(true)
+                })
+              }}
+              data-action="copy-log"
+              className="text-data text-text-dim underline underline-offset-2"
+            >
+              {copied ? t('errors.logCopied') : t('actions.copyLog')}
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              void openUrl(link.url)
+            }}
+            data-action="report-bug"
+            className="text-data text-text-dim underline underline-offset-2"
+          >
+            {t('actions.reportBug')}
+          </button>
+          {/* §4.4: nothing is sent automatically, and the row says so rather than leaving the
+              user to guess what "Report bug" does. */}
+          <span className="text-data text-text-dim">{t('errors.logPrivacy')}</span>
+        </div>
+      )}
     </div>
   )
 }
