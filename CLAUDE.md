@@ -15,9 +15,11 @@ The design is fully specified. Read in this order; do not invent behaviour that 
 6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **32 in Rust**
    (`Code::ALL`, pinned by two tests); the doc tabulates 30 because it folds `PD-HLT-001..003`
    into one row. Adding a code means the catalog, `Code::ALL`, both counts, the
-   "no code without a fixture" gate in `classifier_corpus.rs`, both locale catalogs, and
-   re-blessed goldens — `golden__schema-Code.snap` **and every schema that embeds it**
-   (`StepResult`, `ExecutionSummary`) — the gate will tell you which you forgot
+   "no code without a fixture" gate in `classifier_corpus.rs`, **both `locales/*/errors.json`**,
+   a regenerated `codes.json` (`cargo run -p xtask -- ipc-fixtures`), and re-blessed goldens —
+   `golden__schema-Code.snap` **and every schema that embeds it** (`StepResult`,
+   `ExecutionSummary`). Eight places; the gates will tell you which you forgot, including
+   `i18n.test.ts`, which now fails on a code with no copy in either language
 7. `docs/CODE-HEALTH-SPEC.md`, `docs/SECURITY.md`, `docs/TESTING.md`, `docs/RELEASE-CI.md`, `docs/I18N.md`, `docs/ROADMAP.md`
 8. `legal/` — EULA, Disclaimer, Privacy, Third-Party Notices (public; the in-app legal gate links to these GitHub URLs)
 

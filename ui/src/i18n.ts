@@ -2,7 +2,9 @@ import i18n from 'i18next'
 import { initReactI18next } from 'react-i18next'
 
 import enCommon from './locales/en/common.json'
+import enErrors from './locales/en/errors.json'
 import viCommon from './locales/vi/common.json'
+import viErrors from './locales/vi/errors.json'
 
 /**
  * i18next setup — `docs/I18N.md`.
@@ -13,6 +15,18 @@ import viCommon from './locales/vi/common.json'
  *
  * §2: default locale is the OS UI language when it is Vietnamese, else English; switchable in
  * Settings and applied live.
+ *
+ * # One namespace, two files
+ *
+ * §1 lists seven namespaces. The app ships **one**, `common`, and merges the catalogs into it at
+ * init. A real second namespace would mean `t('errors:PD-NET-001')` at every call site, because
+ * i18next's `nsSeparator` is `:` — churn across every screen, in exchange for lazy loading that a
+ * desktop app with both catalogs already in the bundle cannot use.
+ *
+ * The error codes get their own *file* regardless, and that part is worth it: there are 32 of them,
+ * they are the only keys whose names are a contract with Rust rather than with a screen, and
+ * `i18n.test.ts` checks them against `Code::ALL` itself. Splitting the file keeps that reviewable
+ * without splitting the namespace. §1 is amended to say so.
  */
 
 export const SUPPORTED_LOCALES = ['en', 'vi'] as const
@@ -27,8 +41,10 @@ export function resolveLocale(languageTag: string | undefined): Locale {
 }
 
 export const resources = {
-  en: { common: enCommon },
-  vi: { common: viCommon },
+  // Merged, not nested: `errors.json` is `{ "errors": { … } }`, so the keys land at
+  // `errors.PD-XXX-NNN` exactly where `common.json` used to hold them and no call site moves.
+  en: { common: { ...enCommon, ...enErrors } },
+  vi: { common: { ...viCommon, ...viErrors } },
 } as const
 
 void i18n.use(initReactI18next).init({
