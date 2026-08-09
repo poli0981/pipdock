@@ -142,36 +142,47 @@ impl SnapshotProof<'_> {
 /// while leaving the environment different from the snapshot.
 #[must_use]
 pub fn parse_freeze(text: &str) -> BTreeMap<PkgName, Version> {
-    let mut out = BTreeMap::new();
-    for line in text.lines() {
-        let line = line.trim();
-        if line.is_empty() || line.starts_with('#') || line.starts_with('-') {
-            continue;
-        }
-        let Some((name, version)) = line.split_once("==") else {
-            continue;
-        };
-        if name.contains('@') || version.contains('@') {
-            continue;
-        }
-        let Ok(name) = PkgName::parse(name.trim()) else {
-            continue;
-        };
-        out.insert(name, Version(version.trim().to_owned()));
+    significant_lines(text).filter_map(pin_of).collect()
+}
+
+/// Lines a freeze document is actually asserting something with.
+///
+/// Blank lines and comments are neither restorable nor unrestorable — they say nothing.
+fn significant_lines(text: &str) -> impl Iterator<Item = &str> {
+    text.lines()
+        .map(str::trim)
+        .filter(|l| !l.is_empty() && !l.starts_with('#'))
+}
+
+/// The pin a freeze line records, or `None` when nothing restorable can be read from it.
+///
+/// The single decision both [`parse_freeze`] and [`unrestorable_lines`] are built on, so every
+/// significant line lands in **exactly one** of them. They used to be two independent filters and
+/// the two did not agree: `unrestorable_lines` asked "does it start with `-`, contain `@`, or lack
+/// `==`", which passes a line like `Foo Bar==1.0` — while `parse_freeze` dropped it, because the
+/// name does not parse. A line neither of them claimed simply disappeared, and a rollback preview
+/// that has to say what it cannot restore is the one place that silence is worst.
+fn pin_of(line: &str) -> Option<(PkgName, Version)> {
+    if line.starts_with('-') {
+        return None;
     }
-    out
+    let (name, version) = line.split_once("==")?;
+    if name.contains('@') || version.contains('@') {
+        return None;
+    }
+    let name = PkgName::parse(name.trim()).ok()?;
+    Some((name, Version(version.trim().to_owned())))
 }
 
 /// Lines a freeze contained that [`parse_freeze`] could not turn into a restorable pin.
 ///
 /// Surfaced so a rollback preview can say what it will not be able to restore, rather than
-/// quietly dropping it — the same honesty `PD-SNP-002` exists for.
+/// quietly dropping it — the same honesty `PD-SNP-002` exists for. The exact complement of
+/// [`parse_freeze`] over the significant lines, by construction: see [`pin_of`].
 #[must_use]
 pub fn unrestorable_lines(text: &str) -> Vec<String> {
-    text.lines()
-        .map(str::trim)
-        .filter(|l| !l.is_empty() && !l.starts_with('#'))
-        .filter(|l| l.starts_with('-') || l.contains('@') || !l.contains("=="))
+    significant_lines(text)
+        .filter(|l| pin_of(l).is_none())
         .map(str::to_owned)
         .collect()
 }
@@ -621,6 +632,102 @@ mod tests {
     fn loading_an_unknown_snapshot_uses_the_documented_code() {
         let err = load(Path::new("no-such-app-data"), "deadbeef", "latest").expect_err("must fail");
         assert_eq!(err.code, Code::SnpTargetUnavailable);
+    }
+
+    #[test]
+    fn every_freeze_line_is_restorable_or_reported_never_neither() {
+        // TESTING §2 asks for property-style cover here. The property that matters for a rollback
+        // preview is a *partition*: a line the parser drops and the unrestorable list does not
+        // claim has been silently forgotten, and the preview then promises a restore it cannot do.
+        //
+        // A 20-line seeded LCG rather than a proptest dependency: the shapes worth generating are
+        // enumerable, and this needs no shrinking to be readable.
+        let mut seed: u64 = 0x2026_0809;
+        let mut next = move || {
+            seed = seed.wrapping_mul(6_364_136_223_846_793_005).wrapping_add(1);
+            (seed >> 33) as usize
+        };
+
+        let shapes: &[&str] = &[
+            "requests==2.32.3",
+            "  spaced==1.0  ",
+            "-e .",
+            "-e git+https://example.invalid/x#egg=x",
+            "pkg @ file:///C:/src/pkg",
+            "pkg@ file:///C:/src/pkg",
+            // The one that was falling through: `==` is present, so the old filter passed it over,
+            // and the name does not parse, so the parser dropped it.
+            "Foo Bar==1.0",
+            "==1.0",
+            "no-version-here",
+            "# a comment",
+            "",
+            "   ",
+            "UPPER_Case.Name==0.1",
+            "zope.interface==5.4.0",
+        ];
+
+        for _ in 0..400 {
+            let text: String = (0..next() % 8)
+                .map(|_| shapes[next() % shapes.len()])
+                .collect::<Vec<_>>()
+                .join("\n");
+
+            let pins = parse_freeze(&text);
+            let unrestorable = unrestorable_lines(&text);
+
+            let significant: Vec<&str> = text
+                .lines()
+                .map(str::trim)
+                .filter(|l| !l.is_empty() && !l.starts_with('#'))
+                .collect();
+
+            // Duplicate lines collapse in the map but not in the vec, so compare on distinct
+            // significant lines rather than on counts.
+            let claimed: usize = significant
+                .iter()
+                .filter(|l| unrestorable.iter().any(|u| u == *l))
+                .count();
+            let parsed: usize = significant
+                .iter()
+                .filter(|l| !unrestorable.iter().any(|u| u == *l))
+                .count();
+
+            assert_eq!(
+                claimed + parsed,
+                significant.len(),
+                "a line was in neither bucket:\n{text}"
+            );
+            for line in &significant {
+                let restorable = !unrestorable.iter().any(|u| u == *line);
+                if restorable {
+                    let (name, _) = line.split_once("==").unwrap_or(("", ""));
+                    let name =
+                        PkgName::parse(name.trim()).expect("restorable implies a valid name");
+                    assert!(
+                        pins.contains_key(&name),
+                        "{line:?} is not reported unrestorable but did not parse:\n{text}"
+                    );
+                }
+            }
+        }
+
+        // And the case that motivated it, stated plainly.
+        let text = "Foo Bar==1.0\nrequests==2.0\n";
+        assert_eq!(unrestorable_lines(text), ["Foo Bar==1.0"]);
+        assert_eq!(parse_freeze(text).len(), 1);
+    }
+
+    #[test]
+    fn the_snapshot_schema_keeps_the_name_the_bindings_use() {
+        // `SCHEMA_TYPES` names this `SnapshotMeta`, but `RollbackPreview` embeds it and an embedded
+        // type is emitted under its *schemars* name. If the rename is dropped the bindings grow a
+        // second interface for one type and nothing else fails.
+        let schema = crate::plan::json_schema("SnapshotMeta").expect("registered");
+        assert_eq!(
+            schema.get("title").and_then(serde_json::Value::as_str),
+            Some("SnapshotMeta")
+        );
     }
 
     #[test]

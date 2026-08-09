@@ -672,6 +672,22 @@ pub async fn execute_rollback(
     }
 
     for (index, spec) in restore.install.iter().enumerate() {
+        // The restore half needs the same check the removal half has. A rollback is the longest
+        // mutating run PipDock performs — a whole snapshot's worth of isolated installs — so it is
+        // the one most likely to be stopped, and without this Stop killed the package in flight
+        // and then quietly installed every remaining one.
+        if sink.is_cancelled() {
+            results.extend(restore.install[index..].iter().map(|remaining| StepResult {
+                pkg: remaining.name.clone(),
+                from: None,
+                to: Some(remaining.version.clone()),
+                status: StepStatus::Skipped,
+                code: None,
+                stderr_tail: None,
+            }));
+            break;
+        }
+
         let step_sink = sink.at(restore.uninstall.len() + index);
         step_sink.started(Some(spec.name.clone()), ExecMode::Isolated);
 
@@ -683,6 +699,26 @@ pub async fn execute_rollback(
                 step_sink.clone(),
             )
             .await;
+
+        // Killed by us is not the package's failure — the same reclassification `execute` and
+        // `execute_uninstall` make.
+        if sink.is_cancelled() && step.is_err() {
+            step_sink.finished(
+                Some(spec.name.clone()),
+                ExecMode::Isolated,
+                StepStatus::Skipped,
+            );
+            results.push(StepResult {
+                pkg: spec.name.clone(),
+                from: None,
+                to: Some(spec.version.clone()),
+                status: StepStatus::Skipped,
+                code: None,
+                stderr_tail: None,
+            });
+            continue;
+        }
+
         let result = step.unwrap_or_else(|e| StepResult {
             pkg: spec.name.clone(),
             from: None,

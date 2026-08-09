@@ -594,6 +594,60 @@ async fn remove_collecting(
 }
 
 #[tokio::test]
+async fn a_rollback_stops_when_the_token_is_tripped() {
+    // `RollbackFlow` held a token from the day it was written and exposed no way to trip it, so a
+    // GUI restore could not be stopped — a two-phase install of a whole snapshot, which is exactly
+    // when a user reaches for Stop. Unlike `UninstallFlow::start`, this one never probes, so a
+    // fake engine and a temp directory drive the whole flow with no interpreter involved.
+    let dir = scratch();
+    let _ = std::fs::remove_dir_all(&dir);
+    let engine = FakeEngine::new(&[]);
+    // A snapshot whose freeze differs from what the engine reports now, so there is work to do.
+    let snap = snapshot::create(
+        &dir,
+        &pipdock_core::envs::env_hash(std::path::Path::new("python.exe")),
+        "idna==3.4\nrequests==2.0.0\n".to_owned(),
+        Trigger::Manual,
+        EngineId::Pip,
+        now(),
+    )
+    .expect("snapshot");
+
+    let (mut flow, preview) = pipdock_core::flow::RollbackFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &dir,
+        &snap.meta.id,
+    )
+    .await
+    .expect("start");
+    assert!(
+        !preview.restore.is_empty(),
+        "the fixture must have work to do"
+    );
+
+    let token = flow.cancel_handle();
+    token.cancel();
+    flow.take_snapshot(&dir)
+        .await
+        .expect("pre-rollback snapshot");
+
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    std::mem::forget(rx);
+    let before = engine.calls().len();
+    let summary = flow.execute(tx).await.expect("execute");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(summary.cancelled, "the summary must say it was cancelled");
+    assert_eq!(
+        engine.calls().len(),
+        before,
+        "a cancelled restore must not install anything: {:?}",
+        engine.calls()
+    );
+}
+
+#[tokio::test]
 async fn a_removal_opens_and_closes_a_step_per_package() {
     // Removals emitted neither marker and every line they produced carried `step: 0`. The CLI
     // never noticed, because it prints `event.line()` and nothing else — but the console drawer
