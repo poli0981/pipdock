@@ -17,9 +17,12 @@
 | nucleo (fuzzy matcher) | MPL-2.0 | search (file-level copyleft; compatible) |
 | rusqlite / SQLite | MIT / Public Domain | local cache |
 | specta / tauri-specta | MIT | type generation |
-| Inter typeface | SIL OFL 1.1 | UI font |
-| JetBrains Mono typeface | SIL OFL 1.1 | mono font |
+| Inter typeface | SIL OFL 1.1 | UI font — `ui/src/assets/fonts/InterVariable.woff2` |
+| JetBrains Mono typeface | SIL OFL 1.1 | mono font — `ui/src/assets/fonts/JetBrainsMono-Regular.woff2` |
 | Microsoft Edge WebView2 Runtime | proprietary, system component | rendering (not distributed by PipDock; Evergreen runtime assumed present per Microsoft's terms) |
+
+Both typefaces are committed to the repository rather than fetched at build time. The verbatim OFL
+text for each, the release they came from and the SHA-256 of each file are in `legal/fonts/`.
 
 ## B. External tools invoked as separate processes (NOT distributed with PipDock)
 
