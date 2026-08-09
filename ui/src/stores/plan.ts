@@ -46,7 +46,23 @@ import {
 export const CONSOLE_LIMIT = 2000
 
 /** Which part of DATA-FLOW §3 is on screen. */
-export type PlanPhase = 'idle' | 'resolving' | 'preview' | 'executing' | 'summary'
+export type PlanPhase = 'idle' | 'resolving' | 'preview' | 'executing' | 'summary' | 'failed'
+
+/**
+ * The phases the plan panel is on screen for.
+ *
+ * `idle` is not one, obviously. `failed` **is**, and that is the point: a resolve that threw used
+ * to set `idle`, which un-mounted the panel — and no screen reads `error`, so `PD-RES-003`, a PEP
+ * 668 refusal and every engine failure during resolve vanished without a trace. The user pressed
+ * Update and nothing whatsoever happened.
+ */
+export const PANEL_PHASES: ReadonlySet<PlanPhase> = new Set<PlanPhase>([
+  'resolving',
+  'preview',
+  'executing',
+  'summary',
+  'failed',
+])
 
 /** One console line, already flattened for rendering. */
 export interface ConsoleLine {
@@ -123,7 +139,10 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     try {
       set({ step: await planResolve(env, intent), phase: 'preview' })
     } catch (e) {
-      set({ phase: 'idle', error: asPdError(e) })
+      // `failed`, not `idle`: the panel is what renders `error`, and going back to `idle`
+      // un-mounts it. Every resolve failure — a plan already in flight, a PEP 668 environment,
+      // an unreachable index — was silently swallowed by that.
+      set({ phase: 'failed', error: asPdError(e) })
     }
   },
 

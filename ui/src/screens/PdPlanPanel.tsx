@@ -44,6 +44,32 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
   const setConsoleOpen = usePlanStore((s) => s.setConsoleOpen)
   const reset = usePlanStore((s) => s.reset)
 
+  // A resolve that never produced a preview. Without its own branch it falls through to the one
+  // below and draws a round counter for rounds that do not exist and a Confirm for a plan that was
+  // never made — over an error row explaining that there is no plan.
+  if (phase === 'failed') {
+    return (
+      <section className="h-full overflow-auto p-6">
+        <h1 className="text-accent">{t('plan.previewTitle')}</h1>
+        {error === null ? null : (
+          <div className="mt-4">
+            <PdErrorRow error={error} />
+          </div>
+        )}
+        <button
+          type="button"
+          onClick={() => {
+            reset()
+            onFinished()
+          }}
+          className="mt-4 rounded-pd border border-border px-3 py-1 text-data"
+        >
+          {t('actions.back')}
+        </button>
+      </section>
+    )
+  }
+
   if (phase === 'summary') {
     return (
       <section className="h-full overflow-auto p-6">
