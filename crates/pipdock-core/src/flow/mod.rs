@@ -402,7 +402,27 @@ pub struct UninstallFlow {
     names: Vec<PkgName>,
     plan_id: String,
     snapshot: SnapshotState,
+    /// What the guard found, kept so [`Self::execute`] can refuse a removal the user never
+    /// accepted. Returned to the caller as well, because the caller is what renders it.
+    guard: crate::graph::GuardReport,
     cancel: CancellationToken,
+}
+
+/// Whether the user has accepted the breakage the guard found (DATA-FLOW §5).
+///
+/// A separate argument to [`UninstallFlow::execute`] rather than a `bool` on the flow, for the
+/// reason [`SnapshotProof`] is a named waiver: `execute(true, …)` at a call site says nothing
+/// about what was true, and the one thing this type exists to prevent is a removal proceeding
+/// because somebody forgot to look at the report.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GuardAck {
+    /// The guard found nothing, or the caller believes it did.
+    ///
+    /// Not a claim the caller gets to make freely: if the guard *did* find dependents this is
+    /// refused with `PD-RES-004`, which is the whole point.
+    Clear,
+    /// The user was shown what breaks and chose to remove anyway — §5's *Force remove only X*.
+    ForcedDespiteBreakage,
 }
 
 impl UninstallFlow {
@@ -415,6 +435,18 @@ impl UninstallFlow {
         engine: Box<dyn Engine>,
         pkgs: &[String],
     ) -> Result<(Self, crate::graph::GuardReport)> {
+        // DATA-FLOW §2's preamble is "all mutating flows", and a removal is one. `UpdateFlow` has
+        // refused these since S1 and this did not, so PipDock would happily strip packages out of
+        // a system Python it declines to *upgrade* — the worse of the two operations, since there
+        // is no resolver between the user and the damage.
+        if env.externally_managed {
+            return Err(PdError::new(
+                Code::EnvExternallyManaged,
+                "this Python is externally managed (PEP 668). Use a virtual environment; \
+                 the override lives in Settings and is discouraged",
+            ));
+        }
+
         let names: Vec<PkgName> = pkgs
             .iter()
             .map(|p| PkgName::parse(p))
@@ -435,10 +467,17 @@ impl UninstallFlow {
                 names,
                 plan_id,
                 snapshot: SnapshotState::NotTaken,
+                guard: report.clone(),
                 cancel: CancellationToken::new(),
             },
             report,
         ))
+    }
+
+    /// What the guard found when this flow started.
+    #[must_use]
+    pub const fn guard(&self) -> &crate::graph::GuardReport {
+        &self.guard
     }
 
     /// Write the pre-removal snapshot, or record the waiver.
@@ -478,9 +517,15 @@ impl UninstallFlow {
     /// Remove the packages, sequentially, skip-and-continue.
     ///
     /// # Errors
+    /// `PD-RES-004` when the guard found dependents and `ack` does not accept breaking them;
     /// `PD-SNP-001` when [`Self::take_snapshot`] has not run. Per-package failures appear in the
     /// summary rather than as errors.
-    pub async fn execute(&self, tx: EventSink) -> Result<crate::plan::ExecutionSummary> {
+    pub async fn execute(
+        &self,
+        ack: GuardAck,
+        tx: EventSink,
+    ) -> Result<crate::plan::ExecutionSummary> {
+        ack_ok(&self.guard, ack)?;
         let proof = proof_from(&self.snapshot)?;
         let sink = ProgressSink::new(tx, self.names.len(), self.cancel.clone());
         // The summary is correlated by the *snapshot* id here, not `plan_id`. That is what the
@@ -654,6 +699,25 @@ impl RollbackFlow {
 /// execute call is what let the CLI keep printing the snapshot id before execution starts, but it
 /// also created a way to skip the snapshot by forgetting. `SnapshotProof` makes that impossible
 /// to express inside one function; across two, this is the guard.
+/// The guard's half of DATA-FLOW §9.1, or the refusal.
+///
+/// Beside [`proof_from`] and for the same reason. The guard report is produced by `start` and
+/// rendered by the caller, and between those two points nothing stopped a caller from simply
+/// running the removal — DATA-FLOW §5's three options are a *dialog*, and a dialog is not an
+/// enforcement point. This is.
+fn ack_ok(report: &crate::graph::GuardReport, ack: GuardAck) -> Result<()> {
+    if report.is_clear() || matches!(ack, GuardAck::ForcedDespiteBreakage) {
+        return Ok(());
+    }
+    Err(PdError::new(
+        Code::ResGuardTrip,
+        format!(
+            "removing this would break {} installed package(s); nothing was removed",
+            report.all_broken().len()
+        ),
+    ))
+}
+
 fn proof_from(state: &SnapshotState) -> Result<SnapshotProof<'_>> {
     match state {
         SnapshotState::Taken(snap) => Ok(SnapshotProof::Taken(snap)),
@@ -874,6 +938,51 @@ mod tests {
             proof_from(&SnapshotState::Waived),
             Ok(SnapshotProof::WaivedForDisposableEnvironment)
         ));
+    }
+
+    /// The guard's own report, with `broken` dependents of `pkg`.
+    fn guard_over(pkg: &str, broken: &[&str]) -> crate::graph::GuardReport {
+        let name = |n: &str| PkgName::parse(n).expect("test name");
+        let dists: Vec<crate::model::Dist> = std::iter::once(crate::model::Dist {
+            name: name(pkg),
+            version: Version("1.0".to_owned()),
+            requires_dist: Vec::new(),
+            requires_python: None,
+            size_bytes: None,
+        })
+        .chain(broken.iter().map(|d| crate::model::Dist {
+            name: name(d),
+            version: Version("2.0".to_owned()),
+            requires_dist: vec![format!("{pkg}>=1")],
+            requires_python: None,
+            size_bytes: None,
+        }))
+        .collect();
+        ReverseDeps::build(&dists).guard(&[name(pkg)])
+    }
+
+    #[test]
+    fn a_removal_that_breaks_something_is_refused_unless_it_was_accepted() {
+        // The dialog in DATA-FLOW §5 is where the user answers, but a dialog is not an
+        // enforcement point: between `start` returning the report and `execute` running the
+        // engine, nothing stopped a caller from simply not looking. This is the same guard
+        // `proof_from` is for the snapshot half.
+        let breaking = guard_over("x", &["y"]);
+        assert!(!breaking.is_clear());
+
+        let err = ack_ok(&breaking, GuardAck::Clear).expect_err("must refuse");
+        assert_eq!(err.code, Code::ResGuardTrip);
+        assert!(
+            err.message.contains("nothing was removed"),
+            "the message must say the environment is untouched: {}",
+            err.message
+        );
+
+        // The user was shown what breaks and chose it anyway — §5's *Force remove only X*.
+        assert!(ack_ok(&breaking, GuardAck::ForcedDespiteBreakage).is_ok());
+
+        // A clear guard needs no acknowledgement, or every plain removal would demand a force.
+        assert!(ack_ok(&guard_over("x", &[]), GuardAck::Clear).is_ok());
     }
 
     #[test]

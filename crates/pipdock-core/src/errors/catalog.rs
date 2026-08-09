@@ -108,6 +108,18 @@ pub enum Code {
     /// check would be comparing against a set the other plan is busy changing.
     #[serde(rename = "PD-RES-003")]
     ResPlanInFlight,
+    /// A removal was asked for that the reverse-dependency guard refused (DATA-FLOW §5).
+    ///
+    /// Its own code rather than a reused one. The CLI printed `PD-PKG-002` here, which means "no
+    /// matching distribution" — the opposite of the truth: every package involved exists, and
+    /// that is precisely why the removal is being refused. A user grepping their logs for a typo
+    /// would have found this instead.
+    ///
+    /// Not raised when the guard merely *finds* dependents. That is a report the caller shows and
+    /// the user answers; the code appears only when execution is attempted anyway without the
+    /// user having accepted the breakage.
+    #[serde(rename = "PD-RES-004")]
+    ResGuardTrip,
 
     // -- PD-BLD: build ------------------------------------------------------
     /// MSVC build tools required but absent.
@@ -205,6 +217,7 @@ impl Code {
             Self::ResImpossible => "PD-RES-001",
             Self::ResPlanStale => "PD-RES-002",
             Self::ResPlanInFlight => "PD-RES-003",
+            Self::ResGuardTrip => "PD-RES-004",
             Self::BldMsvcMissing => "PD-BLD-001",
             Self::BldBackendFailed => "PD-BLD-002",
             Self::BldWheelFailed => "PD-BLD-003",
@@ -240,7 +253,10 @@ impl Code {
             | Self::EngPipTooOld
             | Self::EngUvShapeUnknown
             | Self::EngUnclassified => Area::Eng,
-            Self::ResImpossible | Self::ResPlanStale | Self::ResPlanInFlight => Area::Res,
+            Self::ResImpossible
+            | Self::ResPlanStale
+            | Self::ResPlanInFlight
+            | Self::ResGuardTrip => Area::Res,
             Self::BldMsvcMissing | Self::BldBackendFailed | Self::BldWheelFailed => Area::Bld,
             Self::PkgRequiresPython
             | Self::PkgNotFound
@@ -270,6 +286,7 @@ impl Code {
         Self::ResImpossible,
         Self::ResPlanStale,
         Self::ResPlanInFlight,
+        Self::ResGuardTrip,
         Self::BldMsvcMissing,
         Self::BldBackendFailed,
         Self::BldWheelFailed,
@@ -546,7 +563,7 @@ mod tests {
     fn every_variant_is_listed_in_all() {
         // `ALL` drives the fixture-coverage gate, so a variant missing from it would silently
         // escape that gate. There is no derive for "enumerate variants", hence this count check.
-        assert_eq!(Code::ALL.len(), 31, "add the new variant to Code::ALL");
+        assert_eq!(Code::ALL.len(), 32, "add the new variant to Code::ALL");
     }
 
     #[test]
@@ -693,10 +710,9 @@ mod tests {
 
     #[test]
     fn every_documented_code_has_exactly_one_variant() {
-        // Rust has 30, docs/ERROR-CATALOG.md tabulates 28 (it folds PD-HLT-001..003 into one
-        // row) and CLAUDE.md used to say 25. Pin the number so the next person adding a code has
-        // to notice the docs exist.
-        assert_eq!(Code::ALL.len(), 31);
+        // Rust has 32; docs/ERROR-CATALOG.md tabulates 30, because it folds PD-HLT-001..003 into
+        // one row. Pin the number so the next person adding a code has to notice the docs exist.
+        assert_eq!(Code::ALL.len(), 32);
         let wire: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(
             wire.len(),
