@@ -64,17 +64,16 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 complete. M2 Stages 1–5 done** (IPC bridge 2026-07-30; Installed+Updates, the mutation spine
+**M1 complete. M2 Stages 1–6 done** (IPC bridge 2026-07-30; Installed+Updates, the mutation spine
 and search+install all 2026-08-04). The app discovers, lists, previews, decides, executes, streams,
 summarises and installs over real commands. **"Update everything" is 4 clicks and "install one" is
 4 clicks**, both counted by hand in the running app; search is **22 ms median per keystroke**
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-Next is **S6 — snapshots, the env detail and rollback**. S5 landed `Session::Rollback` and
-`RollbackFlow::cancel_handle`, so S6 adds a call site rather than another widening; what it needs is
-`RollbackPreview` crossing IPC, the five `snapshot_*` commands, and the env-detail surface UI-SPEC §4
-assumes and which does not exist.
+Next is **S7 — the shell: i18n, keyboard, a11y, the error row**. Its largest piece is the one
+nobody has counted: **26 of the 32 catalog codes have no one-liner in either locale**, so they
+render as "An unexpected error occurred." with a code.
 
 Three rules from S2/S3 that bind everything after them:
 
@@ -89,6 +88,12 @@ Three rules from S2/S3 that bind everything after them:
   (inside core) it serializes every other command behind a network call. Read what you need, drop
   the guard, then await. This is why `UpdateFlow::start` takes pins rather than a `&Store`, and why
   `index::metadata`/`refresh` take the app-data path. It has bitten twice; assume it will again.
+- **Two slices that key on different things need two resets.** The package slice is keyed to the
+  *selected* environment and the snapshot timeline to the *open* one, and they move independently —
+  so folding the timeline into `NO_PACKAGES` meant a rescan wiped a freshly-loaded timeline whenever
+  the package slice happened to be stale. After a rollback that is exactly the case. A shared reset
+  constant is only correct for fields with a shared key.
+
 - **A dialog is not an enforcement point.** DATA-FLOW §5's three options are what the user *sees*;
   what stops a removal is `GuardAck` inside `UninstallFlow::execute`, beside `SnapshotProof`. The
   same shape twice: the report and the proof are produced in one call and consumed in another, so
@@ -104,7 +109,7 @@ Things worth knowing before you change any of it:
 
 - **`cargo test` fails when `ui/src/ipc/generated.ts` is stale.** Fix with
   `cargo run -p xtask -- bindings`; the failure names that command and the first differing line.
-- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 52 snapshots) are the CLI's output
+- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 54 snapshots) are the CLI's output
   contract.** A diff there is a real behaviour change — re-bless deliberately, never reflexively.
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no

@@ -76,6 +76,22 @@ packages depend on it. Pin?".
 
 **Snapshots** (surfaced under Environments → env detail): timeline of snapshots with trigger label, diff viewer (added/removed/changed in mono), `Rollback…` with its own preview per DATA-FLOW §8.
 
+The detail view is a **mode of the Environments tab**, not a ninth sidebar entry — §8 fixes
+`Ctrl+1..8` to the eight that exist, and a ninth would renumber every shortcut after it. Which
+environment is open lives in `useEnvStore`, because the plan panel replaces the whole content area
+while a rollback runs and component state would be unmounted with it.
+
+The **trigger label is load-bearing**, not decoration. A restore snapshots the current state before
+restoring, so one rollback moves `latest` twice and two entries a minute apart are otherwise
+indistinguishable — while one is the state the user wants back and the other is the state they are
+leaving. Nothing in the UI ever names `latest`; the timeline hands ids to every command.
+
+An environment whose interpreter is gone still reaches the detail view: snapshots are keyed by
+`env_hash` and outlive the Python that made them, so the timeline lists while the diff and the
+rollback are disabled with a line saying why. The diff's copy names the *direction* — "here but not
+in the snapshot — restoring removes it" — because "added" is ambiguous the moment you read it from
+the snapshot's side.
+
 **Health.** Project-folder picker (persisted per env) → run panel with three result tabs (deptry / vulture / ruff) per CODE-HEALTH-SPEC; `Fix with ruff` gated behind explicit confirm listing file count.
 
 **Settings.** Engine (pip/uv radio + detected versions), locale (EN/VI), thresholds (pin auto-suggest count, snapshot retention), index refresh, PEP 668 override (off by default, scary copy), *Open logs folder*, *Legal & About* (links to GitHub legal docs + re-open legal gate).
@@ -93,7 +109,7 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 | Update everything, 1 conflict kept compatible | **4** | default choice needs no extra click |
 | Install one package | **4** + typing | Search (autofocus) → result [Add] → Install → Confirm |
 | Uninstall one package | **3** | Installed → row ✕ → *Remove* (4 when the guard trips: → *Remove the dependents too* → *Remove*) |
-| Rollback last snapshot | **4** | Env detail → snapshot → Rollback → Confirm |
+| Rollback last snapshot | **4** | Environments → *Open* → timeline entry → *Rollback…* → *Roll back* (2 from a run's summary, via *Roll back to this*) |
 | Switch engine | **3** | Settings → engine radio → (auto-saved) back |
 | Run Code Health | **3** | Health → Run (folder persisted) → view |
 
@@ -101,14 +117,16 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 
 `PdSidebar`, `PdStatusLine`, `PdEnvSwitcher`, `PdPackageTable` (virtualized), `PdPackageRow`, `PdBadge`, `PdPreviewDiff`, `PdConflictRow` (segmented 3-way), `PdDockBay` (queue), `PdConsoleDrawer`, `PdSummarySheet`, `PdSnapshotTimeline`, `PdHealthReport`, `PdLegalGate`, `PdEmptyState`, `PdOfflineBanner`.
 
-**13 of those 16 exist** as of S5. Absent: `PdEnvSwitcher` and `PdSnapshotTimeline`, which arrive
-with the env detail in S6, and `PdHealthReport`, which arrives with Code Health in M3. (ROADMAP and
+**14 of those 16 exist** as of S6, `PdSnapshotTimeline` having arrived with the env detail. Absent:
+`PdEnvSwitcher`, which nothing needs while the header shows the selected interpreter and the
+Environments tab switches it, and `PdHealthReport`, which arrives with Code Health in M3. (ROADMAP and
 CLAUDE.md both claimed 16 of 16 after S4; the count had quietly folded in components that are not on
 this list.) Four components not on this list have
 turned out to be load-bearing and are listed here so the inventory stays honest: `PdErrorRow`
 (ERROR-CATALOG §3's row, used by every error surface), `PdDialog` (the shared modal §7's destructive
-confirms need), `PdUninstallDialog` (§5's three options) and `PdPinChip` (the 🔒 chip, shared by the
-table and the Pins screen).
+confirms need), `PdUninstallDialog` (§5's three options), `PdPinChip` (the 🔒 chip, shared by the
+table and the Pins screen) and `PdRollbackPreview` (DATA-FLOW §8's preview, including its
+`PD-SNP-002` list).
 
 ## 7. States & feedback
 

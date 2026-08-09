@@ -17,7 +17,7 @@
 - **Parser fixtures:** captured real outputs under `tests/fixtures/{pip,uv}/{list,outdated,report,errors}/…` (seeded by spikes SP-1/SP-2, grown from every new engine release and every triaged bug). `insta` snapshot tests assert the normalized `ResolutionReport`. A CI job runs the capture script against the *latest* engine versions weekly and fails on unrecognized shapes → PD-ENG-003 before users hit it.
 - **Error classifiers:** every catalog code has ≥ 1 stderr fixture; a test enforces "no code without fixture."
 - **Graph:** reverse-dep construction and blocker attribution over synthetic metadata sets, including cycles and extras (`pkg[extra]`) markers.
-- **Snapshot diff/rollback planner:** property-style tests — `apply(plan(diff(a,b)), b) == a` over generated freeze pairs.
+- **Snapshot diff/rollback planner:** property-style tests — `apply(plan(diff(a,b)), b) == a` over generated freeze pairs, and the **partition**: every significant freeze line is either parsed into a pin or reported unrestorable, never neither. The second is the one a rollback preview stands on — a line both functions dropped disappeared silently, and the preview then promised a restore it could not perform.
 - **Name/spec validation:** PEP 508/440 accept/reject tables.
 
 ### L2 — Engine integration (disposable venvs, Windows CI runner)
