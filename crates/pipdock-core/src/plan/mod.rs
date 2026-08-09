@@ -627,13 +627,6 @@ async fn post_check(engine: &dyn Engine, env: &PyEnv) -> CheckReport {
     })
 }
 
-/// Remove packages, sequentially, skipping past failures (DATA-FLOW §5).
-///
-/// The reverse-dependency guard is the caller's job and runs **once against the full set** before
-/// this is called; by the time execution starts the user has already decided.
-///
-/// # Errors
-/// Never for a package failure — those land in the summary. Only a stale plan aborts.
 /// Apply a rollback plan: remove what the snapshot does not have, restore what it does.
 ///
 /// Lives here rather than in a head because it is the mutating half of DATA-FLOW §8, and a
@@ -657,6 +650,9 @@ pub async fn execute_rollback(
 ) -> Result<ExecutionSummary> {
     let mut results = Vec::new();
 
+    // One index space across both halves: the sink's `total` counts the removals and the restores
+    // together, so the restores continue where the removals stopped rather than both starting at
+    // zero and the live region counting to half.
     if !restore.uninstall.is_empty() {
         let removed = execute_uninstall(
             engine,
@@ -665,28 +661,34 @@ pub async fn execute_rollback(
             &restore.uninstall,
             snapshot,
             sink.clone(),
+            0,
         )
         .await?;
         results.extend(removed.results);
     }
 
-    for spec in &restore.install {
+    for (index, spec) in restore.install.iter().enumerate() {
+        let step_sink = sink.at(restore.uninstall.len() + index);
+        step_sink.started(Some(spec.name.clone()), ExecMode::Isolated);
+
         let step = engine
             .install(
                 env,
                 std::slice::from_ref(spec),
                 ExecMode::Isolated,
-                sink.clone(),
+                step_sink.clone(),
             )
             .await;
-        results.push(step.unwrap_or_else(|e| StepResult {
+        let result = step.unwrap_or_else(|e| StepResult {
             pkg: spec.name.clone(),
             from: None,
             to: Some(spec.version.clone()),
             status: StepStatus::Failed,
             code: Some(e.code),
             stderr_tail: e.stderr_tail,
-        }));
+        });
+        step_sink.finished(Some(spec.name.clone()), ExecMode::Isolated, result.status);
+        results.push(result);
     }
 
     let counts = ExecutionSummary::tally(&results);
@@ -700,6 +702,19 @@ pub async fn execute_rollback(
     })
 }
 
+/// Remove packages, sequentially, skipping past failures (DATA-FLOW §5).
+///
+/// The reverse-dependency guard is the caller's job and runs **once against the full set** before
+/// this is called; by the time execution starts the user has already decided.
+///
+/// `base` is where this run's steps begin in the sink's index space. It exists because
+/// [`execute_rollback`] calls this for the removal half of a restore and then installs on top,
+/// under **one** `ProgressSink` whose `total` counts both — so the removals are steps
+/// `base..base+names.len()` and the restores continue from there. Passing `0` is right for a plain
+/// uninstall, where the removals are the whole plan.
+///
+/// # Errors
+/// Never for a package failure — those land in the summary. Only a stale plan aborts.
 pub async fn execute_uninstall(
     engine: &dyn Engine,
     env: &PyEnv,
@@ -707,13 +722,53 @@ pub async fn execute_uninstall(
     names: &[PkgName],
     _snapshot: SnapshotProof<'_>,
     sink: ProgressSink,
+    base: usize,
 ) -> Result<ExecutionSummary> {
     let mut results = Vec::with_capacity(names.len());
-    for name in names {
+    for (index, name) in names.iter().enumerate() {
+        // Checked before each removal, so a cancelled run reports the rest as never attempted
+        // instead of removing them and then admitting it was cancelled. Removals are fast, which
+        // is exactly why the window matters: without this the whole set goes.
+        if sink.is_cancelled() {
+            results.extend(names[index..].iter().map(|remaining| StepResult {
+                pkg: remaining.clone(),
+                from: None,
+                to: None,
+                status: StepStatus::Skipped,
+                code: None,
+                stderr_tail: None,
+            }));
+            break;
+        }
+
+        // A removal used to emit neither marker, and every line it produced carried `step: 0`.
+        // The CLI never noticed because it prints `event.line()` and nothing else, but the console
+        // drawer groups on `StepStarted` and the live region counts `StepFinished` — both were
+        // unimplementable for uninstall, and would have rendered an empty drawer against a green
+        // suite.
+        let step_sink = sink.at(base + index);
+        step_sink.started(Some(name.clone()), ExecMode::Isolated);
+
         let step = engine
-            .uninstall(env, std::slice::from_ref(name), sink.clone())
+            .uninstall(env, std::slice::from_ref(name), step_sink.clone())
             .await;
-        results.push(match step {
+
+        // Killed by us is not the package's failure — the same reclassification the install path
+        // makes, and for the same reason: it was not attempted to completion.
+        if sink.is_cancelled() && step.is_err() {
+            step_sink.finished(Some(name.clone()), ExecMode::Isolated, StepStatus::Skipped);
+            results.push(StepResult {
+                pkg: name.clone(),
+                from: None,
+                to: None,
+                status: StepStatus::Skipped,
+                code: None,
+                stderr_tail: None,
+            });
+            continue;
+        }
+
+        let result = match step {
             Ok(r) => r,
             Err(e) => StepResult {
                 pkg: name.clone(),
@@ -723,7 +778,9 @@ pub async fn execute_uninstall(
                 code: Some(e.code),
                 stderr_tail: e.stderr_tail,
             },
-        });
+        };
+        step_sink.finished(Some(name.clone()), ExecMode::Isolated, result.status);
+        results.push(result);
     }
 
     let counts = ExecutionSummary::tally(&results);
