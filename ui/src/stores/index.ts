@@ -506,11 +506,30 @@ export const useLegalStore = create<LegalState>((set) => ({
 interface UiState {
   nav: NavKey
   setNav: (nav: NavKey) => void
+  /**
+   * How many error rows are on screen — UI-SPEC §3's `⚠ n`, which the layout has shown since the
+   * spec was written and nothing ever defined.
+   *
+   * **Live rows, not a session tally.** A counter that only went up would read `⚠ 47` after a
+   * batch where 47 packages failed and stay there, which tells the user nothing they cannot
+   * already see and never returns to zero. This is "how many problems are being shown right now",
+   * so dismissing the panel that holds them clears it — the number and the screen agree.
+   *
+   * `PdSummarySheet`'s per-package rows opt out: one failed run is one problem, not 47.
+   */
+  errorRows: number
+  addErrorRow: () => void
+  removeErrorRow: () => void
 }
 
 export const useUiStore = create<UiState>((set) => ({
   nav: 'environments',
   setNav: (nav) => set({ nav }),
+  errorRows: 0,
+  addErrorRow: () => set((s) => ({ errorRows: s.errorRows + 1 })),
+  // Clamped at zero: a double-unmount would otherwise drive it negative and the status line would
+  // render a warning count that cannot happen.
+  removeErrorRow: () => set((s) => ({ errorRows: Math.max(0, s.errorRows - 1) })),
 }))
 
 // The plan store lives in its own file: it is the largest of them and the only one holding a live

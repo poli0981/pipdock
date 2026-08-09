@@ -53,6 +53,9 @@ function ResultRow({ result }: { result: StepResult }) {
       {failed && result.code != null ? (
         <div className="mt-2">
           <PdErrorRow
+            // One failed run is one problem in the status line, not one per package: a batch
+            // where 47 failed would otherwise read `⚠ 47`.
+            counted={false}
             error={{
               code: result.code,
               message: result.pkg,
