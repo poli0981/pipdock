@@ -351,14 +351,33 @@ hits. §8 now says so, and the preview's promise is precise instead: it lists wh
 restored, not everything that might fail. Snapshot retention (`snapshot::delete` + keep-N) also
 stays out; a destructive command against the user's only way back needs its own confirm.
 
-### Stage 7 onward — where to pick up
+### Stage 7 — the shell — **substantially done 2026-08-09; three items open**
 
-The order is **S5 → S6 → S7**, then Phase 3. S5 and S6 are done (above). **S7 — the shell: i18n,
-keyboard, a11y, the error row — is next**, and its largest piece is the one nobody has counted:
-**26 of the 32 catalog codes have no one-liner in either locale**, so they render as "An unexpected
-error occurred." with a code. Exit: every `Code::ALL` variant has copy in EN and VI, the
-pseudo-locale shows no clipping, the VI sweep of every mutation dialog is clean, the token contrast
-test survives the font change, and every `Ctrl+1..8` works.
+Eight commits. What the shell was missing was rarely a feature — it was a promise the docs had made
+and nothing had kept.
+
+| | What landed |
+|---|---|
+| **Fonts** | Inter and JetBrains Mono vendored. `--font-sans`/`--font-mono` had named them since the tokens were written and both fell through to a system fallback, because no `@font-face` was ever registered. |
+| **i18n** | **26 of 32 catalog codes had no copy in either locale.** All 32 now do, in `locales/*/errors.json`, asserted against a generated `codes.json` — both directions, plus I18N §4's ≤ 90-char cap. |
+| **Bug report** | `pipdock_core::report` shared by both heads; `LogRing` in `AppState` fed by three writers; `report_bug_url`; the error row's *Copy full log* and *Report bug*. |
+| **a11y** | Every `--color-*` rebound under `forced-colors`, with borders on the destructive controls whose tint the UA erases. The pseudo-locale, dev-only and verified absent from a production build. |
+| **Status line** | The log toggle does something, and `⚠ n` means something. |
+
+**Open, and named rather than quietly dropped:** `engine_info` and the `COMMANDS`-vs-`generate_handler!`
+drift gate (both from the plan's commit 3), the `Enter` primary-action map with focus-follows-tab and
+the single live region (commit 6), and `PdEmptyState` on the three surfaces that still lack one
+(commit 9). S7b — Settings' remaining controls — was always a follow-up PR.
+
+**One thing worth keeping:** i18next's `nsSeparator` is `:`, so I18N §1's seven namespaces would
+have meant `t('errors:PD-NET-001')` at every call site — churn across every screen, bought with lazy
+loading a desktop app that bundles both catalogs cannot use. The app ships **one** namespace and two
+files per locale; §1 is amended to say so rather than left describing something that was never built.
+
+### Where to pick up
+
+Finish S7's four open items, then Phase 3 — whose first slice, **P1 (pip upkeep)**, needs
+`engine_info`, so that piece is owed either way.
 
 **All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 
