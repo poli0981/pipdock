@@ -480,6 +480,18 @@ impl UninstallFlow {
         &self.guard
     }
 
+    /// Would [`Self::execute`] accept this acknowledgement?
+    ///
+    /// The same rule `execute` enforces, exposed so a caller can refuse *before* writing a
+    /// snapshot for a removal that will not happen. `execute` still checks: this is the polite
+    /// early exit, not the guard.
+    ///
+    /// # Errors
+    /// `PD-RES-004` when the guard found dependents and `ack` does not accept breaking them.
+    pub fn check(&self, ack: GuardAck) -> Result<()> {
+        ack_ok(&self.guard, ack)
+    }
+
     /// Write the pre-removal snapshot, or record the waiver.
     ///
     /// Takes a [`SnapshotPolicy`] for the same reason [`UpdateFlow::take_snapshot`] does: without

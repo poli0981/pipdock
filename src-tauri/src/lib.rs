@@ -46,6 +46,8 @@ pub fn run() {
             commands::plan_decide,
             commands::plan_execute,
             commands::plan_cancel,
+            commands::uninstall_guard,
+            commands::uninstall_execute,
             commands::index_search,
             commands::index_refresh,
             commands::pkg_metadata,

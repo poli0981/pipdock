@@ -23,6 +23,7 @@ import type {
   EnvSource,
   ExecutionSummary,
   FlowStep,
+  GuardReport,
   Intent,
   OutdatedDist,
   PackageMeta,
@@ -247,8 +248,34 @@ export const planDecide = (decisions: Record<string, Decision>): Promise<FlowSte
  */
 export const planExecute = (): Promise<ExecutionOutcome> => invoke('plan_execute')
 
-/** Stop the running plan. Resolves to whether anything was actually in flight. */
+/**
+ * Stop the running plan. Resolves to whether there was anything to stop.
+ *
+ * A plan that is merely parked — a preview on screen, a guard dialog open — counts and is
+ * discarded: it has no process to kill, and leaving it refuses the next plan on behalf of
+ * something nobody is looking at.
+ */
 export const planCancel = (): Promise<boolean> => invoke('plan_cancel')
+
+/**
+ * Check what removing `pkgs` would break, and park the flow that would do it (DATA-FLOW §5).
+ *
+ * Call it **again** with `report.withDependents` for *Remove dependents too*. That option is not a
+ * variant of the flow — it is this call repeated over a wider set, so a dependent of a dependent
+ * surfaces on the next pass rather than being removed unannounced. The previous pass's flow is
+ * discarded, as starting a new plan discards a previous preview.
+ */
+export const uninstallGuard = (env: PyEnv, pkgs: string[]): Promise<GuardReport> =>
+  invoke('uninstall_guard', { env, pkgs })
+
+/**
+ * Snapshot, then remove. Streams `plan-progress`, and summarises like any other plan.
+ *
+ * `force` is §5's *Force remove only X*. Without it a removal the guard objected to rejects with
+ * `PD-RES-004` before the snapshot is written, so a plan that will not run leaves nothing behind.
+ */
+export const uninstallExecute = (force: boolean): Promise<ExecutionOutcome> =>
+  invoke('uninstall_execute', { force })
 
 /**
  * Subscribe to execution progress. Returns the unlisten function.
