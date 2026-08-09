@@ -27,6 +27,10 @@
 //! That the set is the SP-5 tangle pays off twice: `numpy` has two dependents declaring two
 //! *different* specifiers, which is what the uninstall guard's dialog exists to show, so
 //! `guard_report.json` is computed from the same rows rather than invented.
+//!
+//! `snapshot_list.json` carries one of each trigger, with the `Rollback` entry restoring the
+//! `Plan` entry above it — the arrangement that makes `latest` move twice across one restore, and
+//! the reason the timeline has to label them.
 
 use crate::model::{Dist, OutdatedDist, PkgName, Version};
 use crate::pins::{Pin, PinMode};
@@ -209,6 +213,80 @@ fn guard_report() -> crate::graph::GuardReport {
     ])
 }
 
+/// What `snapshot_list` returns: one of each trigger, newest first.
+///
+/// All three on purpose. A `Rollback` entry *restoring* the `Plan` entry above it is the shape
+/// that makes `latest` move twice across a single restore — the trap that made TESTING L2's first
+/// run report every package as changed when the rollback had worked — so the timeline has to be
+/// able to tell them apart, and a fixture with one trigger could not prove it does.
+fn snapshot_list() -> Vec<crate::snapshot::Meta> {
+    use crate::snapshot::{Meta, Trigger};
+    let meta = |id: &str, at: &str, trigger: Trigger, count: usize| Meta {
+        id: id.to_owned(),
+        created_at: at.to_owned(),
+        trigger,
+        engine: crate::model::EngineId::Pip,
+        package_count: count,
+        app_version: "0.1.0".to_owned(),
+    };
+    vec![
+        meta(
+            "20260809T140000-0000000Z",
+            "2026-08-09T14:00:00Z",
+            Trigger::Rollback {
+                restoring: "20260809T120000-0000000Z".to_owned(),
+            },
+            6,
+        ),
+        meta(
+            "20260809T130000-0000000Z",
+            "2026-08-09T13:00:00Z",
+            Trigger::Plan {
+                plan_id: "update-abc12345".to_owned(),
+            },
+            6,
+        ),
+        meta(
+            "20260809T120000-0000000Z",
+            "2026-08-09T12:00:00Z",
+            Trigger::Manual,
+            5,
+        ),
+    ]
+}
+
+/// What `snapshot_rollback_preview` returns, with all three sections populated.
+///
+/// The `unrestorable` entry is the reason this fixture exists rather than an empty preview:
+/// DATA-FLOW §8 requires those lines to be listed explicitly as `PD-SNP-002` before the confirm,
+/// and a component test against a preview that has none would pass whether or not they render.
+fn rollback_preview() -> crate::flow::RollbackPreview {
+    let pkg = |n: &str| PkgName::parse(n).unwrap_or_else(|e| panic!("fixture name {n:?}: {e:?}"));
+    crate::flow::RollbackPreview {
+        target: snapshot_list()
+            .into_iter()
+            .next_back()
+            .unwrap_or_else(|| unreachable!("the list is not empty")),
+        restore: crate::snapshot::RollbackPlan {
+            uninstall: vec![pkg("httpx")],
+            install: vec![
+                crate::model::PinnedSpec {
+                    name: pkg("numpy"),
+                    version: Version("1.26.4".to_owned()),
+                },
+                crate::model::PinnedSpec {
+                    name: pkg("requests"),
+                    version: Version("2.28.0".to_owned()),
+                },
+            ],
+        },
+        unrestorable: vec![
+            "-e C:\\src\\editable-lib".to_owned(),
+            "local-wheel @ file:///C:/wheels/local_wheel-1.0-py3-none-any.whl".to_owned(),
+        ],
+    }
+}
+
 /// Every fixture, as `(file name, contents)`.
 ///
 /// # Errors
@@ -222,6 +300,8 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("flow_step.json", render(&flow_step())?),
         ("execution_summary.json", render(&execution_summary())?),
         ("guard_report.json", render(&guard_report())?),
+        ("snapshot_list.json", render(&snapshot_list())?),
+        ("rollback_preview.json", render(&rollback_preview())?),
     ])
 }
 

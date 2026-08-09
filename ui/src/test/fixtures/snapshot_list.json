@@ -1,0 +1,34 @@
+[
+  {
+    "id": "20260809T140000-0000000Z",
+    "createdAt": "2026-08-09T14:00:00Z",
+    "trigger": {
+      "rollback": {
+        "restoring": "20260809T120000-0000000Z"
+      }
+    },
+    "engine": "pip",
+    "packageCount": 6,
+    "appVersion": "0.1.0"
+  },
+  {
+    "id": "20260809T130000-0000000Z",
+    "createdAt": "2026-08-09T13:00:00Z",
+    "trigger": {
+      "plan": {
+        "planId": "update-abc12345"
+      }
+    },
+    "engine": "pip",
+    "packageCount": 6,
+    "appVersion": "0.1.0"
+  },
+  {
+    "id": "20260809T120000-0000000Z",
+    "createdAt": "2026-08-09T12:00:00Z",
+    "trigger": "manual",
+    "engine": "pip",
+    "packageCount": 5,
+    "appVersion": "0.1.0"
+  }
+]
