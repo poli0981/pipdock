@@ -14,6 +14,7 @@ import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdBadge } from '@/components/PdBadge'
+import { PdPinChip } from '@/components/PdPinChip'
 import { formatBytes, rowState, type LoadState, type PackageRow } from '@/screens/rows'
 
 /** Fixed row height, in px. Mono data at one line, so the virtualizer never has to measure. */
@@ -27,6 +28,7 @@ interface PdPackageRowProps {
   selected: boolean
   onToggle: (name: string) => void
   onPinToggle: (name: string) => void
+  onUninstall: (name: string) => void
   /** The virtualizer's absolute positioning. */
   style: React.CSSProperties
 }
@@ -38,6 +40,7 @@ function Row({
   selected,
   onToggle,
   onPinToggle,
+  onUninstall,
   style,
 }: PdPackageRowProps) {
   const { t, i18n } = useTranslation()
@@ -56,7 +59,10 @@ function Row({
       // punishment. `tabIndex={0}` plus this handler is what makes the row the unit.
       tabIndex={0}
       onKeyDown={(e) => {
-        if (e.key === ' ' && !pinned) {
+        // Only when the row itself has focus. Without the target check, Space on a focused action
+        // button toggles the row's selection *as well as* pressing the button — and the pin
+        // button was a tab stop, so that was reachable rather than theoretical.
+        if (e.key === ' ' && !pinned && e.target === e.currentTarget) {
           // Otherwise the scroll container pages down under the focused row.
           e.preventDefault()
           onToggle(row.name)
@@ -100,26 +106,20 @@ function Row({
 
       <span role="gridcell" className="flex w-40 shrink-0 items-center gap-1">
         {state === 'outdated' ? <PdBadge tone="warn" label={t('packages.badge.update')} /> : null}
-        {row.pin === undefined ? null : (
-          <PdBadge
-            tone="info"
-            glyph={'\u{1F512}\u{FE0E}'}
-            // A Hold pin restates a version in every plan and an Exclude pin does not, so the
-            // chip has to tell them apart — UI-SPEC §4 says only "a 🔒 chip".
-            label={row.pin === 'exclude' ? t('packages.badge.pinned') : row.pin.hold.version}
-            title={
-              row.pin === 'exclude'
-                ? t('packages.badge.pinnedDetail')
-                : t('packages.badge.heldDetail', { version: row.pin.hold.version })
-            }
-          />
-        )}
+        {row.pin === undefined ? null : <PdPinChip mode={row.pin} />}
       </span>
 
-      {/* UI-SPEC §5 spends the first of the 3-click uninstall budget here, so the menu exists in
-          S2 even though Uninstall itself arrives with the guard dialog in S5. */}
+      {/* UI-SPEC §5's 3-click uninstall: this is the first click, *Remove* in the dialog is the
+          third. Two inline buttons rather than the `⋮` menu §4 describes — a menu would spend the
+          first click opening it and the second choosing, leaving one for a confirm that has to
+          name what breaks, and §4's third entry ("details") has no panel to open yet. When it
+          does, these fold into the menu and the budget still holds.
+
+          Neither is a tab stop: the row is (see onKeyDown). Two hundred rows times three stops is
+          not traversal. They stay clickable and stay announced. */}
       <button
         type="button"
+        tabIndex={-1}
         onClick={() => {
           onPinToggle(row.name)
         }}
@@ -128,6 +128,19 @@ function Row({
         className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
       >
         {pinned ? '–' : '+'}
+      </button>
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => {
+          onUninstall(row.name)
+        }}
+        data-action="uninstall"
+        aria-label={t('packages.actions.uninstall')}
+        title={t('packages.actions.uninstall')}
+        className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
+      >
+        {'✕'}
       </button>
     </div>
   )
