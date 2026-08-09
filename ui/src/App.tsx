@@ -47,6 +47,7 @@ export function App() {
   const loadPackages = useEnvStore((s) => s.loadPackages)
   const loadOutdated = useEnvStore((s) => s.loadOutdated)
   const clearSelection = useEnvStore((s) => s.clearSelection)
+  const loadSnapshots = useEnvStore((s) => s.loadSnapshots)
   // A plan belongs to the app, not to a screen: there is one at a time (PD-RES-003) and it can be
   // started from Updates *or* from the Search dock bay. Owning it here is what stops an install
   // resolving into nowhere because the tab that renders the preview is not the tab you are on.
@@ -125,6 +126,10 @@ export function App() {
                 clearSelection()
                 void loadPackages()
                 void loadOutdated()
+                // A rollback writes its own pre-rollback snapshot, so the timeline behind this
+                // panel is stale the moment the run finishes. `force`, because `snapshotsFor`
+                // still matches and would suppress the refetch.
+                void loadSnapshots(true)
               }}
             />
           ) : (SCREENS[nav] ?? (
