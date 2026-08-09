@@ -146,6 +146,10 @@ fn no_code_without_a_fixture() {
             "app::state: a second plan arrived while one was already in flight",
         ),
         (
+            "PD-RES-004",
+            "flow: the uninstall guard found dependents the user had not accepted breaking",
+        ),
+        (
             "PD-PKG-001",
             "compat: Requires-Python enforced by PipDock, not by the engine",
         ),

@@ -97,6 +97,11 @@ expression: out
           "type": "string"
         },
         {
+          "const": "PD-RES-004",
+          "description": "A removal was asked for that the reverse-dependency guard refused (DATA-FLOW §5).\n\nIts own code rather than a reused one. The CLI printed `PD-PKG-002` here, which means \"no\nmatching distribution\" — the opposite of the truth: every package involved exists, and\nthat is precisely why the removal is being refused. A user grepping their logs for a typo\nwould have found this instead.\n\nNot raised when the guard merely *finds* dependents. That is a report the caller shows and\nthe user answers; the code appears only when execution is attempted anyway without the\nuser having accepted the breakage.",
+          "type": "string"
+        },
+        {
           "const": "PD-BLD-001",
           "description": "MSVC build tools required but absent.",
           "type": "string"

@@ -11,7 +11,7 @@ use pipdock_core::engine::{self, Engine, ProgressEvent, pip::PipEngine, uv::UvEn
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::flow::{
-    FlowStep, NothingReason, RollbackFlow, SnapshotPolicy, UninstallFlow, UpdateFlow,
+    FlowStep, GuardAck, NothingReason, RollbackFlow, SnapshotPolicy, UninstallFlow, UpdateFlow,
 };
 use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
 
@@ -1195,9 +1195,10 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
         }
         if !force {
             eprintln!(
-                "error[PD-PKG-002]: refusing to remove packages other packages depend on.\n\
+                "error[{}]: refusing to remove packages other packages depend on.\n\
                  Re-run with --force to proceed anyway, or add the dependents to the removal set:\n\
                    pipdock uninstall {}",
+                Code::ResGuardTrip,
                 report
                     .with_dependents
                     .iter()
@@ -1205,9 +1206,12 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
                     .collect::<Vec<_>>()
                     .join(" ")
             );
-            // CLI-SPEC §7 documents this as exit 1 ("exit 1 if guard trips"), so scripts can use
-            // `||` without matching a specific code.
-            return Ok(Exit::PartialFailure);
+            // Exit 2, not 1. CLI-SPEC §5 defines 1 as "completed with per-package failures (see
+            // JSON `counts.failed`)" — but a guard trip executes nothing, so there are no counts
+            // to read and a script following the table finds an empty summary. 2 is "plan
+            // aborted", which is exactly what happened. It is also what `exit_for` derives from
+            // `Area::Res`, so the binary no longer disagrees with its own mapping.
+            return Ok(Exit::PlanAborted);
         }
         eprintln!("warning: --force given; proceeding despite the breakage above");
     }
@@ -1244,7 +1248,14 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
         }
     });
 
-    let summary = flow.execute(tx).await?;
+    // Reaching here means either the guard was clear or `--force` was given and the warning
+    // printed; `ack_ok` refuses anything else with PD-RES-004 rather than trusting this call site.
+    let ack = if force {
+        GuardAck::ForcedDespiteBreakage
+    } else {
+        GuardAck::Clear
+    };
+    let summary = flow.execute(ack, tx).await?;
     drop(pump);
 
     print_summary(opts, &summary);

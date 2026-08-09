@@ -19,6 +19,7 @@
 | PD-RES-001 | `ResolutionImpossible` / uv equivalent | constraints cannot be satisfied | Per-package Skip/Force choices in the preview |
 | PD-RES-002 | plan stale (>10 min) or env drift hash mismatch | env changed since preview | Re-run preview |
 | PD-RES-003 | a plan is already resolving or executing | another plan is in flight in this session | Wait for it, or cancel it |
+| PD-RES-004 | **Raised by PipDock before the engine runs** — the reverse-dependency guard (DATA-FLOW §5) found installed dependents and execution was attempted without the user accepting the breakage | removing these packages would break others | Remove the dependents too, or force the removal knowingly |
 | PD-BLD-001 | `Microsoft Visual C++ 14.0 or greater is required` | missing MSVC build tools | Install VS Build Tools, or prefer a wheel-providing version |
 | PD-BLD-002 | `error in pyproject.toml` / `Backend … failed` / `metadata-generation-failed` | broken sdist build backend | Try previous version; report upstream (owner's example case) |
 | PD-BLD-003 | `error: Microsoft Visual C++`-absent + `Failed building wheel` generic | sdist-only build failed | Same as above; details in log |

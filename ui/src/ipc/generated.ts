@@ -104,6 +104,7 @@ export type Code =
   | 'PD-RES-001'
   | 'PD-RES-002'
   | 'PD-RES-003'
+  | 'PD-RES-004'
   | 'PD-BLD-001'
   | 'PD-BLD-002'
   | 'PD-BLD-003'
