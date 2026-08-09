@@ -27,6 +27,8 @@ import {
   planDecide,
   planExecute,
   planResolve,
+  snapshotRollback,
+  snapshotRollbackPreview,
   uninstallExecute,
   uninstallGuard,
   type Decision,
@@ -37,6 +39,7 @@ import {
   type PdError,
   type ProgressEvent,
   type PyEnv,
+  type RollbackPreview,
 } from '@/ipc'
 
 /**
@@ -85,7 +88,7 @@ export const PANEL_PHASES: ReadonlySet<PlanPhase> = new Set<PlanPhase>([
  * in Rust either way, so two stores would be two front ends onto one slot, each able to think it
  * owns it.
  */
-export type PlanKind = 'update' | 'install' | 'uninstall'
+export type PlanKind = 'update' | 'install' | 'uninstall' | 'rollback'
 
 /** One console line, already flattened for rendering. */
 export interface ConsoleLine {
@@ -106,6 +109,8 @@ interface PlanState {
   env: PyEnv | null
   /** What the guard found, while `phase` is `guard`. */
   guard: GuardReport | null
+  /** What a rollback would do, while `kind` is `rollback` — DATA-FLOW §8. */
+  preview: RollbackPreview | null
   /** True while a re-guard is in flight, so the dialog can say so rather than flicker. */
   guardBusy: boolean
   /** What the flow says it needs next, or null before the first resolve. */
@@ -136,6 +141,8 @@ interface PlanState {
   widen: () => Promise<void>
   /** Remove. `force` is *Force remove only X*. */
   confirmUninstall: (force: boolean) => Promise<void>
+  /** Preview restoring `id`, which parks the flow that would do it (DATA-FLOW §8). */
+  rollback: (env: PyEnv, id: string) => Promise<void>
   cancel: () => Promise<void>
   setConsoleOpen: (open: boolean) => void
   /** Return to the table, discarding the preview or the summary. */
@@ -151,6 +158,7 @@ const EMPTY = {
   env: null,
   guard: null,
   guardBusy: false,
+  preview: null,
   step: null,
   decisions: {},
   console: [] as ConsoleLine[],
@@ -233,7 +241,10 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   execute: async () => {
-    await runToSummary(set, planExecute)
+    // One button, two commands. `PdPlanPanel`'s Confirm is the same control for both flows, and
+    // which one it sends is the session's kind rather than anything the button knows.
+    const command = get().kind === 'rollback' ? snapshotRollback : planExecute
+    await runToSummary(set, command)
   },
 
   startUninstall: async (env, pkgs) => {
@@ -265,6 +276,15 @@ export const usePlanStore = create<PlanState>((set, get) => ({
 
   confirmUninstall: async (force) => {
     await runToSummary(set, () => uninstallExecute(force))
+  },
+
+  rollback: async (env, id) => {
+    set({ phase: 'resolving', ...EMPTY, kind: 'rollback', env })
+    try {
+      set({ preview: await snapshotRollbackPreview(env, id), phase: 'preview' })
+    } catch (e) {
+      set({ phase: 'failed', error: asPdError(e) })
+    }
   },
 
   cancel: async () => {

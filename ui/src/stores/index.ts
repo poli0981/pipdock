@@ -26,6 +26,9 @@ import {
   pinRemove,
   pkgList,
   pkgOutdated,
+  snapshotCreate,
+  snapshotDiff,
+  snapshotList,
   settingsGet,
   settingsSet,
   type Dist,
@@ -35,6 +38,8 @@ import {
   type Pin,
   type ScanProgress,
   type Settings,
+  type Diff,
+  type SnapshotMeta,
 } from '@/ipc'
 import { joinRows, type LoadState, type PackageRow } from '@/screens/rows'
 
@@ -169,6 +174,34 @@ interface EnvState {
   togglePin: (name: string) => Promise<void>
   /** Set or clear a pin's reason, leaving its mode alone. `null` clears it. */
   updatePin: (name: string, reason: string | null) => Promise<void>
+
+  // -- the snapshot slice, for the env detail (UI-SPEC §4) -------------------------------------
+
+  /**
+   * Which environment's detail view is open, by interpreter path.
+   *
+   * In the store rather than the screen's `useState` because the plan panel replaces the whole
+   * content area while a rollback runs. Local state would be unmounted with it, and the user
+   * would land back on the flat list the moment their rollback finished.
+   */
+  openFor: string | null
+  snapshots: SnapshotMeta[]
+  /** Which environment `snapshots` describes, so re-opening the same one does not refetch. */
+  snapshotsFor: string | null
+  snapshotsLoading: LoadState
+  snapshotsError: PdError | null
+  /** The timeline entry being inspected. */
+  selectedSnapshot: string | null
+  /** Its diff against the environment as it is now. */
+  diff: Diff | null
+  diffLoading: LoadState
+
+  openEnv: (interpreter: string) => void
+  closeEnv: () => void
+  /** `force` refetches even when `snapshotsFor` already matches — used after a rollback. */
+  loadSnapshots: (force?: boolean) => Promise<void>
+  selectSnapshot: (id: string | null) => Promise<void>
+  takeSnapshot: () => Promise<void>
 }
 
 /** Everything the package slice resets to. Named so a future field cannot be forgotten. */
@@ -185,6 +218,15 @@ const NO_PACKAGES = {
   outdatedStatus: 'idle' as LoadState,
   outdatedError: null,
   selection: new Set<string>(),
+  // The timeline belongs to an environment as much as the package list does; leaving it behind on
+  // a switch would offer one environment's snapshots under another's name.
+  snapshots: [] as SnapshotMeta[],
+  snapshotsFor: null,
+  snapshotsLoading: 'idle' as LoadState,
+  snapshotsError: null,
+  selectedSnapshot: null,
+  diff: null,
+  diffLoading: 'idle' as LoadState,
 }
 
 /** Recompute the joined view from the three raw responses. */
@@ -203,6 +245,7 @@ export const useEnvStore = create<EnvState>((set, get) => ({
   scanning: false,
   progress: null,
   error: null,
+  openFor: null,
   ...NO_PACKAGES,
 
   scan: async () => {
@@ -304,6 +347,61 @@ export const useEnvStore = create<EnvState>((set, get) => ({
           pinAdd(envHash, { pkg: name, mode: 'exclude' })
         : pinRemove(envHash, name).then(() => undefined),
     )
+  },
+
+  openEnv: (interpreter) => set({ openFor: interpreter }),
+  closeEnv: () => set({ openFor: null, selectedSnapshot: null, diff: null }),
+
+  loadSnapshots: async (force = false) => {
+    const { openFor, rows, snapshotsFor } = get()
+    const row = rows.find((r) => r.interpreter === openFor)
+    if (row === undefined) return
+    if (!force && snapshotsFor === openFor) return
+
+    set({ snapshotsLoading: 'loading', snapshotsError: null })
+    try {
+      // By `envHash`, not by interpreter: a snapshot outlives the Python that made it, so this
+      // works on a row whose probe failed and whose `env` is therefore absent.
+      set({
+        snapshots: await snapshotList(row.envHash),
+        snapshotsFor: openFor,
+        snapshotsLoading: 'ready',
+      })
+    } catch (e) {
+      set({ snapshotsLoading: 'error', snapshotsError: asPdError(e) })
+    }
+  },
+
+  selectSnapshot: async (id) => {
+    const { openFor, rows } = get()
+    set({ selectedSnapshot: id, diff: null })
+    if (id === null) return
+
+    const row = rows.find((r) => r.interpreter === openFor)
+    // A dead interpreter can list its snapshots but cannot be diffed against — there is nothing
+    // to freeze. The timeline says so rather than spinning.
+    if (row?.env === undefined) return
+
+    set({ diffLoading: 'loading', snapshotsError: null })
+    try {
+      set({ diff: await snapshotDiff(row.env, id), diffLoading: 'ready' })
+    } catch (e) {
+      set({ diffLoading: 'error', snapshotsError: asPdError(e) })
+    }
+  },
+
+  takeSnapshot: async () => {
+    const { openFor, rows } = get()
+    const row = rows.find((r) => r.interpreter === openFor)
+    if (row?.env === undefined) return
+
+    set({ snapshotsError: null })
+    try {
+      await snapshotCreate(row.env)
+      await get().loadSnapshots(true)
+    } catch (e) {
+      set({ snapshotsError: asPdError(e) })
+    }
   },
 
   updatePin: async (name, reason) => {

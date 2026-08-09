@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { onScanProgress, type EnvRow } from '@/ipc'
+import { PdEnvDetail } from '@/screens/PdEnvDetail'
 import { useEnvStore } from '@/stores'
 
 function SourceChip({ row }: { row: EnvRow }) {
@@ -31,6 +32,7 @@ function Row({ row }: { row: EnvRow }) {
   const { t } = useTranslation()
   const selected = useEnvStore((s) => s.selected)
   const select = useEnvStore((s) => s.select)
+  const openEnv = useEnvStore((s) => s.openEnv)
   const isSelected = selected === row.interpreter
   const managed = row.env?.externallyManaged === true
 
@@ -79,16 +81,30 @@ function Row({ row }: { row: EnvRow }) {
           <PdErrorRow error={row.error} />
         </div>
       ) : (
-        <button
-          type="button"
-          onClick={() => {
-            select(row.interpreter)
-          }}
-          disabled={isSelected}
-          className="mt-2 rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40"
-        >
-          {t('actions.use')}
-        </button>
+        <div className="mt-2 flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              select(row.interpreter)
+            }}
+            disabled={isSelected}
+            className="rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40"
+          >
+            {t('actions.use')}
+          </button>
+          {/* UI-SPEC §5's 4-click rollback starts here: Environments is the landing screen, so
+              Open → snapshot → Rollback… → Roll back is the whole budget. */}
+          <button
+            type="button"
+            onClick={() => {
+              openEnv(row.interpreter)
+            }}
+            data-action="open"
+            className="rounded-pd border border-border px-3 py-1 text-data"
+          >
+            {t('actions.open')}
+          </button>
+        </div>
       )}
     </li>
   )
@@ -96,7 +112,16 @@ function Row({ row }: { row: EnvRow }) {
 
 export function PdEnvironments() {
   const { t } = useTranslation()
-  const { rows, scanning, progress, error, scan, setProgress } = useEnvStore()
+  // Per-field selectors, not a bare `useEnvStore()`: that subscribes to every field, so opening
+  // a detail view or selecting a snapshot would re-render the whole environment list.
+  const rows = useEnvStore((s) => s.rows)
+  const scanning = useEnvStore((s) => s.scanning)
+  const progress = useEnvStore((s) => s.progress)
+  const error = useEnvStore((s) => s.error)
+  const scan = useEnvStore((s) => s.scan)
+  const setProgress = useEnvStore((s) => s.setProgress)
+  const openFor = useEnvStore((s) => s.openFor)
+
 
   useEffect(() => {
     // Subscribe before scanning, or the first phases are emitted into nothing.
@@ -109,6 +134,11 @@ export function PdEnvironments() {
       unlisten?.()
     }
   }, [scan, setProgress])
+
+  // The detail view is a mode of this tab, not a ninth sidebar entry — a ninth entry would
+  // renumber Ctrl+1..8, which the keyboard map fixes in place. Below the hooks, so the hook order
+  // is identical whether or not a detail is open.
+  if (openFor !== null) return <PdEnvDetail />
 
   return (
     <section aria-labelledby="env-title" className="h-full overflow-auto p-6">
