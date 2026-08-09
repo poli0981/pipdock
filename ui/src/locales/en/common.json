@@ -36,6 +36,7 @@
     "reportBug": "Report bug",
     "accept": "Continue",
     "decline": "Decline and exit",
+    "open": "Open",
     "use": "Use",
     "retry": "Retry",
     "openLogs": "Open logs folder"
@@ -160,6 +161,40 @@
     "emptyHint": "Pin a package from the Installed table to keep bulk updates away from it.",
     "reasonPlaceholder": "Why is this pinned?",
     "reasonFor": "Reason for pinning {{pkg}}"
+  },
+  "snapshots": {
+    "title": "Snapshots",
+    "take": "Take snapshot",
+    "loading": "Reading snapshots…",
+    "empty": "no snapshots for this environment",
+    "emptyHint": "One is taken automatically before every change, and you can take one now.",
+    "envUnusable": "This interpreter cannot be read, so snapshots can be listed but not compared or restored.",
+    "diffing": "Comparing with the environment…",
+    "noDifference": "This environment already matches the snapshot.",
+    "diffAdded_one": "{{count}} package here but not in the snapshot — restoring removes it",
+    "diffAdded_other": "{{count}} packages here but not in the snapshot — restoring removes them",
+    "diffRemoved_one": "{{count}} package in the snapshot but not installed — restoring adds it",
+    "diffRemoved_other": "{{count}} packages in the snapshot but not installed — restoring adds them",
+    "diffChanged_one": "{{count}} package at a different version",
+    "diffChanged_other": "{{count}} packages at different versions",
+    "rollback": "Rollback…",
+    "rollbackTitle": "Roll back",
+    "restoringTo": "Restoring the environment to",
+    "alreadyMatches": "Nothing to do — this environment already matches the snapshot.",
+    "willRemove_one": "Will remove {{count}} package",
+    "willRemove_other": "Will remove {{count}} packages",
+    "willRestore_one": "Will restore {{count}} package",
+    "willRestore_other": "Will restore {{count}} packages",
+    "unrestorable_one": "{{count}} entry cannot be restored",
+    "unrestorable_other": "{{count}} entries cannot be restored",
+    "unrestorableDetail": "These were installed from a path or a URL rather than from an index, so PipDock cannot fetch them again. Everything else still restores.",
+    "confirmRollback_one": "Roll back ({{count}} change)",
+    "confirmRollback_other": "Roll back ({{count}} changes)",
+    "trigger": {
+      "plan": "before a change",
+      "rollback": "before restoring {{id}}",
+      "manual": "taken by you"
+    }
   },
   "uninstall": {
     "title": "Remove packages",

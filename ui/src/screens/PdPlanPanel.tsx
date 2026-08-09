@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 import { PdConsoleDrawer } from '@/components/PdConsoleDrawer'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdPreviewDiff } from '@/components/PdPreviewDiff'
+import { PdRollbackPreview } from '@/components/PdRollbackPreview'
 import { PdSummarySheet } from '@/components/PdSummarySheet'
 import { usePlanStore } from '@/stores'
 
@@ -27,6 +28,8 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
 
   const phase = usePlanStore((s) => s.phase)
   const step = usePlanStore((s) => s.step)
+  const kind = usePlanStore((s) => s.kind)
+  const preview = usePlanStore((s) => s.preview)
   const decisions = usePlanStore((s) => s.decisions)
   const consoleLines = usePlanStore((s) => s.console)
   const consoleOpen = usePlanStore((s) => s.consoleOpen)
@@ -103,15 +106,29 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
     )
   }
 
-  const changeCount = step !== null && 'report' in step ? (step.report.changes ?? []).length : 0
+  // A rollback produces no `FlowStep` — there is nothing to resolve and nothing to decide — so
+  // every guard below that reads `step` would answer "no" and disable the one button the flow
+  // needs. `kind` is what distinguishes "no plan" from "a plan of a different shape".
+  const isRollback = kind === 'rollback'
+  const rollbackOps =
+    preview === null ? 0 : preview.restore.uninstall.length + preview.restore.install.length
+  const changeCount = isRollback
+    ? rollbackOps
+    : step !== null && 'report' in step
+      ? (step.report.changes ?? []).length
+      : 0
   const needsDecisions = step?.step === 'needsDecisions'
   const exhausted = step?.step === 'roundsExhausted'
+  const nothingToDo = isRollback ? preview !== null && rollbackOps === 0 : step?.step === 'nothing'
+  const confirmable = isRollback ? preview !== null && rollbackOps > 0 : step !== null && step.step !== 'nothing'
 
   return (
     <section className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-auto p-6">
         <div className="flex items-baseline justify-between">
-          <h1 className="text-accent">{t('plan.previewTitle')}</h1>
+          <h1 className="text-accent">
+            {isRollback ? t('snapshots.rollbackTitle') : t('plan.previewTitle')}
+          </h1>
           <span aria-live="polite" className="text-data text-text-dim">
             {phase === 'resolving' ? t('plan.resolving') : null}
             {phase === 'executing'
@@ -137,13 +154,19 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
         ) : null}
         {exhausted ? <p className="mt-2 text-data text-warn">{t('plan.roundsExhausted')}</p> : null}
 
+        {preview !== null ? (
+          <div className="mt-4">
+            <PdRollbackPreview preview={preview} />
+          </div>
+        ) : null}
+
         {step !== null && 'report' in step ? (
           <div className="mt-4">
             <PdPreviewDiff report={step.report} decisions={decisions} onChoose={choose} />
           </div>
         ) : null}
 
-        {step?.step === 'nothing' ? (
+        {nothingToDo ? (
           <p className="mt-4 text-data text-text-dim">{t('plan.emptyPreview')}</p>
         ) : null}
       </div>
@@ -212,10 +235,15 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
               onClick={() => {
                 void execute()
               }}
-              disabled={phase === 'resolving' || step === null || step.step === 'nothing'}
-              className="rounded-pd border border-accent px-3 py-1 text-data text-accent disabled:border-border disabled:text-text-dim disabled:opacity-40"
+              disabled={phase === 'resolving' || !confirmable}
+              className={`rounded-pd border px-3 py-1 text-data disabled:border-border disabled:text-text-dim disabled:opacity-40 ${
+                // A restore removes things. It gets the danger treatment the update path does not.
+                isRollback ? 'border-danger text-danger' : 'border-accent text-accent'
+              }`}
             >
-              {t('plan.confirm', { count: changeCount })}
+              {isRollback
+                ? t('snapshots.confirmRollback', { count: changeCount })
+                : t('plan.confirm', { count: changeCount })}
             </button>
           </>
         )}

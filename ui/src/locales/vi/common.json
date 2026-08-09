@@ -35,6 +35,7 @@
     "reportBug": "Báo lỗi",
     "accept": "Tiếp tục",
     "decline": "Từ chối và thoát",
+    "open": "Mở",
     "use": "Dùng",
     "retry": "Thử lại",
     "openLogs": "Mở thư mục nhật ký"
@@ -153,6 +154,33 @@
     "emptyHint": "Ghim một gói từ bảng Đã cài để các lần cập nhật hàng loạt bỏ qua nó.",
     "reasonPlaceholder": "Vì sao ghim gói này?",
     "reasonFor": "Lý do ghim {{pkg}}"
+  },
+  "snapshots": {
+    "title": "Ảnh chụp",
+    "take": "Chụp ngay",
+    "loading": "Đang đọc ảnh chụp…",
+    "empty": "môi trường này chưa có ảnh chụp nào",
+    "emptyHint": "PipDock tự chụp trước mọi thay đổi, và bạn cũng có thể chụp ngay bây giờ.",
+    "envUnusable": "Không đọc được trình thông dịch này, nên chỉ liệt kê được ảnh chụp chứ không so sánh hay khôi phục được.",
+    "diffing": "Đang so sánh với môi trường…",
+    "noDifference": "Môi trường này vốn đã khớp với ảnh chụp.",
+    "diffAdded_other": "{{count}} gói có ở đây nhưng không có trong ảnh chụp — khôi phục sẽ gỡ chúng",
+    "diffRemoved_other": "{{count}} gói có trong ảnh chụp nhưng chưa cài — khôi phục sẽ cài lại",
+    "diffChanged_other": "{{count}} gói đang ở phiên bản khác",
+    "rollback": "Khôi phục…",
+    "rollbackTitle": "Khôi phục",
+    "restoringTo": "Khôi phục môi trường về",
+    "alreadyMatches": "Không có gì để làm — môi trường này vốn đã khớp với ảnh chụp.",
+    "willRemove_other": "Sẽ gỡ {{count}} gói",
+    "willRestore_other": "Sẽ khôi phục {{count}} gói",
+    "unrestorable_other": "{{count}} mục không khôi phục được",
+    "unrestorableDetail": "Những mục này được cài từ đường dẫn hoặc URL chứ không phải từ danh mục, nên PipDock không tải lại được. Mọi thứ còn lại vẫn khôi phục bình thường.",
+    "confirmRollback_other": "Khôi phục ({{count}} thay đổi)",
+    "trigger": {
+      "plan": "trước một thay đổi",
+      "rollback": "trước khi khôi phục {{id}}",
+      "manual": "bạn tự chụp"
+    }
   },
   "uninstall": {
     "title": "Gỡ gói",
