@@ -22,7 +22,8 @@
     "noEnvironment": "no environment selected",
     "ready": "ready",
     "packages_one": "{{count}} package",
-    "packages_other": "{{count}} packages"
+    "packages_other": "{{count}} packages",
+    "warningsDetail": "Problems currently shown on screen."
   },
   "actions": {
     "confirm": "Confirm",

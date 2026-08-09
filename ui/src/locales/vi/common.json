@@ -21,7 +21,8 @@
     "log": "nhật ký",
     "noEnvironment": "chưa chọn môi trường",
     "ready": "sẵn sàng",
-    "packages_other": "{{count}} gói"
+    "packages_other": "{{count}} gói",
+    "warningsDetail": "Số vấn đề đang hiển thị trên màn hình."
   },
   "actions": {
     "confirm": "Xác nhận",

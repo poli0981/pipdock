@@ -21,12 +21,24 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { reportBugUrl, type BugReportLink, type PdError } from '@/ipc'
+import { useUiStore } from '@/stores'
 
-export function PdErrorRow({ error }: { error: PdError }) {
+export function PdErrorRow({ error, counted = true }: { error: PdError; counted?: boolean }) {
   const { t } = useTranslation()
   const [open, setOpen] = useState(false)
   const [link, setLink] = useState<BugReportLink | null>(null)
   const [copied, setCopied] = useState(false)
+  const addErrorRow = useUiStore((s) => s.addErrorRow)
+  const removeErrorRow = useUiStore((s) => s.removeErrorRow)
+
+  // Registers while mounted, so `⚠ n` means "problems currently on screen" rather than a tally
+  // that only grows. `counted={false}` is for a sheet that renders one row per failed package —
+  // one failed run is one problem, not forty-seven.
+  useEffect(() => {
+    if (!counted) return undefined
+    addErrorRow()
+    return removeErrorRow
+  }, [counted, addErrorRow, removeErrorRow])
 
   // Asked for once per row rather than per click, so *Copy full log* can hide itself when there is
   // nothing to copy. A failure here costs the two buttons and nothing else — an error row that
