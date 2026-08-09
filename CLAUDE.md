@@ -66,18 +66,17 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 
 ## Current state
 
-**M1 complete. M2 Stages 1–6 done, S7 substantially done** (IPC bridge 2026-07-30; Installed+Updates, the mutation spine
+**M1 and M2 complete** (IPC bridge 2026-07-30; Installed+Updates, the mutation spine
 and search+install all 2026-08-04). The app discovers, lists, previews, decides, executes, streams,
 summarises and installs over real commands. **"Update everything" is 4 clicks and "install one" is
 4 clicks**, both counted by hand in the running app; search is **22 ms median per keystroke**
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-S7 landed the error catalog's copy (all 32 codes, both locales, asserted), the bug-report deep
-link, the vendored fonts, `forced-colors`, the pseudo-locale and the status line. **Four items stay
-open** and ROADMAP names them: `engine_info`, the `COMMANDS` drift gate, the `Enter` map with
-focus-follows-tab and one live region, and `PdEmptyState` on three surfaces. Phase 3's first slice
-needs `engine_info`, so it is owed either way.
+Next is **Phase 3 — Code Health**, and its first slice (P1, pip upkeep) needs only `pip_upgrade`:
+`Engine::upgrade_pip`, the CLI command and `engine_info` all exist. `src-tauri/src/lib.rs`'s
+`NOT_YET` names the five commands still owed, each against its slice, and three tests keep that
+list honest in both directions.
 
 Three rules from S2/S3 that bind everything after them:
 

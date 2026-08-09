@@ -351,7 +351,7 @@ hits. §8 now says so, and the preview's promise is precise instead: it lists wh
 restored, not everything that might fail. Snapshot retention (`snapshot::delete` + keep-N) also
 stays out; a destructive command against the user's only way back needs its own confirm.
 
-### Stage 7 — the shell — **substantially done 2026-08-09; three items open**
+### Stage 7 — the shell — **done 2026-08-09**
 
 Eight commits. What the shell was missing was rarely a feature — it was a promise the docs had made
 and nothing had kept.
@@ -364,20 +364,38 @@ and nothing had kept.
 | **a11y** | Every `--color-*` rebound under `forced-colors`, with borders on the destructive controls whose tint the UA erases. The pseudo-locale, dev-only and verified absent from a production build. |
 | **Status line** | The log toggle does something, and `⚠ n` means something. |
 
-**Open, and named rather than quietly dropped:** `engine_info` and the `COMMANDS`-vs-`generate_handler!`
-drift gate (both from the plan's commit 3), the `Enter` primary-action map with focus-follows-tab and
-the single live region (commit 6), and `PdEmptyState` on the three surfaces that still lack one
-(commit 9). S7b — Settings' remaining controls — was always a follow-up PR.
+| **Bridge** | `engine_info`, and three tests that make `COMMANDS` mean something. It listed **32 names while 19 were registered** — a wrapper for any of the other 13 typechecked and would have failed at runtime, on a command that looked implemented. |
+| **Keyboard** | Focus follows the tab: `Ctrl+3` changed the screen and left focus behind, so the next Tab resumed inside the screen the user had just left. |
+
+**Deliberately left for later, and named:** the `Enter` primary-action map and folding the six
+`aria-live` regions into one — both are cross-screen behaviour that wants the VI sweep and a real
+screen reader to verify, not a passing test. S7b (Settings' remaining controls) was always a
+follow-up PR. `PdEmptyState` now covers every surface that renders a list.
 
 **One thing worth keeping:** i18next's `nsSeparator` is `:`, so I18N §1's seven namespaces would
 have meant `t('errors:PD-NET-001')` at every call site — churn across every screen, bought with lazy
 loading a desktop app that bundles both catalogs cannot use. The app ships **one** namespace and two
 files per locale; §1 is amended to say so rather than left describing something that was never built.
 
+**M2 is complete.** Every P0 feature except Code Health (P0-11) is in both heads, all seven UI-SPEC
+click budgets are met by hand count, and `NOT_YET` names the five commands that remain — each
+against the slice that owes it.
+
 ### Where to pick up
 
-Finish S7's four open items, then Phase 3 — whose first slice, **P1 (pip upkeep)**, needs
-`engine_info`, so that piece is owed either way.
+**Phase 3.** Its first slice, P1 (pip upkeep), is the smallest: `pip_upgrade` is the only command it
+needs, `Engine::upgrade_pip` and the CLI already exist, and `engine_info` — which the Environments
+row needs to show a version — landed here. The plan's decomposition (P1 pip upkeep · P2 tools venv ·
+P3 runners + `HealthReport` · P4 the Health screen · P5 the gated `ruff --fix`) is in
+`~/.claude/plans/b-n-l-n-plan-cho-eventual-wadler.md`, along with the two decisions worth not
+re-deriving: the tools venv is populated with **pip** unconditionally rather than the configured
+engine, and the health report type is **`HealthReport`**, because `CheckReport` is already taken by
+`engine.check()` and is a published `pipdock schema` contract.
+
+**Ten minutes before any of it:** install `tools-requirements.txt`'s pin set into a scratch venv on
+3.14 and on 3.13. `py -0p` reports 3.14 first on this machine and `deptry` ships compiled wheels; no
+cp314 wheel means an sdist build and PD-BLD-001 with no user action. That answer sets
+`TOOLS_PYTHON_MAX` and is the top unknown in all of M3.
 
 **All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 
