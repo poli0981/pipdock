@@ -12,6 +12,7 @@ import { PdPackages } from '@/screens/PdPackages'
 import { PdPlanPanel } from '@/screens/PdPlanPanel'
 import { PdSearch } from '@/screens/PdSearch'
 import { PdSettings } from '@/screens/PdSettings'
+import { PANEL_PHASES } from '@/stores/plan'
 import { useEnvStore, useLegalStore, usePlanStore, useUiStore } from '@/stores'
 
 /**
@@ -103,7 +104,7 @@ export function App() {
             can observe, and nesting one inside an already-scrolling <main> gives two scrollbars
             and an outer one whose content is already the virtualizer's full height. */}
         <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
-          {planPhase !== 'idle' ? (
+          {PANEL_PHASES.has(planPhase) ? (
             <PdPlanPanel
               onFinished={() => {
                 // The environment changed under whatever screen is behind this, so re-read it
