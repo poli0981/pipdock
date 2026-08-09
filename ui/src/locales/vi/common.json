@@ -248,6 +248,8 @@
   "errors": {
     "title": "Đã xảy ra lỗi",
     "retry": "Thử lại",
-    "unknown": "Đã xảy ra lỗi ngoài dự kiến."
+    "unknown": "Đã xảy ra lỗi ngoài dự kiến.",
+    "logPrivacy": "Không có gì được gửi đi cho tới khi chính bạn gửi báo cáo.",
+    "logCopied": "Đã sao chép"
   }
 }
