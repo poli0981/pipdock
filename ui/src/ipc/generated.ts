@@ -20,6 +20,28 @@ export interface Blocker {
   constraint: string;
 }
 
+/**
+ * One installed package that a removal would break, and the requirement that says so.
+ *
+ * `constraint` is the **bare specifier tail** — `"<2,>=1.26.0"`, not `"numpy<2,>=1.26.0"` —
+ * because [`Requirement::parse`] splits the distribution name off and the name is already the key
+ * of [`GuardReport::breaks`]. The head that goes in front of it is the package being removed, so
+ * the caller has both halves and can join them the way its own language does. Rust does not
+ * assemble the sentence: I18N §1 keeps every word of phrasing in the frontend catalogs, and a
+ * specifier is data, like a version or a path.
+ */
+export interface BrokenDependent {
+  /** The version specifier it declared, e.g. `"<2,>=1.26.0"`. Empty when unconstrained. */
+  constraint: string;
+  /** The installed package that would be left with a missing dependency. */
+  pkg: PkgName;
+  /**
+   * Its installed version, when the graph knows it — so the dialog can say `pandas 2.1.4`
+   * rather than bare `pandas`, which is what makes the constraint checkable by hand.
+   */
+  version?: string | null;
+}
+
 /** One line of the preview diff. */
 export interface Change {
   /** Version before, absent for a fresh install. */
@@ -226,8 +248,8 @@ export type Freshness =
  * raise a warning the user cannot act on.
  */
 export interface GuardReport {
-  /** For each package that has them, the installed packages that would break. */
-  breaks: Record<string, PkgName[]>;
+  /** For each package that has them, the installed packages that would break and why. */
+  breaks: Record<string, BrokenDependent[]>;
   /** The set the user asked to remove. */
   removing: PkgName[];
   /**

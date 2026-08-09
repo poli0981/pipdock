@@ -4,6 +4,31 @@ expression: out
 ---
 {
   "$defs": {
+    "BrokenDependent": {
+      "description": "One installed package that a removal would break, and the requirement that says so.\n\n`constraint` is the **bare specifier tail** — `\"<2,>=1.26.0\"`, not `\"numpy<2,>=1.26.0\"` —\nbecause [`Requirement::parse`] splits the distribution name off and the name is already the key\nof [`GuardReport::breaks`]. The head that goes in front of it is the package being removed, so\nthe caller has both halves and can join them the way its own language does. Rust does not\nassemble the sentence: I18N §1 keeps every word of phrasing in the frontend catalogs, and a\nspecifier is data, like a version or a path.",
+      "properties": {
+        "constraint": {
+          "description": "The version specifier it declared, e.g. `\"<2,>=1.26.0\"`. Empty when unconstrained.",
+          "type": "string"
+        },
+        "pkg": {
+          "$ref": "#/$defs/PkgName",
+          "description": "The installed package that would be left with a missing dependency."
+        },
+        "version": {
+          "description": "Its installed version, when the graph knows it — so the dialog can say `pandas 2.1.4`\nrather than bare `pandas`, which is what makes the constraint checkable by hand.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "pkg",
+        "constraint"
+      ],
+      "type": "object"
+    },
     "PkgName": {
       "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
       "type": "string"
@@ -15,11 +40,11 @@ expression: out
     "breaks": {
       "additionalProperties": {
         "items": {
-          "$ref": "#/$defs/PkgName"
+          "$ref": "#/$defs/BrokenDependent"
         },
         "type": "array"
       },
-      "description": "For each package that has them, the installed packages that would break.",
+      "description": "For each package that has them, the installed packages that would break and why.",
       "type": "object"
     },
     "removing": {

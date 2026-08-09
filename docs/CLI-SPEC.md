@@ -33,7 +33,7 @@ pipdock update [--all | <pkg...>]
         [--strategy compatible|latest]   # latest == force; requires --yes off-TTY acknowledgement
         [--except <pkg,...>]             # ad-hoc exclusions on top of pins
         [--dry-run]
-pipdock uninstall <pkg...> [--force]     # guard prints breakage list; --force overrides
+pipdock uninstall <pkg...> [--force]     # guard names each dependent and its constraint; --force overrides
 pipdock pin add|remove <pkg> [--reason "…"] | pin list
 pipdock snapshot list | create | diff <id> | rollback <id|latest>
 pipdock doctor                           # engine check + env sanity + (P1) audit summary
@@ -71,7 +71,9 @@ requests  held back at 2.30.0 (latest 2.32.3) — blocked by apiclient 1.4 (requ
 
 ## 6. JSON contracts
 
-`--json` payloads are the serde-serialized core types (`Dist`, `OutdatedDist`, `ResolutionReport`, `ExecutionSummary`, `CheckReport`) — schema documented by `pipdock schema <type>` which prints the JSON Schema generated from the Rust types, so scripts can pin against it. Streaming commands (`update`, `install`, `health`) with `--json` emit NDJSON events matching the GUI's `plan-progress` payloads, terminated by a final `summary` object.
+`--json` payloads are the serde-serialized core types (`Dist`, `OutdatedDist`, `ResolutionReport`, `ExecutionSummary`, `CheckReport`, `GuardReport`) — schema documented by `pipdock schema <type>` which prints the JSON Schema generated from the Rust types, so scripts can pin against it. Streaming commands (`update`, `install`, `health`) with `--json` emit NDJSON events matching the GUI's `plan-progress` payloads, terminated by a final `summary` object.
+
+`GuardReport.breaks` maps each package being removed to the installed packages that would break, and each of those carries the specifier that says so: `{"numpy": [{"pkg": "pandas", "version": "2.1.4", "constraint": "<2,>=1.26.0"}]}`. `constraint` is the **bare specifier tail** — the distribution name is the map key, so a caller joins the two halves itself; `version` is omitted when the graph does not know it, and `constraint` is empty for an unconstrained dependency. DATA-FLOW §5's dialog needs the specifier to say *"Removing X breaks Y (requires X>=1)"*, and a bare list of names tells the user what will break but not whether they can live with it.
 
 `Dist.sizeBytes` is present only when it can be known: it is summed from the distribution's RECORD manifest, which `.egg-info` distributions do not have and which a PEP 660 editable install fills with its import shim rather than its sources. The field is **omitted** in those cases rather than reported as `0`, and it is always omitted on a `Dist` that came from `<engine> list` — neither engine reports a size. Where present it is a lower bound: uncompressed bytes as recorded at install time, excluding `__pycache__` written afterwards. `pipdock list`'s human table does not show it, as it already omits `requiresDist` and `requiresPython`.
 

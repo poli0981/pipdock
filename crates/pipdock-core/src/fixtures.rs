@@ -23,6 +23,10 @@
 //! | `requests` | outdated and unpinned, so "N pinned excluded" is 2 of 4 rather than 1 of 2 |
 //! | `certifi` | up to date — the dimming rule |
 //! | `editable-lib` | up to date and **no `sizeBytes`** — the em-dash cell |
+//!
+//! That the set is the SP-5 tangle pays off twice: `numpy` has two dependents declaring two
+//! *different* specifiers, which is what the uninstall guard's dialog exists to show, so
+//! `guard_report.json` is computed from the same rows rather than invented.
 
 use crate::model::{Dist, OutdatedDist, PkgName, Version};
 use crate::pins::{Pin, PinMode};
@@ -192,6 +196,19 @@ fn execution_summary() -> crate::plan::ExecutionSummary {
     }
 }
 
+/// What `uninstall_guard` returns for removing `numpy` from the same scenario.
+///
+/// **Computed, not written.** Running the real graph over the real `pkg_list()` is what makes this
+/// fixture worth having: hand-writing the map would let the guard's own rules — marker evaluation,
+/// the extra-only exclusion, dedup by constraint — drift away from what the dialog is tested
+/// against. `numpy` is the removal because the fixture set was built as the SP-5 tangle, so it has
+/// two dependents with two different specifiers, which is exactly the case the dialog exists for.
+fn guard_report() -> crate::graph::GuardReport {
+    crate::graph::ReverseDeps::build_for(&pkg_list(), "3.12.4").guard(&[
+        PkgName::parse("numpy").unwrap_or_else(|e| panic!("fixture name \"numpy\": {e:?}"))
+    ])
+}
+
 /// Every fixture, as `(file name, contents)`.
 ///
 /// # Errors
@@ -204,6 +221,7 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("pin_list.json", render(&pin_list())?),
         ("flow_step.json", render(&flow_step())?),
         ("execution_summary.json", render(&execution_summary())?),
+        ("guard_report.json", render(&guard_report())?),
     ])
 }
 
@@ -285,6 +303,31 @@ mod tests {
         assert!(
             outdated_names.len() > excluded,
             "Select all would select nothing"
+        );
+    }
+
+    #[test]
+    fn the_guard_fixture_still_has_two_dependents_with_different_specifiers() {
+        // The dialog's whole job is naming the constraint, so one dependent — or two that happen
+        // to declare the same specifier — would let it pass a test it does not deserve.
+        let report = guard_report();
+        let broken = report
+            .breaks
+            .get(&PkgName::parse("numpy").unwrap_or_else(|_| unreachable!()))
+            .expect("removing numpy breaks something in this scenario");
+
+        assert_eq!(broken.len(), 2, "pandas and scipy both depend on numpy");
+        assert!(
+            broken.iter().all(|b| !b.constraint.is_empty()),
+            "a dependent with no specifier cannot exercise the parenthetical"
+        );
+        assert_ne!(
+            broken[0].constraint, broken[1].constraint,
+            "two identical specifiers would not prove the constraint is per-dependent"
+        );
+        assert!(
+            broken.iter().all(|b| b.version.is_some()),
+            "the dialog names `pandas 2.1.4`, not bare `pandas`"
         );
     }
 }
