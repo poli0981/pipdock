@@ -232,8 +232,9 @@ one synchronous read at each call site, and the flow no longer touches a databas
 
 ### Stage 4 — search, the dock bay and install — **done 2026-08-04**
 
-Five commits. Both exit criteria met and measured in the running app, and 16 of UI-SPEC §6's 16
-components now exist.
+Five commits. Both exit criteria met and measured in the running app. *(The "16 of 16 components"
+claim recorded here was wrong: the count had folded in components that are not on UI-SPEC §6's list.
+It was 13 of 16 then and after S5 — see §6, which now says so.)*
 
 | | What landed |
 |---|---|
@@ -267,9 +268,56 @@ debug** rather than printing a number that means nothing.
 2. **Every result offered [Add], including installed packages**, because only `PdPackages` ever
    loaded the installed set. That is exactly the mistake DATA-FLOW §4's chips exist to prevent.
 
-### Stage 5 onward — where to pick up
+### Stage 5 — uninstall, the guard dialog and the Pins screen — **done 2026-08-09**
 
-Slices, sizing and exit checks are in the plan; the order is **S2 → S3 → S4 → S5 → S6 → S7**. S2, S3 and S4 are done (above). **S5 — uninstall, the guard dialog and the Pins screen — is next**, and it is a small one: `uninstall_guard` and `uninstall_execute` are the last two mutating commands, DATA-FLOW §5's three-option dialog is fully specified, and the pin commands already exist from S2. Exit: uninstall = 3 clicks, and *Remove dependents too* re-guards rather than proceeding.
+Twelve commits. Every mutating command in ARCHITECTURE §7 now exists, and removal is the first flow
+whose *whole* value is refusing to do what was asked.
+
+| | What landed |
+|---|---|
+| **Core** | `GuardReport.breaks` carries `BrokenDependent { pkg, version, constraint }` — the specifier, not just the name. `GuardAck` makes the guard an enforcement point rather than a dialog. PEP 668 refused on removal. New code **PD-RES-004**. |
+| **Execution** | `execute_uninstall` emits the `stepStarted`/`stepFinished` lifecycle it never had, checks the cancellation token in its loop, takes a `base` step index shared with `execute_rollback`, and honours `--no-snapshot`. |
+| **Bridge** | One `Session` enum for all four flows, with typed claims; `uninstall_guard`, `uninstall_execute`; `plan_cancel` async, and now discarding a parked session. |
+| **UI** | `PdDialog` (the repo's first modal), `PdUninstallDialog`, `PdPinChip`, the Pins screen, the row's ✕, and the `failed` phase. |
+| **L3** | The first mocked `@/ipc`, the first store test, the first screen test. 6 files → 9; 59 tests → 79. |
+
+**Exit criteria, counted and verified in a running app** (driven in the Browser pane against a
+stubbed bridge, per the recipe that found Stage 2's double fetch): uninstall is **exactly 3 clicks**
+— Installed → row ✕ → *Remove* — and 4 when the guard trips, by design. The dialog reads
+`pandas 2.1.4 requires numpy<2,>=1.26.0`, naming the dependent **and** its constraint. *Remove
+dependents too* issues a **second** `uninstall_guard` over the widened set with **no**
+`uninstall_execute` in between. At the CLI, against a real venv, the guard refuses and exits 2 with
+every package still installed.
+
+**Five live bugs came out of it, none of them S5 features:**
+
+1. **A claim that found nothing wedged the slot.** `plan_decide`/`plan_execute` wrote `Busy` before
+   discovering there was no plan, and never released — so one out-of-order call from the UI made
+   every later command answer `PD-RES-003` for a plan that had never existed.
+2. **`execute_uninstall` emitted no lifecycle markers**, and every line carried `step: 0`. The CLI
+   never noticed because it prints `event.line()` and nothing else; the console drawer groups on
+   `stepStarted` and the live region counts `stepFinished`, so the GUI would have shown an empty
+   drawer against a green suite.
+3. **A cancelled removal removed everything, then reported `cancelled: true`.** The loop had no
+   token check at all.
+4. **`--no-snapshot` was parsed and ignored on the uninstall path** — the same waiver meant "waive"
+   for an update and nothing for a removal, the one operation with no way back.
+5. **The pin button was a tab stop**, so Space on it toggled the row's *selection* instead of
+   pinning. The rule was enforced on the checkbox and forgotten one element later.
+
+**And one specification gap closed:** DATA-FLOW §9.1 required "a `ResolutionReport` accepted in this
+session", which the uninstall path cannot produce — there is nothing to resolve. It now names the
+proof per plan shape, so the one flow with no preview is no longer the one flow the invariant did not
+describe.
+
+### Stage 6 onward — where to pick up
+
+The order is **S5 → S6 → S7**, then Phase 3. S5 is done (above). **S6 — snapshots, the env detail and
+rollback — is next.** `Session::Rollback` and `RollbackFlow::cancel_handle` already landed in S5, so
+S6 adds a constructor call site rather than another widening; what it needs is `RollbackPreview`
+crossing IPC, the five `snapshot_*` commands, and the env-detail surface UI-SPEC §4 assumes and which
+does not exist. Exit: rollback = 4 clicks, and the preview lists `unrestorable_lines` explicitly as
+`PD-SNP-002` rather than dropping them.
 
 **All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 

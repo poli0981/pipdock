@@ -61,7 +61,7 @@ requests  held back at 2.30.0 (latest 2.32.3) — blocked by apiclient 1.4 (requ
 |---|---|
 | 0 | success, all steps ok |
 | 1 | completed with per-package failures (see JSON `counts.failed`) |
-| 2 | plan aborted (resolution impossible & user/skip policy removed everything) |
+| 2 | plan aborted, nothing executed (resolution impossible & user/skip policy removed everything; uninstall guard tripped without `--force`, PD-RES-004) |
 | 3 | environment error (PD-ENV-*, incl. PEP 668 block) |
 | 4 | engine unavailable / version too old (PD-ENG-*) |
 | 5 | snapshot failure — nothing was executed (PD-SNP-001) |
@@ -86,6 +86,6 @@ pipdock update --all --env C:\bots\scraper\.venv --yes --json --log-file C:\logs
 # Audit what an upgrade would do without touching anything:
 pipdock update pandas numpy --dry-run --json | jq '.held_back'
 
-# Refuse-to-break uninstall in CI (exit 1 if guard trips):
+# Refuse-to-break uninstall in CI (exit 2 — plan aborted — if the guard trips):
 pipdock uninstall legacylib --json || echo "dependents exist, aborting"
 ```
