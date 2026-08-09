@@ -148,6 +148,12 @@
     "checkFinding": "{{pkg}} yêu cầu {{requirement}}",
     "done": "Quay lại danh sách gói"
   },
+  "pins": {
+    "empty": "môi trường này chưa có gói nào được ghim",
+    "emptyHint": "Ghim một gói từ bảng Đã cài để các lần cập nhật hàng loạt bỏ qua nó.",
+    "reasonPlaceholder": "Vì sao ghim gói này?",
+    "reasonFor": "Lý do ghim {{pkg}}"
+  },
   "uninstall": {
     "title": "Gỡ gói",
     "titleBreaks": "Thao tác gỡ này làm hỏng gói khác",

@@ -167,6 +167,8 @@ interface EnvState {
   selectAll: (names: readonly string[]) => void
   clearSelection: () => void
   togglePin: (name: string) => Promise<void>
+  /** Set or clear a pin's reason, leaving its mode alone. `null` clears it. */
+  updatePin: (name: string, reason: string | null) => Promise<void>
 }
 
 /** Everything the package slice resets to. Named so a future field cannot be forgotten. */
@@ -291,32 +293,62 @@ export const useEnvStore = create<EnvState>((set, get) => ({
   clearSelection: () => set({ selection: new Set<string>() }),
 
   togglePin: async (name) => {
-    const { selected, rows, pins, dists, outdated } = get()
-    const row = rows.find((r) => r.interpreter === selected)
-    if (row === undefined) return
-
+    const { pins } = get()
     const existing = pins.find((p) => p.pkg === name)
-    try {
-      if (existing === undefined) {
-        // From a row, a pin is always `Exclude` — "do not sweep this up". Holding at a version
-        // needs a reason field, which UI-SPEC §4 puts on the Pins screen (S5).
-        await pinAdd(row.envHash, { pkg: name, mode: 'exclude' })
-      } else {
-        await pinRemove(row.envHash, name)
-      }
-      const fresh = await pinList(row.envHash)
-      set((state) => ({
-        pins: fresh,
-        ...joined(dists, outdated, fresh),
-        // A newly pinned package must leave the selection, or Select all's count and what is
-        // actually ticked disagree.
-        selection: new Set([...state.selection].filter((n) => !fresh.some((p) => p.pkg === n))),
-      }))
-    } catch (e) {
-      set({ listError: asPdError(e) })
-    }
+    await writePin(set, get, (envHash) =>
+      existing === undefined
+        ? // From a row, a pin is always `Exclude` — "do not sweep this up". Holding at a version
+          // is not offered anywhere: `pins::hold_requirements` is dead code in the core and
+          // `plan_requirements` restates the *installed* version, so a hold at another version
+          // is a promise nothing keeps. The CLI cannot create one either, so both heads agree.
+          pinAdd(envHash, { pkg: name, mode: 'exclude' })
+        : pinRemove(envHash, name).then(() => undefined),
+    )
+  },
+
+  updatePin: async (name, reason) => {
+    const { pins } = get()
+    const existing = pins.find((p) => p.pkg === name)
+    if (existing === undefined) return
+    // `pin_add` is documented "add or replace", so an edit is a write of the whole pin — with the
+    // mode carried over untouched. Changing what a pin *is* must never be a side effect of typing
+    // in its reason box.
+    await writePin(set, get, (envHash) =>
+      pinAdd(envHash, { pkg: name, mode: existing.mode, ...(reason === null ? {} : { reason }) }),
+    )
   },
 }))
+
+/**
+ * Apply one pin write and re-read the list.
+ *
+ * Shared so that "which environment", "re-read afterwards", "prune the selection" and "where the
+ * error goes" are decided once. Re-reading rather than patching in place: `pin_add` is an upsert
+ * and the store is not the authority on what came back out of SQLite.
+ */
+async function writePin(
+  set: (partial: Partial<EnvState> | ((s: EnvState) => Partial<EnvState>)) => void,
+  get: () => EnvState,
+  write: (envHash: string) => Promise<void>,
+): Promise<void> {
+  const { selected, rows, dists, outdated } = get()
+  const row = rows.find((r) => r.interpreter === selected)
+  if (row === undefined) return
+
+  try {
+    await write(row.envHash)
+    const fresh = await pinList(row.envHash)
+    set((state) => ({
+      pins: fresh,
+      ...joined(dists, outdated, fresh),
+      // A newly pinned package must leave the selection, or Select all's count and what is
+      // actually ticked disagree.
+      selection: new Set([...state.selection].filter((n) => !fresh.some((p) => p.pkg === n))),
+    }))
+  } catch (e) {
+    set({ listError: asPdError(e) })
+  }
+}
 
 interface LegalState {
   /** Null until checked; false means the gate must be shown. */
