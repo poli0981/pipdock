@@ -128,6 +128,13 @@ export function PdSearch() {
           <PdEmptyState message={t('search.noResults', { query })} hint={t('search.noResultsHint')} />
         ) : null}
 
+        {/* Before anything is typed. UI-SPEC §7 asks for "one mono glyph + one sentence + one
+            action" on every empty surface, and this one rendered a bare empty list — the first
+            thing a user sees on the screen, saying nothing. */}
+        {query.trim() === '' && ready ? (
+          <PdEmptyState message={t('search.idle')} hint={t('search.idleHint')} />
+        ) : null}
+
         <ul className="mt-3 min-h-0 flex-1 space-y-1 overflow-auto">
           {hits.map((hit) => {
             const have = installed.get(hit.name)

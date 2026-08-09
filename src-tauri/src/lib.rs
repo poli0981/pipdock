@@ -14,6 +14,22 @@ pub mod state;
 /// # Panics
 /// Panics if Tauri cannot build the app context. That means a malformed `tauri.conf.json`, which
 /// is a build-time mistake rather than a runtime condition, so there is nothing to recover to.
+/// Commands that are **declared** in ARCHITECTURE §7 and `COMMANDS` but not yet implemented, each
+/// with the slice that owes it.
+///
+/// `COMMANDS` is a bare string array the frontend types its wrappers against, and nothing tied it
+/// to what is actually registered — so for four stages it listed names that would have failed at
+/// runtime, and typechecked the whole time. This list is what makes the gap explicit instead of
+/// invisible: a name here is a promise with a date on it, and the test below fails the moment
+/// `COMMANDS` and reality disagree in either direction.
+pub const NOT_YET: &[(&str, &str)] = &[
+    ("env_add_manual", "M3 — Browse… has no surface yet"),
+    ("health_run", "Phase 3 — Code Health"),
+    ("health_fix", "Phase 3 — Code Health"),
+    ("pip_upgrade", "Phase 3 P1 — pip upkeep"),
+    ("logs_tail", "M3 — needs the logging subsystem"),
+];
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(
     clippy::expect_used,
@@ -54,6 +70,7 @@ pub fn run() {
             commands::snapshot_rollback_preview,
             commands::snapshot_rollback,
             commands::report_bug_url,
+            commands::engine_info,
             commands::index_search,
             commands::index_refresh,
             commands::pkg_metadata,
@@ -64,4 +81,99 @@ pub fn run() {
         ])
         .run(tauri::generate_context!())
         .expect("error while running PipDock");
+}
+
+#[cfg(test)]
+mod tests {
+    /// The handler list, read out of this file's own source.
+    ///
+    /// `generate_handler!` is a macro, so there is no runtime list to inspect and no way to ask
+    /// Tauri what it registered. Parsing the source is unlovely but it is the only thing that
+    /// cannot drift from the macro — a hand-maintained duplicate would be one more list to forget.
+    fn registered() -> Vec<String> {
+        let src = include_str!("lib.rs");
+        let start = match src.find("invoke_handler(tauri::generate_handler![") {
+            Some(i) => i,
+            None => panic!("the handler list moved; this test parses it out of the source"),
+        };
+        let end = src[start..].find("])").expect("the handler list is closed") + start;
+        src[start..end]
+            .split("commands::")
+            .skip(1)
+            .filter_map(|rest| rest.split(',').next())
+            .map(|name| name.trim().to_owned())
+            .collect()
+    }
+
+    /// The names the frontend types its wrappers against.
+    /// The apostrophe that quotes each entry in the TS array.
+    const QUOTE: char = 0x27 as char;
+
+    fn declared() -> Vec<String> {
+        let src = include_str!("../../ui/src/ipc/index.ts");
+        let start = src
+            .find("export const COMMANDS = [")
+            .expect("COMMANDS exists");
+        let end = src[start..].find("] as const").expect("COMMANDS is closed") + start;
+        src[start..end]
+            .lines()
+            .filter_map(|l| l.trim().strip_prefix(QUOTE))
+            .filter_map(|l| l.split(QUOTE).next())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn every_declared_command_is_registered_or_owed() {
+        // The failure this catches: `COMMANDS` listed 32 names while 19 were registered, so a
+        // wrapper for any of the other 13 typechecked and then failed at runtime — in front of a
+        // user, on a command that looked implemented.
+        let registered = registered();
+        let owed: Vec<&str> = super::NOT_YET.iter().map(|(n, _)| *n).collect();
+
+        let ghosts: Vec<&String> = declared()
+            .iter()
+            .filter(|c| !registered.contains(c) && !owed.contains(&c.as_str()))
+            .cloned()
+            .collect::<Vec<_>>()
+            .leak()
+            .iter()
+            .collect();
+        assert!(
+            ghosts.is_empty(),
+            "declared in COMMANDS but neither registered nor listed in NOT_YET: {ghosts:?}"
+        );
+    }
+
+    #[test]
+    fn every_registered_command_is_declared() {
+        // The other direction: a command Tauri answers that the frontend has no wrapper for is a
+        // surface nobody documented, and ARCHITECTURE §7 says a command not in its table does not
+        // exist.
+        let declared = declared();
+        let undeclared: Vec<String> = registered()
+            .into_iter()
+            .filter(|c| !declared.contains(c))
+            .collect();
+        assert!(
+            undeclared.is_empty(),
+            "registered but missing from COMMANDS and ARCHITECTURE §7: {undeclared:?}"
+        );
+    }
+
+    #[test]
+    fn nothing_is_owed_that_already_exists() {
+        // A stale `NOT_YET` entry is worse than none: it says a command is missing while the
+        // frontend is already calling it.
+        let registered = registered();
+        let stale: Vec<&str> = super::NOT_YET
+            .iter()
+            .map(|(n, _)| *n)
+            .filter(|n| registered.iter().any(|r| r == n))
+            .collect();
+        assert!(
+            stale.is_empty(),
+            "NOT_YET lists commands that exist: {stale:?}"
+        );
+    }
 }

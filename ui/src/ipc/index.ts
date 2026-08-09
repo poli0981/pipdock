@@ -22,6 +22,7 @@ import type {
   EngineId,
   EnvSource,
   Diff,
+  EngineInfo,
   ExecutionSummary,
   FlowStep,
   GuardReport,
@@ -330,6 +331,15 @@ export interface BugReportLink {
  */
 export const reportBugUrl = (env?: PyEnv, code?: string): Promise<BugReportLink> =>
   invoke('report_bug_url', { env: env ?? null, code: code ?? null })
+
+/**
+ * Version and availability for **both** engines.
+ *
+ * Both, because Settings shows a version beside each radio — asking about the configured one would
+ * leave the other blank until it was picked. Takes a `PyEnv` because `Engine::info` does: pip's
+ * version comes from `<python> -m pip --version`, so there is no env-free answer.
+ */
+export const engineInfo = (env: PyEnv): Promise<EngineInfo[]> => invoke('engine_info', { env })
 
 /**
  * Subscribe to execution progress. Returns the unlisten function.

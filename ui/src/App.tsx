@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { NAV_KEYS } from '@/components/nav'
@@ -58,10 +58,23 @@ export function App() {
   const confirmUninstall = usePlanStore((s) => s.confirmUninstall)
   const resetPlan = usePlanStore((s) => s.reset)
   const guardOpen = planPhase === 'guard' && guard !== null
+  const mainRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
     void checkConsent()
   }, [checkConsent])
+
+  // UI-SPEC §8's "full keyboard traversal": after Ctrl+3 the focus was still on whatever the user
+  // last clicked, so the next Tab resumed in the old screen and a screen reader announced nothing.
+  // Moving it to the new screen's heading is the smallest thing that makes the shortcut complete.
+  // `key={nav}` on <main> forces a remount, so this fires on every change rather than only the
+  // first — and the heading takes `tabIndex={-1}` from the CSS-free `[tabindex]` below.
+  useEffect(() => {
+    const heading = mainRef.current?.querySelector('h1')
+    if (heading === null || heading === undefined) return
+    heading.setAttribute('tabindex', '-1')
+    heading.focus()
+  }, [nav])
 
   // UI-SPEC §8: Ctrl+1..8 select tabs, positionally over NAV_KEYS.
   useEffect(() => {
@@ -117,7 +130,7 @@ export function App() {
         {/* Each screen owns its own scroll container. A virtualizer needs a scroll element it
             can observe, and nesting one inside an already-scrolling <main> gives two scrollbars
             and an outer one whose content is already the virtualizer's full height. */}
-        <main className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        <main key={nav} ref={mainRef} className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {PANEL_PHASES.has(planPhase) ? (
             <PdPlanPanel
               onFinished={() => {
