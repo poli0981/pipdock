@@ -1,0 +1,29 @@
+{
+  "target": {
+    "id": "20260809T120000-0000000Z",
+    "createdAt": "2026-08-09T12:00:00Z",
+    "trigger": "manual",
+    "engine": "pip",
+    "packageCount": 5,
+    "appVersion": "0.1.0"
+  },
+  "restore": {
+    "uninstall": [
+      "httpx"
+    ],
+    "install": [
+      {
+        "name": "numpy",
+        "version": "1.26.4"
+      },
+      {
+        "name": "requests",
+        "version": "2.28.0"
+      }
+    ]
+  },
+  "unrestorable": [
+    "-e C:\\src\\editable-lib",
+    "local-wheel @ file:///C:/wheels/local_wheel-1.0-py3-none-any.whl"
+  ]
+}
