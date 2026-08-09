@@ -594,6 +594,145 @@ pub async fn uninstall_execute(
     })
 }
 
+/// Snapshots for an environment, newest first.
+///
+/// Takes the `env_hash` rather than a `PyEnv`, because snapshots outlive the interpreter that made
+/// them: an environment whose Python has been deleted still has a history worth showing, and its
+/// `EnvRow.env` is `None` exactly then.
+///
+/// # Errors
+/// Propagates read failures. A missing directory is not one — an environment with no snapshots
+/// yet returns an empty list.
+#[tauri::command]
+pub async fn snapshot_list(
+    state: tauri::State<'_, AppState>,
+    env_hash: String,
+) -> Wire<Vec<snapshot::Meta>> {
+    Ok(snapshot::list(&state.app_data, &env_hash)?)
+}
+
+/// Take a snapshot on demand, outside any plan (`Trigger::Manual`).
+///
+/// # Errors
+/// `PD-SNP-001` when it cannot be written; otherwise propagates the freeze.
+#[tauri::command]
+pub async fn snapshot_create(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+) -> Wire<snapshot::Meta> {
+    let engine = {
+        let store = state.store.lock().await;
+        engine::for_id(settings::load(&store)?.engine)
+    };
+    let freeze = engine.freeze(&env).await?;
+    let snap = snapshot::create(
+        &state.app_data,
+        &envs::env_hash(&env.interpreter),
+        freeze,
+        snapshot::Trigger::Manual,
+        engine.id(),
+        jiff::Timestamp::now(),
+    )?;
+    Ok(snap.meta)
+}
+
+/// The environment as it is now, against a snapshot.
+///
+/// Claims no session: browsing a timeline must not start a flow, and this is one `engine.freeze()`
+/// rather than the `RollbackFlow::start` a preview would need.
+///
+/// # Errors
+/// `PD-SNP-002` when no such snapshot exists; otherwise propagates the freeze.
+#[tauri::command]
+pub async fn snapshot_diff(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+    id: String,
+) -> Wire<snapshot::Diff> {
+    let engine = {
+        let store = state.store.lock().await;
+        engine::for_id(settings::load(&store)?.engine)
+    };
+    let hash = envs::env_hash(&env.interpreter);
+    let snap = snapshot::load(&state.app_data, &hash, &id)?;
+    let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
+    Ok(snapshot::diff(&current, &snap.entries()))
+}
+
+/// What restoring a snapshot would do, parking the flow that would do it (DATA-FLOW §8).
+///
+/// Split from `snapshot_rollback` for the same reason `plan_resolve` is split from `plan_execute`:
+/// the user looks at the preview and answers in a separate message, and what they confirm has to
+/// be the plan they were shown rather than one re-derived afterwards.
+///
+/// # Errors
+/// `PD-RES-003` when a plan is already executing, `PD-SNP-002` when no such snapshot exists.
+#[tauri::command]
+pub async fn snapshot_rollback_preview(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+    id: String,
+) -> Wire<flow::RollbackPreview> {
+    let _ = state.claim().await?;
+
+    let engine = {
+        let store = state.store.lock().await;
+        engine::for_id(settings::load(&store)?.engine)
+    };
+
+    match flow::RollbackFlow::start(env, engine, &state.app_data, &id).await {
+        Ok((rollback, preview)) => {
+            state.park(Session::Rollback(Box::new(rollback))).await;
+            Ok(preview)
+        }
+        Err(e) => {
+            state.release().await;
+            Err(e.into())
+        }
+    }
+}
+
+/// Snapshot the current state, then restore the parked target (DATA-FLOW §8).
+///
+/// The pre-rollback snapshot is what makes a rollback itself reversible, and it is why `latest`
+/// moves twice across one restore — the reason no caller should ever name it.
+///
+/// # Errors
+/// `PD-SNP-001` when the pre-rollback snapshot cannot be written, in which case nothing is
+/// restored; `PD-INT-001` when no preview has run.
+#[tauri::command]
+pub async fn snapshot_rollback(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Wire<ExecutionOutcome> {
+    let mut rollback = state.sessions.claim_rollback().await?;
+    state.set_cancel(Some(rollback.cancel_handle()));
+
+    let snapshot = match rollback.take_snapshot(&state.app_data).await {
+        Ok(meta) => meta,
+        Err(e) => {
+            state.release().await;
+            return Err(e.into());
+        }
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let emitter = app.clone();
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            let _ = emitter.emit("plan-progress", &event);
+        }
+    });
+
+    let result = rollback.execute(tx).await;
+    state.release().await;
+
+    Ok(ExecutionOutcome {
+        summary: result?,
+        snapshot: Some(snapshot),
+    })
+}
+
 /// Read the stored settings.
 ///
 /// # Errors
