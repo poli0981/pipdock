@@ -899,10 +899,6 @@ Check the log excerpt for paths or names you would rather not              make 
     Ok(Exit::Success)
 }
 
-/// Percent-encode a query-string value.
-///
-/// Hand-rolled rather than pulling a dependency for one call site: the alphabet is small and the
-
 fn os_description() -> String {
     // The issue template asks for a Windows version; without a dependency the best honest answer
     // is the target family plus whatever the OS tells us for free.
