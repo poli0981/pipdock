@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
 import { FALLBACK_LOCALE, resolveLocale, resources, SUPPORTED_LOCALES } from './i18n'
+import codes from './test/fixtures/codes.json'
+
+/** `Code::ALL`, generated from the Rust enum — see `crates/pipdock-core/src/fixtures.rs`. */
+const CODES: readonly string[] = codes
+
+/** docs/I18N.md §4: an error one-liner has to fit the inline row. */
+const MAX_ONE_LINER = 90
 
 /** Collect every leaf key path in a nested catalog, e.g. `nav.updates`. */
 function keyPaths(obj: unknown, prefix = ''): string[] {
@@ -18,6 +25,36 @@ function keyPaths(obj: unknown, prefix = ''): string[] {
 function pluralBase(key: string): string {
   return key.replace(/_(zero|one|two|few|many|other)$/, '')
 }
+
+describe('the error catalog', () => {
+  // The gap S7 exists to close: 26 of the 32 codes had no copy at all, so a PEP 668 refusal, an
+  // MSVC-missing build and a disk-full all rendered as "An unexpected error occurred." with a code
+  // beside them. `PdErrorRow` falls back deliberately rather than leaking `PdError.message`, which
+  // is English developer text — so a missing key is silent by design, and only this catches it.
+  for (const locale of SUPPORTED_LOCALES) {
+    it(`${locale} has a one-liner for every catalog code`, () => {
+      const table = (resources[locale].common as { errors: Record<string, string> }).errors
+      const missing = CODES.filter((c) => typeof table[c] !== 'string')
+      expect(missing, `${locale} is missing copy for: ${missing.join(', ')}`).toEqual([])
+    })
+
+    it(`${locale} keeps every one-liner inside the row`, () => {
+      const table = (resources[locale].common as { errors: Record<string, string> }).errors
+      const tooLong = CODES.filter((c) => (table[c]?.length ?? 0) > MAX_ONE_LINER).map(
+        (c) => `${c} (${String(table[c]?.length)})`,
+      )
+      expect(tooLong, `over ${String(MAX_ONE_LINER)} chars: ${tooLong.join(', ')}`).toEqual([])
+    })
+  }
+
+  it('has no copy for a code that no longer exists', () => {
+    // The other direction, and the one that rots quietly: a code removed from `Code::ALL` leaves
+    // copy behind that no screen can ever render.
+    const table = (resources.en.common as { errors: Record<string, string> }).errors
+    const orphans = Object.keys(table).filter((k) => k.startsWith('PD-') && !CODES.includes(k))
+    expect(orphans, `copy for codes that do not exist: ${orphans.join(', ')}`).toEqual([])
+  })
+})
 
 describe('i18n catalogs', () => {
   it('vi has every key en has', () => {

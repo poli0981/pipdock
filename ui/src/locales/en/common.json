@@ -268,13 +268,6 @@
   "errors": {
     "title": "Something went wrong",
     "retry": "Try again",
-    "PD-ENV-001": "That interpreter is missing or cannot be run.",
-    "PD-ENV-002": "This Python is managed by the operating system.",
-    "PD-ENV-003": "PipDock could not read this environment.",
-    "PD-RES-003": "A plan is already running. Wait for it to finish, or stop it first.",
-    "PD-RES-004": "Other installed packages depend on these, so nothing was removed.",
-    "PD-SNP-001": "The snapshot could not be written, so nothing was changed.",
-    "PD-INT-001": "PipDock hit an internal error.",
     "unknown": "An unexpected error occurred."
   }
 }

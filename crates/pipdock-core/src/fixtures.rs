@@ -287,6 +287,17 @@ fn rollback_preview() -> crate::flow::RollbackPreview {
     }
 }
 
+/// Every catalog code, in `Code::ALL` order.
+///
+/// Not a payload any command returns — a *contract*. `i18n.test.ts` asserts that every code has a
+/// one-liner in both locales, and it has to read the list from somewhere: a hand-written array in
+/// TypeScript would drift the moment a code is added, and the test would go on passing over a
+/// catalog that is no longer complete. Generated here, so `cargo run -p xtask -- ipc-fixtures`
+/// and its staleness test carry it the same way they carry everything else.
+fn codes() -> Vec<crate::errors::Code> {
+    crate::errors::Code::ALL.to_vec()
+}
+
 /// Every fixture, as `(file name, contents)`.
 ///
 /// # Errors
@@ -302,6 +313,7 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("guard_report.json", render(&guard_report())?),
         ("snapshot_list.json", render(&snapshot_list())?),
         ("rollback_preview.json", render(&rollback_preview())?),
+        ("codes.json", render(&codes())?),
     ])
 }
 
