@@ -21,7 +21,7 @@ use pipdock_core::{PdError, PkgName, PyEnv};
 use tauri::Emitter as _;
 use tokio_util::sync::CancellationToken;
 
-use crate::state::AppState;
+use crate::state::{AppState, Session};
 
 /// The error shape `ui/src/ipc` declares.
 #[derive(Debug, serde::Serialize)]
@@ -383,7 +383,7 @@ pub async fn plan_resolve(
 
     match flow::UpdateFlow::start(env, engine, &intent, &env_pins).await {
         Ok((flow, step)) => {
-            state.park(Box::new(flow)).await;
+            state.park(Session::Update(Box::new(flow))).await;
             Ok(step)
         }
         Err(e) => {
@@ -404,7 +404,7 @@ pub async fn plan_decide(
     state: tauri::State<'_, AppState>,
     decisions: std::collections::BTreeMap<String, Decision>,
 ) -> Wire<flow::FlowStep> {
-    let mut flow = state.claim_one().await?;
+    let mut flow = state.claim_update().await?;
 
     let parsed = decisions
         .into_iter()
@@ -416,14 +416,14 @@ pub async fn plan_decide(
         Err(e) => {
             // The flow is still good — only the argument was bad, so park it rather than losing
             // the preview the user is looking at.
-            state.park(flow).await;
+            state.park(Session::Update(flow)).await;
             return Err(e.into());
         }
     };
 
     match flow.decide(&parsed).await {
         Ok(step) => {
-            state.park(flow).await;
+            state.park(Session::Update(flow)).await;
             Ok(step)
         }
         Err(e) => {
@@ -447,7 +447,7 @@ pub async fn plan_execute(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Wire<ExecutionOutcome> {
-    let mut flow = state.claim_one().await?;
+    let mut flow = state.claim_update().await?;
     state.set_cancel(Some(flow.cancel_handle()));
 
     let snapshot = match flow
@@ -481,16 +481,23 @@ pub async fn plan_execute(
     })
 }
 
-/// Stop the plan that is running (DATA-FLOW §3: allowed while resolving or executing).
+/// Stop the plan, whichever half of it is on screen (DATA-FLOW §3: allowed while resolving or
+/// executing).
 ///
-/// Returns whether anything was actually in flight, so the UI can tell "stopped it" from "there
-/// was nothing to stop" rather than guessing.
+/// Returns whether anything was actually there, so the UI can tell "stopped it" from "there was
+/// nothing to stop" rather than guessing. A session that is merely *parked* — a preview, a guard
+/// dialog — counts, and is discarded: it has no process to kill, and leaving it behind refuses
+/// the next plan on behalf of something nobody is looking at.
 ///
-/// Never fails: cancelling something that already finished is not an error, and making it one
-/// would mean the UI has to race the thing it is trying to stop.
+/// # Errors
+/// Never, in practice. An `async` command taking a borrowed `tauri::State<'_, _>` has to return a
+/// `Result` for Tauri's generated glue to name the lifetime, so the signature says so even though
+/// no path produces one. It became `async` when stopping grew to touch the slot as well as the
+/// token — cancelling something that already finished is not an error, and making it one would
+/// mean the UI has to race the thing it is trying to stop.
 #[tauri::command]
-pub fn plan_cancel(state: tauri::State<'_, AppState>) -> bool {
-    state.cancel_current()
+pub async fn plan_cancel(state: tauri::State<'_, AppState>) -> Wire<bool> {
+    Ok(state.stop().await)
 }
 
 /// Read the stored settings.
