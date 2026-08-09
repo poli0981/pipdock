@@ -1,0 +1,58 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "PinnedSpec": {
+      "description": "A resolved, exact `name==version` pair. Only these reach a mutating engine command.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/PkgName",
+          "description": "Normalized distribution name."
+        },
+        "version": {
+          "$ref": "#/$defs/Version",
+          "description": "The exact version the resolver chose."
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "Version": {
+      "description": "A version string as the engine reported it. Never reshaped or localized (I18N §2).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The operations that would restore a snapshot.",
+  "properties": {
+    "install": {
+      "description": "Packages to install at the snapshot's versions.",
+      "items": {
+        "$ref": "#/$defs/PinnedSpec"
+      },
+      "type": "array"
+    },
+    "uninstall": {
+      "description": "Packages to remove: present now, absent in the snapshot.",
+      "items": {
+        "$ref": "#/$defs/PkgName"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "uninstall",
+    "install"
+  ],
+  "title": "RollbackPlan",
+  "type": "object"
+}

@@ -54,6 +54,11 @@ pub enum Trigger {
 /// module exists to prevent. Removable once no pre-1.0 snapshot can plausibly still be on disk.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
+// The *schema* name, not the Rust one. `SCHEMA_TYPES` registers this as `SnapshotMeta`, which
+// names it when it is a root — but `RollbackPreview` embeds it, and an embedded type arrives
+// through `$defs` under its schemars name. Without this the bindings would declare both
+// `SnapshotMeta` and `Meta` for one type, and `RollbackPreview.target` would point at the copy.
+#[schemars(rename = "SnapshotMeta")]
 pub struct Meta {
     /// Snapshot id, which is also its filename stem.
     pub id: String,

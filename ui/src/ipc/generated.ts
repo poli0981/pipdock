@@ -460,6 +460,35 @@ export interface ResolutionReport {
   raw: string;
 }
 
+/** The operations that would restore a snapshot. */
+export interface RollbackPlan {
+  /** Packages to install at the snapshot's versions. */
+  install: PinnedSpec[];
+  /** Packages to remove: present now, absent in the snapshot. */
+  uninstall: PkgName[];
+}
+
+/**
+ * What a rollback would do, for the caller to show before it happens.
+ *
+ * Crosses IPC, so DATA-FLOW §8's "user may proceed partially" is a decision the user makes
+ * looking at the same three things the flow holds: which snapshot, what it would do, and what it
+ * cannot put back.
+ */
+export interface RollbackPreview {
+  /** The minimal set of operations to get there. */
+  restore: RollbackPlan;
+  /** The snapshot being restored. */
+  target: SnapshotMeta;
+  /**
+   * Freeze lines no index can restore — editable installs, direct URLs (`PD-SNP-002`).
+   *
+   * Reported rather than dropped: a rollback that silently leaves these behind is a success
+   * message for a restore that did not fully happen.
+   */
+  unrestorable: string[];
+}
+
 /**
  * The `.meta.json` sidecar (ARCHITECTURE §6).
  *

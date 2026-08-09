@@ -583,7 +583,12 @@ impl UninstallFlow {
 }
 
 /// What a rollback would do, for the caller to show before it happens.
-#[derive(Debug, Clone)]
+///
+/// Crosses IPC, so DATA-FLOW §8's "user may proceed partially" is a decision the user makes
+/// looking at the same three things the flow holds: which snapshot, what it would do, and what it
+/// cannot put back.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct RollbackPreview {
     /// The snapshot being restored.
     pub target: snapshot::Meta,

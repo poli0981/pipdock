@@ -112,6 +112,6 @@ expression: out
     "packageCount",
     "appVersion"
   ],
-  "title": "Meta",
+  "title": "SnapshotMeta",
   "type": "object"
 }

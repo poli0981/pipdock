@@ -1,0 +1,193 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "EngineId": {
+      "description": "Which resolver PipDock is driving.",
+      "oneOf": [
+        {
+          "const": "pip",
+          "description": "`<python> -m pip …`",
+          "type": "string"
+        },
+        {
+          "const": "uv",
+          "description": "`uv pip … --python <python>`",
+          "type": "string"
+        }
+      ]
+    },
+    "PinnedSpec": {
+      "description": "A resolved, exact `name==version` pair. Only these reach a mutating engine command.",
+      "properties": {
+        "name": {
+          "$ref": "#/$defs/PkgName",
+          "description": "Normalized distribution name."
+        },
+        "version": {
+          "$ref": "#/$defs/Version",
+          "description": "The exact version the resolver chose."
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "type": "object"
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "RollbackPlan": {
+      "description": "The operations that would restore a snapshot.",
+      "properties": {
+        "install": {
+          "description": "Packages to install at the snapshot's versions.",
+          "items": {
+            "$ref": "#/$defs/PinnedSpec"
+          },
+          "type": "array"
+        },
+        "uninstall": {
+          "description": "Packages to remove: present now, absent in the snapshot.",
+          "items": {
+            "$ref": "#/$defs/PkgName"
+          },
+          "type": "array"
+        }
+      },
+      "required": [
+        "uninstall",
+        "install"
+      ],
+      "type": "object"
+    },
+    "SnapshotMeta": {
+      "description": "The `.meta.json` sidecar (ARCHITECTURE §6).\n\nThis type serves twice: it is the on-disk sidecar *and* what `snapshot list --json` emits, so\nit is in `SCHEMA_TYPES`. The camelCase spelling is the wire contract, and the `alias`\nattributes are what keep sidecars written before that change readable — a snapshot that no\nlonger parses is a rollback the user silently cannot perform, which is the one failure this\nmodule exists to prevent. Removable once no pre-1.0 snapshot can plausibly still be on disk.",
+      "properties": {
+        "appVersion": {
+          "description": "PipDock's version, so an old snapshot can be interpreted by a newer build.",
+          "type": "string"
+        },
+        "createdAt": {
+          "description": "When it was taken, RFC 3339.",
+          "type": "string"
+        },
+        "engine": {
+          "$ref": "#/$defs/EngineId",
+          "description": "Which engine produced the freeze.\n\nLoad-bearing: pip freezes with `--all` and includes pip/setuptools, uv has no such flag and\nomits them (DATA-FLOW §7). Without this, a diff across engines would read as \"pip was\nuninstalled\"."
+        },
+        "id": {
+          "description": "Snapshot id, which is also its filename stem.",
+          "type": "string"
+        },
+        "packageCount": {
+          "description": "How many distributions the freeze recorded.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "trigger": {
+          "$ref": "#/$defs/Trigger",
+          "description": "Why it was taken."
+        }
+      },
+      "required": [
+        "id",
+        "createdAt",
+        "trigger",
+        "engine",
+        "packageCount",
+        "appVersion"
+      ],
+      "type": "object"
+    },
+    "Trigger": {
+      "description": "What caused a snapshot to be taken. Shown as the trigger label on the timeline (UI-SPEC §4).",
+      "oneOf": [
+        {
+          "additionalProperties": false,
+          "description": "Taken automatically before a plan executed.",
+          "properties": {
+            "plan": {
+              "properties": {
+                "planId": {
+                  "description": "The plan's id, so a summary and its snapshot can be tied together.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "planId"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "plan"
+          ],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "description": "Taken automatically before a rollback, because a rollback is itself reversible\n(DATA-FLOW §8).",
+          "properties": {
+            "rollback": {
+              "properties": {
+                "restoring": {
+                  "description": "The snapshot being restored.",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "restoring"
+              ],
+              "type": "object"
+            }
+          },
+          "required": [
+            "rollback"
+          ],
+          "type": "object"
+        },
+        {
+          "const": "manual",
+          "description": "Taken because the user asked.",
+          "type": "string"
+        }
+      ]
+    },
+    "Version": {
+      "description": "A version string as the engine reported it. Never reshaped or localized (I18N §2).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a rollback would do, for the caller to show before it happens.\n\nCrosses IPC, so DATA-FLOW §8's \"user may proceed partially\" is a decision the user makes\nlooking at the same three things the flow holds: which snapshot, what it would do, and what it\ncannot put back.",
+  "properties": {
+    "restore": {
+      "$ref": "#/$defs/RollbackPlan",
+      "description": "The minimal set of operations to get there."
+    },
+    "target": {
+      "$ref": "#/$defs/SnapshotMeta",
+      "description": "The snapshot being restored."
+    },
+    "unrestorable": {
+      "description": "Freeze lines no index can restore — editable installs, direct URLs (`PD-SNP-002`).\n\nReported rather than dropped: a rollback that silently leaves these behind is a success\nmessage for a restore that did not fully happen.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "target",
+    "restore",
+    "unrestorable"
+  ],
+  "title": "RollbackPreview",
+  "type": "object"
+}
