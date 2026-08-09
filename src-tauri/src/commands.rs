@@ -500,6 +500,100 @@ pub async fn plan_cancel(state: tauri::State<'_, AppState>) -> Wire<bool> {
     Ok(state.stop().await)
 }
 
+/// Check what a removal would break, and park the flow that would do it (DATA-FLOW §5).
+///
+/// Called again with a wider set for *Remove dependents too*: that option is not a variant of the
+/// flow but the caller starting over with `GuardReport.withDependents`, so a dependent of a
+/// dependent surfaces on the next pass instead of being removed unannounced. The parked flow from
+/// the previous pass is discarded here, exactly as `plan_resolve` discards a previous preview.
+///
+/// # Errors
+/// `PD-RES-003` when a plan is already executing, `PD-ENV-002` for a PEP 668 environment,
+/// `PD-PKG-002` for a name that is not a package, `PD-ENV-003` when the probe fails.
+#[tauri::command]
+pub async fn uninstall_guard(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+    pkgs: Vec<String>,
+) -> Wire<pipdock_core::graph::GuardReport> {
+    let _ = state.claim().await?;
+
+    // Read, then drop, before any await: `Store` is not `Sync`, so a future holding the guard is
+    // not `Send` and this command would not compile — and where it does compile it serializes
+    // every other command behind a subprocess.
+    let engine = {
+        let store = state.store.lock().await;
+        engine::for_id(settings::load(&store)?.engine)
+    };
+
+    match flow::UninstallFlow::start(env, engine, &pkgs).await {
+        Ok((flow, report)) => {
+            state.park(Session::Uninstall(Box::new(flow))).await;
+            Ok(report)
+        }
+        Err(e) => {
+            state.release().await;
+            Err(e.into())
+        }
+    }
+}
+
+/// Snapshot, then remove (DATA-FLOW §5's tail).
+///
+/// `force` is §5's *Force remove only X*: the user was shown what breaks and chose it. Without it
+/// a removal the guard objected to is refused with `PD-RES-004` **before** the snapshot is
+/// written, so a plan that will not run does not leave one behind.
+///
+/// # Errors
+/// `PD-RES-004` when the guard objected and `force` is false, `PD-SNP-001` when the snapshot
+/// cannot be written — in which case nothing is removed — and `PD-INT-001` when no guard has run.
+#[tauri::command]
+pub async fn uninstall_execute(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    force: bool,
+) -> Wire<ExecutionOutcome> {
+    let mut flow = state.sessions.claim_uninstall().await?;
+    state.set_cancel(Some(flow.cancel_handle()));
+
+    let ack = if force {
+        flow::GuardAck::ForcedDespiteBreakage
+    } else {
+        flow::GuardAck::Clear
+    };
+    if let Err(e) = flow.check(ack) {
+        state.release().await;
+        return Err(e.into());
+    }
+
+    let snapshot = match flow
+        .take_snapshot(flow::SnapshotPolicy::Take, &state.app_data)
+        .await
+    {
+        Ok(meta) => meta,
+        Err(e) => {
+            state.release().await;
+            return Err(e.into());
+        }
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let emitter = app.clone();
+    tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            let _ = emitter.emit("plan-progress", &event);
+        }
+    });
+
+    let result = flow.execute(ack, tx).await;
+    state.release().await;
+
+    Ok(ExecutionOutcome {
+        summary: result?,
+        snapshot,
+    })
+}
+
 /// Read the stored settings.
 ///
 /// # Errors

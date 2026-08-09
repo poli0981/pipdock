@@ -123,10 +123,10 @@ This table is the surface. A command that is not listed here does not exist; add
 | `pkg_metadata` | `PackageMeta` | Cached PyPI metadata for the details panel, with its freshness. |
 | `plan_resolve` | `FlowStep` | Begin an update or install flow: dry-run resolve, then derive held-back items. |
 | `plan_decide` | `FlowStep` | Apply the user's 3-way conflict decisions and re-resolve. |
-| `plan_execute` | `ExecutionSummary` | Take the snapshot, then run the two-phase execution (§8). |
-| `plan_cancel` | `()` | Trip the running plan's cancellation token. |
-| `uninstall_guard` | `GuardReport` | Reverse-dependency check over a removal set. |
-| `uninstall_execute` | `ExecutionSummary` | Snapshot, then remove. |
+| `plan_execute` | `ExecutionOutcome` | Take the snapshot, then run the two-phase execution (§8). Returns the summary **and** the snapshot meta: the CLI prints the id before execution and the summary sheet needs it afterwards to offer the rollback, so one envelope beats a second command to go and look it up. |
+| `plan_cancel` | `bool` | Stop the session, and say whether there was one. A *parked* flow counts and is discarded — it has no process to kill, and leaving it refuses the next plan on behalf of a preview nobody is looking at. |
+| `uninstall_guard` | `GuardReport` | Reverse-dependency check over a removal set, parking the flow that would run it. Called **again** with `withDependents` for DATA-FLOW §5's *Remove dependents too*, so a dependent of a dependent surfaces on the next pass. |
+| `uninstall_execute` | `ExecutionOutcome` | Snapshot, then remove. Takes `force` — §5's *Force remove only X*; without it a removal the guard objected to is refused with `PD-RES-004` before the snapshot is written. |
 | `pin_list` | `Pin[]` | Pins for an environment. |
 | `pin_add` | `()` | Add or replace a pin. |
 | `pin_remove` | `bool` | Remove a pin; reports whether one existed. |
@@ -156,6 +156,8 @@ Events (Tauri event channel): `plan-progress` streams live subprocess output to 
 | `stepFinished` | `step, total, pkg?, phase, status` | Closes the section; advances the "13 of 15 complete" live region |
 
 It was originally specified as `{ step, pkg, phase, line }`, which made both of those features unimplementable: there was no event meaning "a step began" to group a section under, and none meaning "one finished" to count. Neither is recoverable from the text — engine output does not reliably name the package it concerns, and counting lines is not counting steps. Every step now emits exactly one `stepStarted`, any number of `line`s, and exactly one `stepFinished`, whichever way it ended. `stream` distinguishes stdout from stderr, which matters for uv in particular: uv writes its **plan** to stderr (SP-1), so stderr does not mean failure.
+
+**One mutation session at a time, across all of them.** Update, install, uninstall and rollback share a single slot, so a second one is refused with `PD-RES-003` rather than allowed to interleave engine commands against the same environment. The commands that resume a session (`plan_decide`, `plan_execute`, `uninstall_execute`, `snapshot_rollback`) name the flow they expect and get `PD-INT-001` if a different one is parked — a frontend sequencing bug, reported as one instead of running the wrong plan.
 
 Long operations are cancellable: `plan_cancel` trips the plan's token, which kills the child **and its whole process tree** (a Windows Job Object — `python -m pip` spawns build backends), and remaining steps are reported `Skipped` with `ExecutionSummary.cancelled` set. Already-completed steps stay applied; the snapshot covers full revert.
 
