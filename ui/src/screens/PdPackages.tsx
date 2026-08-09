@@ -45,6 +45,11 @@ export function PdPackages({ mode }: PdPackagesProps) {
   const clearSelection = useEnvStore((s) => s.clearSelection)
   const togglePin = useEnvStore((s) => s.togglePin)
   const planResolve = usePlanStore((s) => s.resolve)
+  const startUninstall = usePlanStore((s) => s.startUninstall)
+
+  // Derived above the callbacks that close over it, and above every early return, so the hook
+  // order is the same on every render.
+  const row = rows.find((r) => r.interpreter === selected)
 
   // The row's handler must return void. Wrapped here rather than in the store so `togglePin` stays
   // awaitable for the tests, and stable across renders so the memoized rows are not defeated.
@@ -53,6 +58,19 @@ export function PdPackages({ mode }: PdPackagesProps) {
       void togglePin(name)
     },
     [togglePin],
+  )
+
+  // Same reason as `pinToggle`: an inline arrow here is a new function identity every render, and
+  // `PdPackageRow` is memoized precisely so a progress tick does not re-render 200 rows.
+  // Hoisted rather than reached through `row?.env` inside the closure: the React Compiler cannot
+  // preserve a memoization whose dependency is an optional chain it has to narrow again.
+  const env = row?.env
+  const uninstall = useCallback(
+    (name: string) => {
+      if (env === undefined) return
+      void startUninstall(env, [name])
+    },
+    [env, startUninstall],
   )
 
   useEffect(() => {
@@ -64,7 +82,6 @@ export function PdPackages({ mode }: PdPackagesProps) {
     }
   }, [selected, loadedFor, loadPackages, loadOutdated])
 
-  const row = rows.find((r) => r.interpreter === selected)
   const visible = mode === 'updates' ? outdatedOnly(packages) : packages
   const { selectable, pinnedExcluded } = selectableForUpdate(visible)
   const title = mode === 'updates' ? t('packages.updatesTitle') : t('packages.installedTitle')
@@ -195,6 +212,7 @@ export function PdPackages({ mode }: PdPackagesProps) {
             selection={selection}
             onToggle={toggle}
             onPinToggle={pinToggle}
+            onUninstall={uninstall}
             onSelectAll={() => {
               selectAll(selectable)
             }}

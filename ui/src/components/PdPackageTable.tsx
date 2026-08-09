@@ -25,6 +25,7 @@ interface PdPackageTableProps {
   selection: ReadonlySet<string>
   onToggle: (name: string) => void
   onPinToggle: (name: string) => void
+  onUninstall: (name: string) => void
   /**
    * Select every selectable row in the **current filtered set**, not just the rendered window.
    *
@@ -46,6 +47,7 @@ export function PdPackageTable({
   selection,
   onToggle,
   onPinToggle,
+  onUninstall,
   onSelectAll,
   initialRect,
 }: PdPackageTableProps) {
@@ -124,6 +126,7 @@ export function PdPackageTable({
                 selected={selection.has(row.name)}
                 onToggle={onToggle}
                 onPinToggle={onPinToggle}
+                onUninstall={onUninstall}
                 style={{
                   height: `${String(ROW_HEIGHT)}px`,
                   transform: `translateY(${String(item.start)}px)`,

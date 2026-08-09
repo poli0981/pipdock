@@ -32,6 +32,7 @@ function setup(overrides: Partial<Parameters<typeof PdPackageTable>[0]> = {}) {
     selection: new Set<string>(),
     onToggle: vi.fn(),
     onPinToggle: vi.fn(),
+    onUninstall: vi.fn(),
     onSelectAll: vi.fn(),
     initialRect: { width: 1280, height: 600 },
     ...overrides,
@@ -144,14 +145,32 @@ describe('keyboard', () => {
     expect(onToggle).not.toHaveBeenCalled()
   })
 
-  it('makes the row the tab stop, not its checkbox', () => {
-    // 200 rows × two tab stops each is not keyboard traversal.
+  it('makes the row the tab stop, not its checkbox or its actions', () => {
+    // 200 rows × four tab stops each is not keyboard traversal. The pin button had no tabIndex,
+    // so it *was* one — and Space on it toggled the row's selection instead of pinning.
     setup()
-    expect(rowFor('pandas')).toHaveAttribute('tabindex', '0')
-    expect(within(rowFor('pandas') as HTMLElement).getByRole('checkbox')).toHaveAttribute(
-      'tabindex',
-      '-1',
-    )
+    const row = rowFor('pandas') as HTMLElement
+    expect(row).toHaveAttribute('tabindex', '0')
+    expect(within(row).getByRole('checkbox')).toHaveAttribute('tabindex', '-1')
+    for (const button of within(row).getAllByRole('button')) {
+      expect(button).toHaveAttribute('tabindex', '-1')
+    }
+  })
+
+  it('does not toggle selection when Space is pressed on a row action', () => {
+    const { onToggle, onUninstall } = setup()
+    const remove = within(rowFor('pandas') as HTMLElement).getByLabelText('Remove this package')
+
+    // The event still bubbles to the row's handler; what stops it acting is the target check.
+    fireEvent.keyDown(remove, { key: ' ', bubbles: true })
+    expect(onToggle).not.toHaveBeenCalled()
+    expect(onUninstall).not.toHaveBeenCalled()
+  })
+
+  it('offers removal from the row, which is the first of the 3 clicks', () => {
+    const { onUninstall } = setup()
+    fireEvent.click(within(rowFor('pandas') as HTMLElement).getByLabelText('Remove this package'))
+    expect(onUninstall).toHaveBeenCalledWith('pandas')
   })
 
   it('selects all on Ctrl+A', () => {
