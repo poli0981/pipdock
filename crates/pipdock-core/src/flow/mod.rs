@@ -441,11 +441,25 @@ impl UninstallFlow {
         ))
     }
 
-    /// Write the pre-removal snapshot.
+    /// Write the pre-removal snapshot, or record the waiver.
+    ///
+    /// Takes a [`SnapshotPolicy`] for the same reason [`UpdateFlow::take_snapshot`] does: without
+    /// it the CLI's `--no-snapshot` was accepted, parsed and then silently ignored on this path,
+    /// so a disposable-environment waiver behaved differently depending on which command it was
+    /// given to. `Waive` returns `None` — there is no meta to print, and no id for the summary to
+    /// correlate against.
     ///
     /// # Errors
     /// `PD-SNP-001` when it cannot be written, in which case nothing is removed.
-    pub async fn take_snapshot(&mut self, app_data: &Path) -> Result<snapshot::Meta> {
+    pub async fn take_snapshot(
+        &mut self,
+        policy: SnapshotPolicy,
+        app_data: &Path,
+    ) -> Result<Option<snapshot::Meta>> {
+        if matches!(policy, SnapshotPolicy::Waive) {
+            self.snapshot = SnapshotState::Waived;
+            return Ok(None);
+        }
         let snap = snapshot::create(
             app_data,
             &self.env_hash,
@@ -458,7 +472,7 @@ impl UninstallFlow {
         )?;
         let meta = snap.meta.clone();
         self.snapshot = SnapshotState::Taken(Box::new(snap));
-        Ok(meta)
+        Ok(Some(meta))
     }
 
     /// Remove the packages, sequentially, skip-and-continue.
@@ -483,6 +497,9 @@ impl UninstallFlow {
             &self.names,
             proof,
             sink,
+            // The removals are the whole plan here, so they start at step zero. Only a rollback
+            // has anything in front of them.
+            0,
         )
         .await
     }

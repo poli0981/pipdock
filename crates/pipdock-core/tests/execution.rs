@@ -126,6 +126,14 @@ impl Engine for FakeEngine {
         names: &[PkgName],
         _sink: ProgressSink,
     ) -> Result<StepResult> {
+        // Recorded like installs are. Without this, "the engine was not invoked for the packages
+        // after the cancel" is a claim no test can make — and a removal loop that ignores the
+        // token still produces a summary that says `cancelled`.
+        self.calls.lock().unwrap_or_else(|e| e.into_inner()).push((
+            names.iter().map(ToString::to_string).collect(),
+            ExecMode::Isolated,
+        ));
+
         let pkg = names
             .first()
             .cloned()
@@ -551,4 +559,94 @@ async fn a_cancelled_run_skips_the_rest_rather_than_isolating_them() {
 async fn an_uncancelled_run_does_not_claim_it_was_cancelled() {
     let summary = run(&FakeEngine::new(&[]), &[("alpha", "1.0")]).await;
     assert!(!summary.cancelled);
+}
+
+/// Remove `names`, collecting every event, with `token` deciding whether it is cancelled.
+async fn remove_collecting(
+    engine: &FakeEngine,
+    names: &[&str],
+    token: tokio_util::sync::CancellationToken,
+) -> (ExecutionSummary, Vec<ProgressEvent>) {
+    let dir = scratch();
+    let _ = std::fs::remove_dir_all(&dir);
+    let snap = snapshot_for(&dir);
+    let parsed: Vec<PkgName> = names.iter().map(|n| PkgName::parse(n).unwrap()).collect();
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+    let summary = pipdock_core::plan::execute_uninstall(
+        engine,
+        &env(),
+        "uninstall-envhash".to_owned(),
+        &parsed,
+        SnapshotProof::Taken(&snap),
+        ProgressSink::new(tx, parsed.len(), token),
+        0,
+    )
+    .await
+    .expect("execute_uninstall");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let mut events = Vec::new();
+    while let Some(e) = rx.recv().await {
+        events.push(e);
+    }
+    (summary, events)
+}
+
+#[tokio::test]
+async fn a_removal_opens_and_closes_a_step_per_package() {
+    // Removals emitted neither marker and every line they produced carried `step: 0`. The CLI
+    // never noticed, because it prints `event.line()` and nothing else — but the console drawer
+    // groups on StepStarted and the live region counts StepFinished, so the GUI would have shown
+    // an empty drawer and a counter stuck at zero, against a fully green suite.
+    let engine = FakeEngine::new(&["locked"]);
+    let (summary, events) = remove_collecting(
+        &engine,
+        &["alpha", "locked", "gamma"],
+        tokio_util::sync::CancellationToken::new(),
+    )
+    .await;
+
+    let started: Vec<usize> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProgressEvent::StepStarted { step, .. } => Some(*step),
+            _ => None,
+        })
+        .collect();
+    let finished: Vec<usize> = events
+        .iter()
+        .filter_map(|e| match e {
+            ProgressEvent::StepFinished { step, .. } => Some(*step),
+            _ => None,
+        })
+        .collect();
+
+    assert_eq!(started, [0, 1, 2], "one open per package, in order");
+    assert_eq!(finished, [0, 1, 2], "and one close each, however it ended");
+    assert_eq!(summary.counts.ok, 2);
+    assert_eq!(
+        summary.counts.failed, 1,
+        "a locked file is still that package's failure"
+    );
+}
+
+#[tokio::test]
+async fn a_cancelled_removal_leaves_the_rest_installed() {
+    // The dangerous shape: the loop had no token check at all, so a cancel removed every package
+    // and *then* reported `cancelled: true`. The summary looked right and the environment was
+    // gone. Removals are fast, which is exactly why the window matters.
+    let engine = FakeEngine::new(&[]);
+    let token = tokio_util::sync::CancellationToken::new();
+    token.cancel();
+    let (summary, _) = remove_collecting(&engine, &["alpha", "beta", "gamma"], token).await;
+
+    assert!(summary.cancelled);
+    assert_eq!(summary.counts.skipped, 3, "{:?}", summary.results);
+    assert_eq!(summary.counts.ok, 0);
+    assert!(
+        engine.calls().is_empty(),
+        "the engine must not have been invoked at all: {:?}",
+        engine.calls()
+    );
 }

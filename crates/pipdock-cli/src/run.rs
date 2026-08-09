@@ -1213,8 +1213,21 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     }
 
     // DATA-FLOW §9.2 applies to removals too: nothing is touched before a snapshot exists.
-    let meta = flow.take_snapshot(&app_data_dir()).await?;
-    if !opts.json {
+    // `--no-snapshot` was parsed and then ignored on this path, so the same flag meant "waive" for
+    // an update and nothing at all for a removal — the one operation with no way back.
+    let policy = if opts.no_snapshot {
+        // CLI-SPEC §2 documents this for CI images only, and requires the warning.
+        eprintln!(
+            "warning: --no-snapshot given. If this goes wrong there is no way back — \
+             only use it on a disposable environment."
+        );
+        SnapshotPolicy::Waive
+    } else {
+        SnapshotPolicy::Take
+    };
+    if let Some(meta) = flow.take_snapshot(policy, &app_data_dir()).await?
+        && !opts.json
+    {
         println!("snapshot {} written before removing", meta.id);
     }
 
