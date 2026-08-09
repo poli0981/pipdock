@@ -35,3 +35,9 @@ tokio = { version = "1", features = ["rt-multi-thread"] }
 tokio-util = "0.7"
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+[dev-dependencies]
+# `Sessions` is the one thing in this crate with a protocol worth testing on its own, and every
+# method on it is async. The runtime is already a dependency; `macros` and `rt` are what
+# `#[tokio::test]` needs on top.
+tokio = { version = "1", features = ["macros", "rt"] }

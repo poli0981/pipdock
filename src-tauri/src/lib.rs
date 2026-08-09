@@ -4,6 +4,8 @@
 //! wrapper over a `pipdock_core` function — if a code path here starts making decisions, it
 //! belongs in the core so the CLI gets the same behaviour (G5: GUI and CLI never diverge).
 
+#![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
+
 pub mod commands;
 pub mod state;
 
