@@ -21,6 +21,13 @@ import type { ExecutionOutcome, StepResult } from '@/ipc'
 interface PdSummarySheetProps {
   outcome: ExecutionOutcome
   onDone: () => void
+  /**
+   * Restore the snapshot this run took, when the caller can.
+   *
+   * Optional, and the button is absent without it — the component stays presentational and does
+   * not reach for a store to find out whether a rollback is possible.
+   */
+  onRollback?: (id: string) => void
 }
 
 function ResultRow({ result }: { result: StepResult }) {
@@ -58,7 +65,7 @@ function ResultRow({ result }: { result: StepResult }) {
   )
 }
 
-export function PdSummarySheet({ outcome, onDone }: PdSummarySheetProps) {
+export function PdSummarySheet({ outcome, onDone, onRollback }: PdSummarySheetProps) {
   const { t } = useTranslation()
   const { summary, snapshot } = outcome
   const results = summary.results ?? []
@@ -88,10 +95,27 @@ export function PdSummarySheet({ outcome, onDone }: PdSummarySheetProps) {
       ) : null}
 
       {snapshot === undefined ? null : (
-        <p className="text-data text-text-dim">
-          {/* The id is data, never translated — it is what `pipdock snapshot rollback` takes. */}
-          {t('plan.snapshotTaken')} <code className="font-mono">{snapshot.id}</code>
-        </p>
+        <div className="flex flex-wrap items-baseline gap-2">
+          <p className="text-data text-text-dim">
+            {/* The id is data, never translated — it is what `pipdock snapshot rollback` takes. */}
+            {t('plan.snapshotTaken')} <code className="font-mono">{snapshot.id}</code>
+          </p>
+          {/* The cancelled banner has promised since S3 that "the snapshot below restores the
+              environment exactly as it was", with nothing behind it. This is the button that
+              sentence has been describing. */}
+          {onRollback === undefined ? null : (
+            <button
+              type="button"
+              onClick={() => {
+                onRollback(snapshot.id)
+              }}
+              data-action="rollback"
+              className="rounded-pd border border-danger px-2 py-0.5 text-data text-danger"
+            >
+              {t('snapshots.rollbackThis')}
+            </button>
+          )}
+        </div>
       )}
 
       {/* Post-run `pip check`. A finding here means the environment is inconsistent *after* a run

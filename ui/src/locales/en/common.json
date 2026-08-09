@@ -178,6 +178,7 @@
     "diffChanged_one": "{{count}} package at a different version",
     "diffChanged_other": "{{count}} packages at different versions",
     "rollback": "Rollback…",
+    "rollbackThis": "Roll back to this",
     "rollbackTitle": "Roll back",
     "restoringTo": "Restoring the environment to",
     "alreadyMatches": "Nothing to do — this environment already matches the snapshot.",

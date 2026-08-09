@@ -7,7 +7,7 @@
  * rows are most likely to disagree.
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { PdSummarySheet } from '@/components/PdSummarySheet'
@@ -16,7 +16,7 @@ import summaryFixture from '@/test/fixtures/execution_summary.json'
 
 const SUMMARY = summaryFixture as ExecutionSummary
 
-function setup(overrides: Partial<ExecutionOutcome> = {}) {
+function setup(overrides: Partial<ExecutionOutcome> = {}, onRollback?: () => void) {
   const onDone = vi.fn()
   const outcome: ExecutionOutcome = {
     summary: SUMMARY,
@@ -32,7 +32,13 @@ function setup(overrides: Partial<ExecutionOutcome> = {}) {
     },
     ...overrides,
   }
-  render(<PdSummarySheet outcome={outcome} onDone={onDone} />)
+  render(
+    <PdSummarySheet
+      outcome={outcome}
+      onDone={onDone}
+      {...(onRollback === undefined ? {} : { onRollback })}
+    />,
+  )
   return { onDone, outcome }
 }
 
@@ -79,6 +85,23 @@ describe('the cancelled case', () => {
   it('still shows the snapshot when the run was clean, because rollback is still offered', () => {
     setup({ summary: { ...SUMMARY, cancelled: false } })
     expect(screen.getByText('2026-08-04T10-00-00Z')).toBeInTheDocument()
+  })
+
+  it('offers the rollback its own copy has been promising', () => {
+    // `plan.cancelledDetail` has said "the snapshot below restores the environment exactly as it
+    // was" since S3, with nothing behind it. The button hands back the id, so the caller does not
+    // have to reach into the outcome it already passed in.
+    const onRollback = vi.fn()
+    setup({}, onRollback)
+    fireEvent.click(screen.getByText('Roll back to this'))
+    expect(onRollback).toHaveBeenCalledWith('2026-08-04T10-00-00Z')
+  })
+
+  it('offers no rollback when the caller cannot perform one', () => {
+    // Presentational: the sheet does not reach for a store to decide whether a restore is
+    // possible, so no handler means no button.
+    setup()
+    expect(screen.queryByText('Roll back to this')).toBeNull()
   })
 })
 

@@ -168,6 +168,7 @@
     "diffRemoved_other": "{{count}} gói có trong ảnh chụp nhưng chưa cài — khôi phục sẽ cài lại",
     "diffChanged_other": "{{count}} gói đang ở phiên bản khác",
     "rollback": "Khôi phục…",
+    "rollbackThis": "Khôi phục về ảnh này",
     "rollbackTitle": "Khôi phục",
     "restoringTo": "Khôi phục môi trường về",
     "alreadyMatches": "Không có gì để làm — môi trường này vốn đã khớp với ảnh chụp.",

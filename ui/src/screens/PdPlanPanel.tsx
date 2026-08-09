@@ -39,6 +39,8 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
   const outcome = usePlanStore((s) => s.outcome)
   const error = usePlanStore((s) => s.error)
   const cancelling = usePlanStore((s) => s.cancelling)
+  const env = usePlanStore((s) => s.env)
+  const rollback = usePlanStore((s) => s.rollback)
 
   const choose = usePlanStore((s) => s.choose)
   const submitDecisions = usePlanStore((s) => s.submitDecisions)
@@ -88,6 +90,17 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
               reset()
               onFinished()
             }}
+            // Only when the store still knows which environment this was, and never *from* a
+            // rollback — offering to undo an undo from its own summary is a loop with no
+            // obvious exit.
+            {...(env !== null && kind !== 'rollback'
+              ? {
+                  onRollback: (id: string) => {
+                    reset()
+                    void rollback(env, id)
+                  },
+                }
+              : {})}
           />
         )}
         {outcome === null && error === null ? null : (
