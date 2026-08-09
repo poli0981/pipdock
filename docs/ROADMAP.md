@@ -310,14 +310,55 @@ session", which the uninstall path cannot produce — there is nothing to resolv
 proof per plan shape, so the one flow with no preview is no longer the one flow the invariant did not
 describe.
 
-### Stage 6 onward — where to pick up
+### Stage 6 — snapshots, the env detail and rollback — **done 2026-08-09**
 
-The order is **S5 → S6 → S7**, then Phase 3. S5 is done (above). **S6 — snapshots, the env detail and
-rollback — is next.** `Session::Rollback` and `RollbackFlow::cancel_handle` already landed in S5, so
-S6 adds a constructor call site rather than another widening; what it needs is `RollbackPreview`
-crossing IPC, the five `snapshot_*` commands, and the env-detail surface UI-SPEC §4 assumes and which
-does not exist. Exit: rollback = 4 clicks, and the preview lists `unrestorable_lines` explicitly as
-`PD-SNP-002` rather than dropping them.
+Eight commits. Every snapshot the app has been writing since S1 is now reachable from it, and P0-8
+is complete in both heads.
+
+| | What landed |
+|---|---|
+| **Core** | `RollbackPreview` and `RollbackPlan` cross IPC; `snapshot::Meta` gains a schema rename so embedding it does not mint a second interface. `parse_freeze` and `unrestorable_lines` rebuilt on one classifier. |
+| **Bridge** | `snapshot_list\|create\|diff\|rollback_preview\|rollback`. ARCHITECTURE §7's single rollback row becomes two, 32 → 33. |
+| **UI** | `PdSnapshotTimeline`, `PdRollbackPreview`, the env detail as a *mode* of the Environments tab, the diff viewer, and the rollback the summary's copy has promised since S3. |
+| **L3** | Two more generated fixtures; 9 → 11 test files, 79 → 91 tests. Goldens 52 → 54. |
+
+**Exit criteria, verified by running.** At the CLI against a real venv: create → mutate → `snapshot
+rollback <id>` → `snapshot diff <id>` prints *environment matches snapshot* — PRD §6's metric, and
+the timeline afterwards shows the `rollback of …` entry above the one it restored, which is
+`latest` moving twice, live. In the app: **rollback = 4 clicks** (Open → entry → *Rollback…* →
+*Roll back*), 2 from a run's summary; the preview lists `PD-SNP-002` with the verbatim freeze line
+**before** the confirm.
+
+**Four bugs, three of which no test would have found:**
+
+1. **A cancelled rollback killed the package in flight and installed the rest.** The restore loop
+   had no token check — S5 gave one to the removal half and not to the install half. Found by
+   writing the cancellation test the plan asked for.
+2. **`parse_freeze` and `unrestorable_lines` did not partition their input.** Two independent
+   filters that disagreed: a line like `Foo Bar==1.0` was dropped by both and vanished. In a
+   rollback preview, whose whole job is saying what it cannot put back, that silence is the worst
+   possible failure.
+3. **`snapshot_list` fired twice on open** — Stage 2's double fetch, reintroduced exactly, because
+   the guard is written after the await. Invisible in the UI, since both calls return the same rows.
+4. **A rollback left the timeline empty.** The refetch and the rescan race, and the rescan wiped the
+   result: the snapshot fields were inside `NO_PACKAGES`, whose reset is keyed to the *package*
+   slice's environment. The two slices key on different things and now reset separately.
+
+**Deliberately not done:** DATA-FLOW §8's dry-run resolve of the restore set, which is implemented
+in **neither** head. It is a network round trip on an interaction budgeted as instant, and it would
+resolve against the pre-removal environment — reporting conflicts the two-phase execution never
+hits. §8 now says so, and the preview's promise is precise instead: it lists what *cannot* be
+restored, not everything that might fail. Snapshot retention (`snapshot::delete` + keep-N) also
+stays out; a destructive command against the user's only way back needs its own confirm.
+
+### Stage 7 onward — where to pick up
+
+The order is **S5 → S6 → S7**, then Phase 3. S5 and S6 are done (above). **S7 — the shell: i18n,
+keyboard, a11y, the error row — is next**, and its largest piece is the one nobody has counted:
+**26 of the 32 catalog codes have no one-liner in either locale**, so they render as "An unexpected
+error occurred." with a code. Exit: every `Code::ALL` variant has copy in EN and VI, the
+pseudo-locale shows no clipping, the VI sweep of every mutation dialog is clean, the token contrast
+test survives the font change, and every `Ctrl+1..8` works.
 
 **All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 

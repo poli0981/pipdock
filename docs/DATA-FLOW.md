@@ -135,6 +135,18 @@ Snapshot selected → Diff = (current freeze) vs (snapshot freeze)
    → snapshot current state first (rollback is itself reversible) → execute two-phase → summary
 ```
 
+**The dry-run resolve step is implemented in neither head**, and S6 deliberately did not add it.
+`RollbackFlow::start` diffs, plans, and reports `unrestorable_lines` — the entries no index can
+supply, which is what the preview lists as `PD-SNP-002`. What it does *not* do is ask the engine
+whether each restore spec is still fetchable, so a release yanked since the snapshot was taken
+surfaces as a per-package failure at execute time rather than in the preview.
+
+Adding it is a network round trip on an interaction budgeted as instant, and it would resolve
+against the *pre-removal* environment — reporting conflicts the two-phase execution never hits,
+because the removals happen first. It needs its own design, and it belongs with the engine work in
+M3 rather than bolted onto a preview. Until then the preview's promise is precise: it lists what
+*cannot* be restored, not everything that might fail.
+
 ## 9. Data-flow invariants (enforced in `pipdock-core`, tested)
 
 1. No mutating engine call without an **accepted proof** for this session: a `ResolutionReport` for
