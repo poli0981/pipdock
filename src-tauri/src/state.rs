@@ -11,7 +11,13 @@
 //! A third arrived with S3, and it is the reason the mutation spine works at all: `UpdateFlow` is
 //! a **resumable state machine** and IPC is stateless. `plan_resolve` builds the flow, the user
 //! looks at the preview, and `plan_decide` or `plan_execute` arrives as a separate message some
-//! seconds later. Something has to hold the flow in between, and that is [`PlanSlot`].
+//! seconds later. Something has to hold the flow in between, and that is [`Sessions`].
+//!
+//! The slot and its cancellation token live in [`Sessions`] rather than directly on [`AppState`]
+//! because their protocol is the delicate part — claim, park, release, exactly once each — and it
+//! is worth testing on its own. [`Sessions`] is generic over what it holds for the same reason: a
+//! test can drive the protocol with a `u32` where it could never construct an `UpdateFlow`, which
+//! needs a real interpreter to probe.
 
 use std::path::PathBuf;
 
@@ -27,11 +33,11 @@ use tokio_util::sync::CancellationToken;
 /// single environment, and DATA-FLOW §9.3's staleness check would be comparing the installed set
 /// against one the other plan is busy changing — so the second is refused with `PD-RES-003`
 /// rather than allowed to race.
-pub enum PlanSlot {
+pub enum PlanSlot<T> {
     /// No plan.
     Idle,
     /// A flow is waiting for the user: a decision, or the final confirm.
-    Ready(Box<UpdateFlow>),
+    Ready(T),
     /// Engine work is in flight, so the flow is owned by whichever command is driving it.
     ///
     /// The flow is *moved out* for the duration rather than borrowed, because `execute` awaits for
@@ -40,11 +46,134 @@ pub enum PlanSlot {
     Busy,
 }
 
-impl PlanSlot {
+impl<T> PlanSlot<T> {
     /// True while engine work is in flight.
     pub const fn is_busy(&self) -> bool {
         matches!(*self, Self::Busy)
     }
+}
+
+/// The one mutation session this process may have, and the token that stops it.
+///
+/// Generic over the parked value so the protocol below can be tested without an `UpdateFlow`.
+pub struct Sessions<T> {
+    slot: tokio::sync::Mutex<PlanSlot<T>>,
+    /// The token for whatever engine work is in flight.
+    ///
+    /// Deliberately **not** inside [`PlanSlot`]: `plan_cancel` must be able to trip it while the
+    /// slot is `Busy` and its flow is owned elsewhere. Its own lock is only ever held for the
+    /// moment it takes to read or replace an `Option`, never across an await.
+    cancel: std::sync::Mutex<Option<CancellationToken>>,
+}
+
+impl<T> Default for Sessions<T> {
+    fn default() -> Self {
+        Self {
+            slot: tokio::sync::Mutex::new(PlanSlot::Idle),
+            cancel: std::sync::Mutex::new(None),
+        }
+    }
+}
+
+impl<T> Sessions<T> {
+    /// Claim the slot for work that is about to *start*, returning whatever was parked.
+    ///
+    /// `Ok(None)` means the slot was idle and is now claimed — which is what `plan_resolve` wants,
+    /// because it is beginning a plan and must exclude a second one for the whole of the resolve.
+    /// A caller that needs an *existing* session wants [`Self::claim_one`] instead.
+    ///
+    /// # Errors
+    /// `PD-RES-003` when a plan is already in flight.
+    pub async fn claim(&self) -> Result<Option<T>> {
+        let mut slot = self.slot.lock().await;
+        if slot.is_busy() {
+            return Err(in_flight());
+        }
+        Ok(match std::mem::replace(&mut *slot, PlanSlot::Busy) {
+            PlanSlot::Ready(session) => Some(session),
+            PlanSlot::Idle | PlanSlot::Busy => None,
+        })
+    }
+    /// Claim the session a caller expects to already be parked.
+    ///
+    /// The difference from [`Self::claim`] is the empty case, and it is the whole reason this
+    /// method exists. `plan_decide` and `plan_execute` used to call `claim()` and turn its `None`
+    /// into `PD-INT-001` at the call site — but `claim()` had already written `Busy`, and nothing
+    /// on that path released it. One out-of-order call from the UI therefore wedged the slot for
+    /// the rest of the process: every later command answered `PD-RES-003`, for a plan that did not
+    /// exist. Finding nothing is not claiming anything, so this leaves the slot idle.
+    ///
+    /// # Errors
+    /// `PD-RES-003` when a plan is already in flight; `PD-INT-001` when there is nothing parked.
+    pub async fn claim_one(&self) -> Result<T> {
+        let mut slot = self.slot.lock().await;
+        if slot.is_busy() {
+            return Err(in_flight());
+        }
+        match std::mem::replace(&mut *slot, PlanSlot::Busy) {
+            PlanSlot::Ready(session) => Ok(session),
+            PlanSlot::Idle | PlanSlot::Busy => {
+                *slot = PlanSlot::Idle;
+                drop(slot);
+                self.set_cancel(None);
+                Err(no_session())
+            }
+        }
+    }
+
+    /// Put a session back for the next call to pick up.
+    pub async fn park(&self, session: T) {
+        *self.slot.lock().await = PlanSlot::Ready(session);
+    }
+
+    /// Release the slot with no session — the plan finished, or failed.
+    ///
+    /// Called on **every** exit path out of a claimed slot. A claim that is never released leaves
+    /// the session permanently refusing plans with `PD-RES-003`, which is the failure mode this
+    /// design has to be careful about.
+    pub async fn release(&self) {
+        *self.slot.lock().await = PlanSlot::Idle;
+        self.set_cancel(None);
+    }
+
+    /// Record the token for the work about to start.
+    pub fn set_cancel(&self, token: Option<CancellationToken>) {
+        if let Ok(mut guard) = self.cancel.lock() {
+            *guard = token;
+        }
+    }
+
+    /// Trip the in-flight token, if there is one. Returns whether anything was cancelled.
+    pub fn cancel_current(&self) -> bool {
+        let token: Option<CancellationToken> = self
+            .cancel
+            .lock()
+            .ok()
+            .and_then(|guard| guard.as_ref().cloned());
+        match token {
+            Some(t) => {
+                t.cancel();
+                true
+            }
+            None => false,
+        }
+    }
+}
+
+/// A second plan was asked for while one is running.
+fn in_flight() -> PdError {
+    PdError::new(
+        Code::ResPlanInFlight,
+        "a plan is already resolving or executing",
+    )
+}
+
+/// There is no parked plan — the UI called out of order, or a previous call already consumed it.
+fn no_session() -> PdError {
+    PdError::new(
+        Code::IntUnexpected,
+        "no plan is in progress; resolve one first",
+    )
 }
 
 /// How far the in-memory name index has got.
@@ -84,13 +213,7 @@ pub struct AppState {
     /// queued behind the 613 ms load — the exact thing this design exists to prevent.
     pub index: std::sync::Mutex<IndexSlot>,
     /// The plan being driven across several IPC calls.
-    pub plan: tokio::sync::Mutex<PlanSlot>,
-    /// The token for whatever engine work is in flight.
-    ///
-    /// Deliberately **not** inside [`PlanSlot`]: `plan_cancel` must be able to trip it while the
-    /// slot is `Busy` and its flow is owned elsewhere. Its own lock is only ever held for the
-    /// moment it takes to read or replace an `Option`, never across an await.
-    pub cancel: std::sync::Mutex<Option<CancellationToken>>,
+    pub sessions: Sessions<Box<UpdateFlow>>,
 }
 
 impl AppState {
@@ -105,8 +228,7 @@ impl AppState {
             app_data,
             store: tokio::sync::Mutex::new(store),
             index: std::sync::Mutex::new(IndexSlot::Cold),
-            plan: tokio::sync::Mutex::new(PlanSlot::Idle),
-            cancel: std::sync::Mutex::new(None),
+            sessions: Sessions::default(),
         })
     }
 
@@ -169,59 +291,124 @@ impl AppState {
         }
     }
 
-    /// Claim the plan slot for engine work, returning whatever flow was waiting there.
+    /// See [`Sessions::claim`].
     ///
     /// # Errors
     /// `PD-RES-003` when a plan is already in flight.
     pub async fn claim(&self) -> Result<Option<Box<UpdateFlow>>> {
-        let mut slot = self.plan.lock().await;
-        if slot.is_busy() {
-            return Err(PdError::new(
-                Code::ResPlanInFlight,
-                "a plan is already resolving or executing",
-            ));
-        }
-        Ok(match std::mem::replace(&mut *slot, PlanSlot::Busy) {
-            PlanSlot::Ready(flow) => Some(flow),
-            PlanSlot::Idle | PlanSlot::Busy => None,
-        })
+        self.sessions.claim().await
     }
 
-    /// Put a flow back for the next call to pick up.
-    pub async fn park(&self, flow: Box<UpdateFlow>) {
-        *self.plan.lock().await = PlanSlot::Ready(flow);
-    }
-
-    /// Release the slot with no flow — the plan finished, or failed.
+    /// See [`Sessions::claim_one`].
     ///
-    /// Called on **every** exit path out of a claimed slot. A claim that is never released leaves
-    /// the session permanently refusing plans with `PD-RES-003`, which is the failure mode this
-    /// design has to be careful about.
+    /// # Errors
+    /// `PD-RES-003` when a plan is in flight; `PD-INT-001` when there is nothing parked.
+    pub async fn claim_one(&self) -> Result<Box<UpdateFlow>> {
+        self.sessions.claim_one().await
+    }
+
+    /// See [`Sessions::park`].
+    pub async fn park(&self, flow: Box<UpdateFlow>) {
+        self.sessions.park(flow).await;
+    }
+
+    /// See [`Sessions::release`].
     pub async fn release(&self) {
-        *self.plan.lock().await = PlanSlot::Idle;
-        self.set_cancel(None);
+        self.sessions.release().await;
     }
 
-    /// Record the token for the work about to start.
+    /// See [`Sessions::set_cancel`].
     pub fn set_cancel(&self, token: Option<CancellationToken>) {
-        if let Ok(mut guard) = self.cancel.lock() {
-            *guard = token;
-        }
+        self.sessions.set_cancel(token);
     }
 
-    /// Trip the in-flight token, if there is one. Returns whether anything was cancelled.
+    /// See [`Sessions::cancel_current`].
     pub fn cancel_current(&self) -> bool {
-        let token: Option<CancellationToken> = self
-            .cancel
-            .lock()
-            .ok()
-            .and_then(|guard| guard.as_ref().cloned());
-        match token {
-            Some(t) => {
-                t.cancel();
-                true
-            }
-            None => false,
-        }
+        self.sessions.cancel_current()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The protocol is driven with a `u32` because an `UpdateFlow` cannot be constructed without a
+    /// real interpreter to probe — and the protocol is what has the bugs, not the payload.
+    fn sessions() -> Sessions<u32> {
+        Sessions::default()
+    }
+
+    #[tokio::test]
+    async fn claiming_an_empty_slot_leaves_it_claimed_for_the_caller() {
+        let s = sessions();
+        assert!(s.claim().await.expect("idle slot is claimable").is_none());
+
+        // `plan_resolve` is about to start work, so the slot must exclude a second resolve for the
+        // whole of it — the empty case is a successful claim, not a miss.
+        let second = s.claim().await;
+        assert_eq!(
+            second.err().map(|e| e.code),
+            Some(Code::ResPlanInFlight),
+            "a second plan must be refused while the first holds the slot"
+        );
+    }
+
+    #[tokio::test]
+    async fn claiming_a_session_that_is_not_there_does_not_wedge_the_slot() {
+        let s = sessions();
+
+        let missed = s.claim_one().await;
+        assert_eq!(missed.err().map(|e| e.code), Some(Code::IntUnexpected));
+
+        // The regression this whole method exists for: the old code wrote `Busy` before
+        // discovering there was nothing to take, so every later command answered `PD-RES-003`
+        // for a plan that had never existed.
+        s.park(7).await;
+        assert_eq!(s.claim_one().await.ok(), Some(7));
+    }
+
+    #[tokio::test]
+    async fn a_failed_claim_clears_the_token_it_did_not_set() {
+        let s = sessions();
+        let token = CancellationToken::new();
+        s.set_cancel(Some(token.clone()));
+
+        let _ = s.claim_one().await;
+
+        // Releasing means releasing: a stale token left behind would let the *next* plan's
+        // `plan_cancel` report that it stopped something.
+        assert!(!s.cancel_current(), "the stale token must be gone");
+        assert!(!token.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn a_parked_session_survives_until_someone_claims_it() {
+        let s = sessions();
+        s.park(1).await;
+        s.park(2).await;
+        assert_eq!(s.claim_one().await.ok(), Some(2), "parking replaces");
+
+        s.park(3).await;
+        s.release().await;
+        assert_eq!(
+            s.claim_one().await.err().map(|e| e.code),
+            Some(Code::IntUnexpected),
+            "release discards whatever was parked"
+        );
+    }
+
+    #[tokio::test]
+    async fn cancel_reaches_a_session_the_slot_no_longer_owns() {
+        let s = sessions();
+        let token = CancellationToken::new();
+
+        s.park(1).await;
+        let _claimed = s.claim_one().await.expect("parked");
+        s.set_cancel(Some(token.clone()));
+
+        // The slot is `Busy` and the session is owned by the caller — which is exactly when
+        // `plan_cancel` has to work, and why the token is not stored inside the slot.
+        assert!(s.cancel_current());
+        assert!(token.is_cancelled());
     }
 }

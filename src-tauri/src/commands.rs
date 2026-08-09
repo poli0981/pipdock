@@ -10,7 +10,6 @@
 
 use pipdock_core::engine;
 use pipdock_core::envs::{self, ScanProgress};
-use pipdock_core::errors::Code;
 use pipdock_core::flow;
 use pipdock_core::index::{self, NameIndex};
 use pipdock_core::model::EnvSource;
@@ -405,7 +404,7 @@ pub async fn plan_decide(
     state: tauri::State<'_, AppState>,
     decisions: std::collections::BTreeMap<String, Decision>,
 ) -> Wire<flow::FlowStep> {
-    let mut flow = state.claim().await?.ok_or_else(no_plan)?;
+    let mut flow = state.claim_one().await?;
 
     let parsed = decisions
         .into_iter()
@@ -448,7 +447,7 @@ pub async fn plan_execute(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Wire<ExecutionOutcome> {
-    let mut flow = state.claim().await?.ok_or_else(no_plan)?;
+    let mut flow = state.claim_one().await?;
     state.set_cancel(Some(flow.cancel_handle()));
 
     let snapshot = match flow
@@ -492,14 +491,6 @@ pub async fn plan_execute(
 #[tauri::command]
 pub fn plan_cancel(state: tauri::State<'_, AppState>) -> bool {
     state.cancel_current()
-}
-
-/// There is no parked plan — the UI called out of order, or a previous call already consumed it.
-fn no_plan() -> PdError {
-    PdError::new(
-        Code::IntUnexpected,
-        "no plan is in progress; resolve one first",
-    )
 }
 
 /// Read the stored settings.
