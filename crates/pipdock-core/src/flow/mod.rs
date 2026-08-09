@@ -612,6 +612,23 @@ impl RollbackFlow {
         )
         .await
     }
+
+    /// A handle that stops this flow's execution.
+    ///
+    /// The same contract as [`UpdateFlow::cancel_handle`] and [`UninstallFlow::cancel_handle`],
+    /// and the token has been threaded into this flow's `ProgressSink` since it was written — it
+    /// simply had no way out, so a GUI rollback could not be stopped. A restore is a two-phase
+    /// install of a whole snapshot's worth of packages, which is precisely the operation a user
+    /// reaches for Stop during.
+    #[must_use]
+    pub fn cancel_handle(&self) -> CancellationToken {
+        self.cancel.clone()
+    }
+
+    /// Stop this flow. Idempotent.
+    pub fn cancel(&self) {
+        self.cancel.cancel();
+    }
 }
 
 /// The proof that DATA-FLOW §9.2 was satisfied, or the refusal.

@@ -22,10 +22,71 @@
 use std::path::PathBuf;
 
 use pipdock_core::errors::{Code, PdError, Result};
-use pipdock_core::flow::UpdateFlow;
+use pipdock_core::flow::{RollbackFlow, UninstallFlow, UpdateFlow};
 use pipdock_core::index::NameIndex;
 use pipdock_core::store::Store;
 use tokio_util::sync::CancellationToken;
+
+/// Which mutation a parked session is part-way through.
+///
+/// Separate from [`Session`] so a mismatch can be *reported* — "expected an update, found an
+/// uninstall" names a real bug in the caller, where a bare "no plan in progress" would send
+/// whoever reads it looking in the wrong place.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SessionKind {
+    /// An update or an install: `UpdateFlow`, the only one with a decision loop.
+    Update,
+    /// A removal: `UninstallFlow`.
+    Uninstall,
+    /// A restore: `RollbackFlow`.
+    Rollback,
+}
+
+impl SessionKind {
+    /// The wire name, for error messages. Never localized (I18N §2).
+    const fn as_str(self) -> &'static str {
+        match self {
+            Self::Update => "update",
+            Self::Uninstall => "uninstall",
+            Self::Rollback => "rollback",
+        }
+    }
+}
+
+/// The mutation flow the slot is holding between two IPC calls.
+///
+/// All three variants exist from the moment the slot stops being `UpdateFlow`-shaped, rather than
+/// arriving one per slice. The alternative — widen it again for S6 — means revisiting `claim`,
+/// `park` and every match a second time, and the enum is the cheap half of the work.
+///
+/// Rejected: `Box<dyn MutationFlow>`. The three flows do not share a signature — only `UpdateFlow`
+/// decides, only `UninstallFlow` has `names`, only `RollbackFlow` produces a preview — so the
+/// trait would be a pile of methods returning `Option`, and every caller would still be matching
+/// on which one it really had.
+pub enum Session {
+    /// `plan_resolve` → `plan_decide`* → `plan_execute`.
+    Update(Box<UpdateFlow>),
+    /// `uninstall_guard` → `uninstall_execute`.
+    Uninstall(Box<UninstallFlow>),
+    /// `snapshot_rollback_preview` → `snapshot_rollback`.
+    Rollback(Box<RollbackFlow>),
+    /// Test-only, so the slot protocol can be exercised without an interpreter to probe.
+    #[cfg(test)]
+    Fake(SessionKind),
+}
+
+impl Session {
+    /// Which flow this is.
+    pub const fn kind(&self) -> SessionKind {
+        match *self {
+            Self::Update(_) => SessionKind::Update,
+            Self::Uninstall(_) => SessionKind::Uninstall,
+            Self::Rollback(_) => SessionKind::Rollback,
+            #[cfg(test)]
+            Self::Fake(kind) => kind,
+        }
+    }
+}
 
 /// Where the one plan this session may have has got to.
 ///
@@ -158,6 +219,80 @@ impl<T> Sessions<T> {
             None => false,
         }
     }
+
+    /// Stop whatever the session is doing, whichever half of it that is.
+    ///
+    /// Two states both count as "there was something to stop", and only one of them is a running
+    /// process. Engine work in flight is cancelled through the token. A session merely *parked* —
+    /// a preview on screen, a guard the user is reading — has no process to kill and is discarded
+    /// instead, because leaving it there means the next plan is refused by a flow nobody is
+    /// looking at any more.
+    pub async fn stop(&self) -> bool {
+        let mut slot = self.slot.lock().await;
+        if slot.is_busy() {
+            drop(slot);
+            return self.cancel_current();
+        }
+        let was_parked = matches!(*slot, PlanSlot::Ready(_));
+        *slot = PlanSlot::Idle;
+        drop(slot);
+        self.set_cancel(None);
+        was_parked
+    }
+}
+
+impl Sessions<Session> {
+    /// Claim a parked [`Session::Update`].
+    ///
+    /// # Errors
+    /// `PD-RES-003` when a plan is in flight, `PD-INT-001` when nothing is parked or the parked
+    /// session is a different flow.
+    pub async fn claim_update(&self) -> Result<Box<UpdateFlow>> {
+        match self.claim_one().await? {
+            Session::Update(flow) => Ok(flow),
+            other => Err(self.wrong_kind(SessionKind::Update, other).await),
+        }
+    }
+
+    /// Claim a parked [`Session::Uninstall`].
+    ///
+    /// # Errors
+    /// As [`Self::claim_update`].
+    pub async fn claim_uninstall(&self) -> Result<Box<UninstallFlow>> {
+        match self.claim_one().await? {
+            Session::Uninstall(flow) => Ok(flow),
+            other => Err(self.wrong_kind(SessionKind::Uninstall, other).await),
+        }
+    }
+
+    /// Claim a parked [`Session::Rollback`].
+    ///
+    /// # Errors
+    /// As [`Self::claim_update`].
+    pub async fn claim_rollback(&self) -> Result<Box<RollbackFlow>> {
+        match self.claim_one().await? {
+            Session::Rollback(flow) => Ok(flow),
+            other => Err(self.wrong_kind(SessionKind::Rollback, other).await),
+        }
+    }
+
+    /// Put back a session the caller could not use, and say what was wrong.
+    ///
+    /// Parking rather than dropping: the session is intact and its owner may still come back for
+    /// it. A command asking for the wrong kind is a bug in the frontend's sequencing, and losing
+    /// the user's preview to it would turn a mis-ordered call into lost work.
+    async fn wrong_kind(&self, want: SessionKind, found: Session) -> PdError {
+        let found_kind = found.kind();
+        self.park(found).await;
+        PdError::new(
+            Code::IntUnexpected,
+            format!(
+                "expected {} session, found {}",
+                want.as_str(),
+                found_kind.as_str()
+            ),
+        )
+    }
 }
 
 /// A second plan was asked for while one is running.
@@ -212,8 +347,8 @@ pub struct AppState {
     /// never across an await, and a search that had to await a lock would be a search that can be
     /// queued behind the 613 ms load — the exact thing this design exists to prevent.
     pub index: std::sync::Mutex<IndexSlot>,
-    /// The plan being driven across several IPC calls.
-    pub sessions: Sessions<Box<UpdateFlow>>,
+    /// The mutation being driven across several IPC calls.
+    pub sessions: Sessions<Session>,
 }
 
 impl AppState {
@@ -295,21 +430,21 @@ impl AppState {
     ///
     /// # Errors
     /// `PD-RES-003` when a plan is already in flight.
-    pub async fn claim(&self) -> Result<Option<Box<UpdateFlow>>> {
+    pub async fn claim(&self) -> Result<Option<Session>> {
         self.sessions.claim().await
     }
 
-    /// See [`Sessions::claim_one`].
+    /// See [`Sessions::claim_update`].
     ///
     /// # Errors
-    /// `PD-RES-003` when a plan is in flight; `PD-INT-001` when there is nothing parked.
-    pub async fn claim_one(&self) -> Result<Box<UpdateFlow>> {
-        self.sessions.claim_one().await
+    /// `PD-RES-003` when a plan is in flight; `PD-INT-001` when nothing of that kind is parked.
+    pub async fn claim_update(&self) -> Result<Box<UpdateFlow>> {
+        self.sessions.claim_update().await
     }
 
     /// See [`Sessions::park`].
-    pub async fn park(&self, flow: Box<UpdateFlow>) {
-        self.sessions.park(flow).await;
+    pub async fn park(&self, session: Session) {
+        self.sessions.park(session).await;
     }
 
     /// See [`Sessions::release`].
@@ -325,6 +460,11 @@ impl AppState {
     /// See [`Sessions::cancel_current`].
     pub fn cancel_current(&self) -> bool {
         self.sessions.cancel_current()
+    }
+
+    /// See [`Sessions::stop`].
+    pub async fn stop(&self) -> bool {
+        self.sessions.stop().await
     }
 }
 
@@ -395,6 +535,51 @@ mod tests {
             Some(Code::IntUnexpected),
             "release discards whatever was parked"
         );
+    }
+
+    #[tokio::test]
+    async fn asking_for_the_wrong_kind_gives_it_back() {
+        let s: Sessions<Session> = Sessions::default();
+        s.park(Session::Fake(SessionKind::Uninstall)).await;
+
+        let wrong = s.claim_update().await;
+        let err = wrong.err().expect("an uninstall is not an update");
+        assert_eq!(err.code, Code::IntUnexpected);
+        assert!(
+            err.message
+                .contains("expected update session, found uninstall"),
+            "the message must name both kinds, not just say 'no plan': {}",
+            err.message
+        );
+
+        // Parked, not dropped: a command asking out of order is a frontend sequencing bug, and
+        // losing the user's guard dialog to it would turn a mis-ordered call into lost work.
+        let still_there = s.claim().await.expect("slot is free");
+        assert_eq!(
+            still_there.map(|x| x.kind()),
+            Some(SessionKind::Uninstall),
+            "the refused session must survive the refusal"
+        );
+    }
+
+    #[tokio::test]
+    async fn stop_discards_a_parked_session_and_cancels_a_running_one() {
+        let s: Sessions<Session> = Sessions::default();
+        assert!(!s.stop().await, "nothing to stop");
+
+        // Parked: no process exists, so stopping means letting go. Leaving it would refuse the
+        // next plan on behalf of a preview nobody is looking at.
+        s.park(Session::Fake(SessionKind::Update)).await;
+        assert!(s.stop().await);
+        assert!(s.claim().await.expect("free").is_none());
+
+        // Busy: there is a child process, and the token is the only thing that reaches it.
+        let token = CancellationToken::new();
+        s.park(Session::Fake(SessionKind::Update)).await;
+        let _running = s.claim_one().await.expect("parked");
+        s.set_cancel(Some(token.clone()));
+        assert!(s.stop().await);
+        assert!(token.is_cancelled());
     }
 
     #[tokio::test]
