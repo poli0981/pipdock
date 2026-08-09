@@ -58,4 +58,25 @@ Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMR
   }
 }
 
+/**
+ * Give jsdom a `<dialog>`.
+ *
+ * jsdom parses the element but implements none of its behaviour: `showModal` and `close` are
+ * simply absent, so `PdDialog`'s mount effect throws and every test of it fails on the same line.
+ *
+ * These stubs only track `open`. **The modality is therefore not under test** — the top layer, the
+ * inert backdrop and native focus containment are the browser's, and jsdom has none of them. What
+ * these tests do cover is the policy layered on top: which control is focused, which is rendered
+ * first, and what each one calls. The rest belongs to the manual pass.
+ */
+if (typeof HTMLDialogElement !== 'undefined') {
+  const proto = HTMLDialogElement.prototype as unknown as Record<string, unknown>
+  proto['showModal'] ??= function showModal(this: HTMLDialogElement) {
+    this.open = true
+  }
+  proto['close'] ??= function close(this: HTMLDialogElement) {
+    this.open = false
+  }
+}
+
 export { VIEWPORT }
