@@ -87,6 +87,7 @@
     "actions": {
       "pin": "Pin this package",
       "unpin": "Remove this pin",
+      "uninstall": "Remove this package",
       "updateSelected": "Update selected",
       "clearSelection": "Clear"
     },
@@ -126,6 +127,7 @@
     },
     "heldBack": "held back",
     "impossible": "impossible",
+    "breakage": "{{by}} requires {{constraint}}",
     "blocker": "{{by}} requires {{constraint}}",
     "keepCompatibleImpossible": "There is no compatible version to keep — this package can only be skipped or forced.",
     "forceWarning_one": "Forcing this breaks {{names}}, which declared the constraint above.",
@@ -152,6 +154,21 @@
     "checkFailed_other": "{{count}} dependency problems remain after this run.",
     "checkFinding": "{{pkg}} requires {{requirement}}",
     "done": "Back to packages"
+  },
+  "uninstall": {
+    "title": "Remove packages",
+    "titleBreaks": "This removal breaks other packages",
+    "body_one": "This removes {{count}} package. A snapshot is taken first, so it can be undone.",
+    "body_other": "This removes {{count}} packages. A snapshot is taken first, so they can be undone.",
+    "bodyBreaks_one": "{{count}} installed package depends on what you are removing and would be left broken:",
+    "bodyBreaks_other": "{{count}} installed packages depend on what you are removing and would be left broken:",
+    "remove_one": "Remove {{count}} package",
+    "remove_other": "Remove {{count}} packages",
+    "widen_one": "Remove the dependent too ({{count}})",
+    "widen_other": "Remove the dependents too ({{count}})",
+    "force_one": "Remove anyway, breaking them",
+    "force_other": "Remove anyway, breaking them",
+    "rechecking": "Checking what the wider set would break…"
   },
   "search": {
     "title": "Search",

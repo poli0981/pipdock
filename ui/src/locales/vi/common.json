@@ -86,6 +86,7 @@
     "actions": {
       "pin": "Ghim gói này",
       "unpin": "Bỏ ghim",
+      "uninstall": "Gỡ gói này",
       "updateSelected": "Cập nhật các gói đã chọn",
       "clearSelection": "Bỏ chọn"
     },
@@ -122,6 +123,7 @@
     },
     "heldBack": "bị giữ lại",
     "impossible": "không thể",
+    "breakage": "{{by}} yêu cầu {{constraint}}",
     "blocker": "{{by}} yêu cầu {{constraint}}",
     "keepCompatibleImpossible": "Không có phiên bản tương thích nào để giữ — gói này chỉ có thể bỏ qua hoặc ép.",
     "forceWarning_other": "Ép gói này sẽ làm hỏng {{names}}, vốn đã khai báo ràng buộc ở trên.",
@@ -145,6 +147,16 @@
     "checkFailed_other": "Còn {{count}} vấn đề phụ thuộc sau lần chạy này.",
     "checkFinding": "{{pkg}} yêu cầu {{requirement}}",
     "done": "Quay lại danh sách gói"
+  },
+  "uninstall": {
+    "title": "Gỡ gói",
+    "titleBreaks": "Thao tác gỡ này làm hỏng gói khác",
+    "body_other": "Thao tác này gỡ {{count}} gói. PipDock chụp ảnh trước, nên bạn hoàn tác được.",
+    "bodyBreaks_other": "Có {{count}} gói đã cài đang phụ thuộc vào thứ bạn định gỡ, và sẽ bị hỏng:",
+    "remove_other": "Gỡ {{count}} gói",
+    "widen_other": "Gỡ luôn gói phụ thuộc ({{count}})",
+    "force_other": "Vẫn gỡ, chấp nhận làm hỏng",
+    "rechecking": "Đang kiểm tra tập gói mở rộng sẽ làm hỏng những gì…"
   },
   "search": {
     "title": "Tìm kiếm",

@@ -27,9 +27,12 @@ import {
   planDecide,
   planExecute,
   planResolve,
+  uninstallExecute,
+  uninstallGuard,
   type Decision,
   type ExecutionOutcome,
   type FlowStep,
+  type GuardReport,
   type Intent,
   type PdError,
   type ProgressEvent,
@@ -45,8 +48,15 @@ import {
  */
 export const CONSOLE_LIMIT = 2000
 
-/** Which part of DATA-FLOW §3 is on screen. */
-export type PlanPhase = 'idle' | 'resolving' | 'preview' | 'executing' | 'summary' | 'failed'
+/** Which part of DATA-FLOW §3 (or §5) is on screen. */
+export type PlanPhase =
+  | 'idle'
+  | 'resolving'
+  | 'preview'
+  | 'guard'
+  | 'executing'
+  | 'summary'
+  | 'failed'
 
 /**
  * The phases the plan panel is on screen for.
@@ -55,6 +65,9 @@ export type PlanPhase = 'idle' | 'resolving' | 'preview' | 'executing' | 'summar
  * to set `idle`, which un-mounted the panel — and no screen reads `error`, so `PD-RES-003`, a PEP
  * 668 refusal and every engine failure during resolve vanished without a trace. The user pressed
  * Update and nothing whatsoever happened.
+ *
+ * `guard` is deliberately **not** one either: DATA-FLOW §5's dialog opens *over* the table the
+ * user selected from, so they can still see what they picked while deciding.
  */
 export const PANEL_PHASES: ReadonlySet<PlanPhase> = new Set<PlanPhase>([
   'resolving',
@@ -63,6 +76,16 @@ export const PANEL_PHASES: ReadonlySet<PlanPhase> = new Set<PlanPhase>([
   'summary',
   'failed',
 ])
+
+/**
+ * Which mutation this session is.
+ *
+ * One store, not two. A removal has no `ResolutionReport` and so no preview, but it produces the
+ * same `plan-progress` stream and the same `ExecutionSummary` — and there is one session at a time
+ * in Rust either way, so two stores would be two front ends onto one slot, each able to think it
+ * owns it.
+ */
+export type PlanKind = 'update' | 'install' | 'uninstall'
 
 /** One console line, already flattened for rendering. */
 export interface ConsoleLine {
@@ -77,6 +100,14 @@ export interface ConsoleLine {
 
 interface PlanState {
   phase: PlanPhase
+  /** Which mutation is in flight, or null when there is none. */
+  kind: PlanKind | null
+  /** The environment it is acting on. Retained because the guard is re-run against it. */
+  env: PyEnv | null
+  /** What the guard found, while `phase` is `guard`. */
+  guard: GuardReport | null
+  /** True while a re-guard is in flight, so the dialog can say so rather than flicker. */
+  guardBusy: boolean
   /** What the flow says it needs next, or null before the first resolve. */
   step: FlowStep | null
   /** The user's answers so far, keyed by package name. */
@@ -99,6 +130,12 @@ interface PlanState {
   choose: (pkg: string, decision: Decision) => void
   submitDecisions: () => Promise<void>
   execute: () => Promise<void>
+  /** Run the guard over `pkgs` and open the dialog (DATA-FLOW §5). */
+  startUninstall: (env: PyEnv, pkgs: string[]) => Promise<void>
+  /** *Remove dependents too*: re-guard over the widened set rather than proceeding. */
+  widen: () => Promise<void>
+  /** Remove. `force` is *Force remove only X*. */
+  confirmUninstall: (force: boolean) => Promise<void>
   cancel: () => Promise<void>
   setConsoleOpen: (open: boolean) => void
   /** Return to the table, discarding the preview or the summary. */
@@ -110,6 +147,10 @@ function asPdError(e: unknown): PdError {
 }
 
 const EMPTY = {
+  kind: null,
+  env: null,
+  guard: null,
+  guardBusy: false,
   step: null,
   decisions: {},
   console: [] as ConsoleLine[],
@@ -129,13 +170,42 @@ const EMPTY = {
  */
 let unlisten: (() => void) | undefined
 
+/**
+ * Drive one execution to its summary: subscribe, run, unsubscribe.
+ *
+ * Shared by `execute` and `confirmUninstall` because the tail of DATA-FLOW §3 and §5 is the same
+ * tail — the same `plan-progress` stream, the same `ExecutionSummary`, the same console drawer and
+ * summary sheet. Only the command differs, so only the command is a parameter.
+ */
+async function runToSummary(
+  set: (partial: Partial<PlanState>) => void,
+  command: () => Promise<ExecutionOutcome>,
+): Promise<void> {
+  set({ phase: 'executing', console: [], done: 0, total: 0, error: null, cancelling: false })
+
+  // Subscribed before the command, or the first steps are emitted into nothing.
+  unlisten?.()
+  unlisten = await onPlanProgress((event: ProgressEvent) => {
+    usePlanStore.setState((s) => apply(s, event))
+  })
+
+  try {
+    set({ outcome: await command(), phase: 'summary', current: null })
+  } catch (e) {
+    set({ phase: 'summary', error: asPdError(e), current: null })
+  } finally {
+    unlisten?.()
+    unlisten = undefined
+  }
+}
+
 export const usePlanStore = create<PlanState>((set, get) => ({
   phase: 'idle',
   consoleOpen: false,
   ...EMPTY,
 
   resolve: async (env, intent) => {
-    set({ phase: 'resolving', ...EMPTY })
+    set({ phase: 'resolving', ...EMPTY, kind: intent.intent === 'install' ? 'install' : 'update', env })
     try {
       set({ step: await planResolve(env, intent), phase: 'preview' })
     } catch (e) {
@@ -163,23 +233,38 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   execute: async () => {
-    set({ phase: 'executing', console: [], done: 0, total: 0, error: null, cancelling: false })
+    await runToSummary(set, planExecute)
+  },
 
-    // Subscribed before the command, or the first steps are emitted into nothing.
-    unlisten?.()
-    unlisten = await onPlanProgress((event: ProgressEvent) => {
-      set((s) => apply(s, event))
-    })
-
+  startUninstall: async (env, pkgs) => {
+    set({ phase: 'resolving', ...EMPTY, kind: 'uninstall', env })
     try {
-      const outcome = await planExecute()
-      set({ outcome, phase: 'summary', current: null })
+      set({ guard: await uninstallGuard(env, pkgs), phase: 'guard' })
     } catch (e) {
-      set({ phase: 'summary', error: asPdError(e), current: null })
-    } finally {
-      unlisten?.()
-      unlisten = undefined
+      set({ phase: 'failed', error: asPdError(e) })
     }
+  },
+
+  widen: async () => {
+    const { env, guard } = get()
+    if (env === null || guard === null) return
+
+    // The whole point of DATA-FLOW §5's re-guard: the widened set goes back through the guard
+    // instead of straight to execution, because a dependent of a dependent has to surface before
+    // it is removed. `guardBusy` rather than leaving the dialog blank — it usually comes back
+    // inside a probe's worth of time and a flicker reads as a bug.
+    set({ guardBusy: true, error: null })
+    try {
+      set({ guard: await uninstallGuard(env, guard.withDependents), phase: 'guard' })
+    } catch (e) {
+      set({ phase: 'failed', error: asPdError(e) })
+    } finally {
+      set({ guardBusy: false })
+    }
+  },
+
+  confirmUninstall: async (force) => {
+    await runToSummary(set, () => uninstallExecute(force))
   },
 
   cancel: async () => {
