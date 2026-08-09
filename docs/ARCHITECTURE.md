@@ -130,10 +130,11 @@ This table is the surface. A command that is not listed here does not exist; add
 | `pin_list` | `Pin[]` | Pins for an environment. |
 | `pin_add` | `()` | Add or replace a pin. |
 | `pin_remove` | `bool` | Remove a pin; reports whether one existed. |
-| `snapshot_list` | `SnapshotMeta[]` | Snapshots for an environment. |
+| `snapshot_list` | `SnapshotMeta[]` | Snapshots for an environment, newest first. Takes the `env_hash`, not a `PyEnv`: snapshots outlive the interpreter that made them, and an environment whose Python is gone still has a history worth showing. |
 | `snapshot_create` | `SnapshotMeta` | Take a snapshot on demand, outside any plan. |
-| `snapshot_diff` | `Diff` | The environment against a snapshot. |
-| `snapshot_rollback` | `ExecutionSummary` | Restore a snapshot — itself snapshotted first, per DATA-FLOW §8. |
+| `snapshot_diff` | `Diff` | The environment against a snapshot. Claims no session — browsing a timeline must not start a flow. |
+| `snapshot_rollback_preview` | `RollbackPreview` | What restoring a snapshot would do, parking the flow that would do it. Split from the execute for the reason `plan_resolve` is: what the user confirms must be the plan they were shown. |
+| `snapshot_rollback` | `ExecutionOutcome` | Restore the parked snapshot — itself snapshotted first, per DATA-FLOW §8, which is why the outcome always carries one. |
 | `health_run` | `CheckReport` | Run the Code Health tools against a project folder. |
 | `health_fix` | `ExecutionSummary` | Apply the gated `ruff` fix. |
 | `engine_info` | `EngineInfo[]` | Detected version and availability per engine. Settings shows both, so this returns both. |

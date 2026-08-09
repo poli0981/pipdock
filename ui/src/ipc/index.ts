@@ -21,6 +21,7 @@ import type {
   Hit,
   EngineId,
   EnvSource,
+  Diff,
   ExecutionSummary,
   FlowStep,
   GuardReport,
@@ -31,6 +32,7 @@ import type {
   ProgressEvent,
   PyEnv,
   RefreshReport,
+  RollbackPreview,
   SnapshotMeta,
 } from './generated'
 
@@ -59,6 +61,7 @@ export const COMMANDS = [
   'snapshot_list',
   'snapshot_create',
   'snapshot_diff',
+  'snapshot_rollback_preview',
   'snapshot_rollback',
   'health_run',
   'health_fix',
@@ -276,6 +279,40 @@ export const uninstallGuard = (env: PyEnv, pkgs: string[]): Promise<GuardReport>
  */
 export const uninstallExecute = (force: boolean): Promise<ExecutionOutcome> =>
   invoke('uninstall_execute', { force })
+
+/**
+ * Snapshots for an environment, newest first.
+ *
+ * Keyed by `envHash`, not by interpreter: snapshots outlive the Python that made them, so an
+ * environment whose interpreter is gone still has a history worth showing.
+ */
+export const snapshotList = (envHash: string): Promise<SnapshotMeta[]> =>
+  invoke('snapshot_list', { envHash })
+
+/** Take a snapshot on demand, outside any plan. */
+export const snapshotCreate = (env: PyEnv): Promise<SnapshotMeta> =>
+  invoke('snapshot_create', { env })
+
+/** The environment as it is now, against a snapshot. Claims no session. */
+export const snapshotDiff = (env: PyEnv, id: string): Promise<Diff> =>
+  invoke('snapshot_diff', { env, id })
+
+/**
+ * What restoring a snapshot would do, parking the flow that would do it.
+ *
+ * Split from `snapshotRollback` the way `planResolve` is split from `planExecute`: what the user
+ * confirms has to be the plan they were shown, not one re-derived after they answered.
+ */
+export const snapshotRollbackPreview = (env: PyEnv, id: string): Promise<RollbackPreview> =>
+  invoke('snapshot_rollback_preview', { env, id })
+
+/**
+ * Snapshot the current state, then restore the parked target. Streams `plan-progress`.
+ *
+ * Always returns a snapshot: the pre-rollback one, which is what makes a rollback itself
+ * reversible — and why `latest` moves twice across a single restore.
+ */
+export const snapshotRollback = (): Promise<ExecutionOutcome> => invoke('snapshot_rollback')
 
 /**
  * Subscribe to execution progress. Returns the unlisten function.
