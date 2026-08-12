@@ -6,7 +6,7 @@
 
 use async_trait::async_trait;
 
-use crate::errors::{PdError, Result};
+use crate::errors::{Code, PdError, Result};
 use crate::exec::Command;
 use crate::model::{
     CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
@@ -205,6 +205,19 @@ impl Engine for PipEngine {
     }
 
     async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult> {
+        // DATA-FLOW §2's preamble is "all mutating flows", and replacing pip in site-packages is
+        // one. `UpdateFlow` and `UninstallFlow` have refused these at their entry points since S1
+        // and S5; this had no guard at all, which did not matter while the only caller was a CLI
+        // command nobody had wired to a button. P1 gives it one, so it needs the same refusal —
+        // copied from `UninstallFlow::start`, not reworded, so the three cannot drift.
+        if env.externally_managed {
+            return Err(PdError::new(
+                Code::EnvExternallyManaged,
+                "this Python is externally managed (PEP 668). Use a virtual environment; \
+                 the override lives in Settings and is discouraged",
+            ));
+        }
+
         let out = Command::python(&env.interpreter)
             .args(["-m", "pip", "install", "-U", "pip"])
             .run()
@@ -277,5 +290,32 @@ mod tests {
     #[test]
     fn freeze_uses_all_so_snapshots_include_pip_itself() {
         assert!(PipEngine::argv_freeze().contains(&"--all".to_string()));
+    }
+
+    /// DATA-FLOW §2's preamble is "all mutating flows". `UpdateFlow` and `UninstallFlow` refuse a
+    /// PEP 668 environment at their entry points; this path had no guard at all, which only stayed
+    /// harmless while nothing but a CLI command could reach it.
+    ///
+    /// The interpreter path is deliberately nonsense: the guard must return *before* anything is
+    /// spawned, so a test that needs a real Python would be testing the wrong thing.
+    #[tokio::test]
+    async fn an_externally_managed_python_is_refused_before_anything_runs() {
+        let env = PyEnv {
+            interpreter: r"C:\does\not\exist\python.exe".into(),
+            prefix: r"C:\usr".into(),
+            python_version: "3.12.4".into(),
+            externally_managed: true,
+            hidden_user_site: None,
+            source: crate::model::EnvSource::Registry,
+        };
+
+        let err = PipEngine
+            .upgrade_pip(&env)
+            .await
+            .expect_err("PEP 668 blocks pip upkeep");
+
+        assert_eq!(err.code, Code::EnvExternallyManaged);
+        // Not PD-ENG-001: reaching the spawn would mean the guard ran too late.
+        assert!(!err.message.contains("could not run"), "{}", err.message);
     }
 }

@@ -16,6 +16,10 @@ dist-ssr/
 # Environments (test venvs created by the integration suite / spikes)
 .venv/
 venv/
+# Verifying an environment feature by hand needs a venv the GUI can *see*, and `env_add_manual`
+# (Browse…) is still owed — so venv_scan's "below the working directory" is the only way in, which
+# means the repo root. `.venv-oldpip` for the pip-upkeep floor, and whatever the next one needs.
+/.venv-*/
 __pycache__/
 *.py[cod]
 # ci-integration.yml builds these in the workspace. Harmless on an ephemeral runner, but a
