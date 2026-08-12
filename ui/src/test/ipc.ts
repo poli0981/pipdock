@@ -41,6 +41,8 @@ export interface IpcMock {
   envScan: ReturnType<typeof vi.fn>
   envProbe: ReturnType<typeof vi.fn>
   pipUpgrade: ReturnType<typeof vi.fn>
+  healthRun: ReturnType<typeof vi.fn>
+  onHealthProgress: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
 
@@ -68,6 +70,8 @@ export function ipcMock(): IpcMock {
     envScan: vi.fn().mockResolvedValue([]),
     envProbe: vi.fn(),
     pipUpgrade: vi.fn().mockResolvedValue(undefined),
+    healthRun: vi.fn(),
+    onHealthProgress: vi.fn().mockResolvedValue(() => undefined),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
     // and a stub that always answered one way would make every error test agree with itself.
     isPdError: (value: unknown): boolean =>

@@ -32,6 +32,7 @@ import type {
   Pin,
   ProgressEvent,
   PyEnv,
+  HealthReport,
   RefreshReport,
   RollbackPreview,
   SnapshotMeta,
@@ -364,6 +365,19 @@ export const engineInfo = (env: PyEnv): Promise<EngineInfo[]> => invoke('engine_
 export const pipUpgrade = (env: PyEnv): Promise<StepResult> => invoke('pip_upgrade', { env })
 
 /**
+ * Run Code Health over a project folder (PRD P0-11).
+ *
+ * Streams `health-progress`, and on a fresh install syncs the tools venv first — so the first run
+ * is the ~15 s bootstrap plus the tools, and the progress total already accounts for both.
+ *
+ * **A tool that fails does not fail the run.** It lands in `report.problems` and the others still
+ * report, which is what `PD-HLT-003`'s "partial report" means. An empty `deptry` array is only
+ * "clean" when `deptry` is in `report.ran`.
+ */
+export const healthRun = (env: PyEnv, project: string): Promise<HealthReport> =>
+  invoke('health_run', { env, project })
+
+/**
  * Subscribe to execution progress. Returns the unlisten function.
  *
  * Every step emits one `stepStarted`, any number of `line`s, and one `stepFinished` — which is
@@ -386,5 +400,20 @@ export const legalConsentSet = (): Promise<Consent> => invoke('legal_consent_set
 /** Subscribe to discovery progress. Returns the unlisten function. */
 export const onScanProgress = (handler: (progress: ScanProgress) => void): Promise<UnlistenFn> =>
   listen<ScanProgress>('scan-progress', (event) => {
+    handler(event.payload)
+  })
+
+/**
+ * Subscribe to Code Health progress. Returns the unlisten function.
+ *
+ * The same `ProgressEvent` payload `plan-progress` carries, on its own channel — ARCHITECTURE §7
+ * lists `health-progress` as a channel, not a payload, and CLI-SPEC §6 already requires `health`
+ * to emit the same shape. A second event type would cost a schema, a golden and a second console
+ * renderer for nothing.
+ */
+export const onHealthProgress = (
+  handler: (event: ProgressEvent) => void,
+): Promise<UnlistenFn> =>
+  listen<ProgressEvent>('health-progress', (event) => {
     handler(event.payload)
   })
