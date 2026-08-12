@@ -135,7 +135,7 @@ This table is the surface. A command that is not listed here does not exist; add
 | `snapshot_diff` | `Diff` | The environment against a snapshot. Claims no session — browsing a timeline must not start a flow. |
 | `snapshot_rollback_preview` | `RollbackPreview` | What restoring a snapshot would do, parking the flow that would do it. Split from the execute for the reason `plan_resolve` is: what the user confirms must be the plan they were shown. |
 | `snapshot_rollback` | `ExecutionOutcome` | Restore the parked snapshot — itself snapshotted first, per DATA-FLOW §8, which is why the outcome always carries one. |
-| `health_run` | `CheckReport` | Run the Code Health tools against a project folder. |
+| `health_run` | `HealthReport` | Run the Code Health tools against a project folder. **Not `CheckReport`** — that name is taken by `engine.check()` and is already a published `pipdock schema` contract, so two unrelated shapes would have shared one name on the wire. |
 | `health_fix` | `ExecutionSummary` | Apply the gated `ruff` fix. |
 | `engine_info` | `EngineInfo[]` | Detected version and availability per engine. Settings shows both, so this returns both. |
 | `pip_upgrade` | `StepResult` | Upgrade pip itself in the selected environment. **Not `ExecutionSummary`** — there is no plan, no phase and no per-package counts, and inventing them would be four lies for one step. Carries no versions either (`from`/`to` are always absent): the caller re-probes, which it must do anyway to refresh the row. |

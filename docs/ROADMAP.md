@@ -405,6 +405,30 @@ Tools venv, deptry/vulture/ruff runners + report UI + gated fix, pip upkeep, bug
 
 Decomposed **P1** pip upkeep · **P2** the tools venv · **P3** the runners + `HealthReport` · **P4** the Health screen · **P5** the gated `ruff --fix`. Three of the sentence's items are already spent: the bug-report deep link landed in S7, `PdOfflineBanner` in S4, and the keyboard map's `Ctrl+1..8` in S7 — what remains of "keyboard map" is `Enter` as primary action and folding the six `aria-live` regions. The icon/branding pass belongs with Phase 4's release slice; it churns binaries that must not sit inside a feature diff.
 
+### Phase 3 · P3 — the runners and `HealthReport` — **done 2026-08-12**
+
+Six commits. `pipdock health` runs deptry, vulture and ruff out of P2's tools venv and reports; `health_run` streams the same thing over `health-progress`. **`NOT_YET` is down to three, and only `health_fix` is still Phase 3's.**
+
+| | What landed |
+|---|---|
+| **Core** | `health::{project,deptry,vulture,ruff,report,run}`; `HealthReport` and its six sub-types; `is_findings_exit`; the project folder in `health_projects`, keyed by `env_hash` |
+| **Bridge** | `health_run`, its own `Sessions<HealthSession>` slot, and `forward_progress` taking the channel as a `&'static str` |
+| **CLI** | `pipdock health [--path] [--tool …] [--json]`, exit 1 on findings; `--fix` refused until P5 |
+| **Wire format** | `HealthReport` in `SCHEMA_TYPES` — one registration, seven TS declarations, because the generator hoists `$defs` |
+| **Fixtures** | eight captured documents under `tests/fixtures/health/`, redacted and `-text` |
+
+**Five things the specs had wrong, all found by running the pinned tools.**
+
+1. **All three exit non-zero on findings, and disagree about how** — deptry 1, ruff 1, **vulture 3**, with vulture's 1 and 2 being real failures. A plain `!out.ok()` reports every successful run over a real project as `PD-HLT-002`, and a suite that only runs them over a clean directory agrees with it.
+2. **deptry cannot be told about an environment.** §3 said the env is "passed to deptry"; there is no such flag, `VIRTUAL_ENV` is ignored, and it reads whatever its own interpreter imports. §2's isolation and §3's comparison conflict, isolation wins, and the cost is disclosed rather than papered over.
+3. **deptry's `--json-output` is a file path, not a stream.** `-` would have created a file called `-` inside the user's project — the exact §1 boundary the flag was chosen to respect.
+4. **ruff's docs URL is keyed by rule name**, so §6's `.../rules/<code>` 404s; and it writes findings to stdout with warnings on stderr, which corrupted the first fixture capture.
+5. **A tool present but unrunnable reported `PD-ENG-001`** — "install the engine, or switch engine in Settings", for a corrupted `ruff.exe`. Now `PD-HLT-001`, which says re-sync the tools environment, which is the fix.
+
+**Exit criteria, run against real projects.** `pipdock health` over a pyproject project reports 1 dependency, 3 dead-code and 3 lint findings and exits **1**; over a clean one it exits **0**; `--tool ruff` runs one tool and leaves `ran` naming only it, so an empty deptry tab is "not run" rather than "clean". Replacing `ruff.exe` with a text file of the same name — present, so the sync check says Fresh — produced the **partial report**: deptry and vulture reported normally, ruff landed in `problems` as `PD-HLT-001`, and the run still returned a report. Deleting `ruff.exe` outright instead triggers the implicit sync and repairs it.
+
+**Deliberately not done:** `RunOptions` stays off the wire. §4 says the confidence floor comes "from settings", but `Settings` has three fields and none is this; adding them is a golden, a bindings regeneration and a Settings screen, which is its own slice.
+
 ### Phase 3 · P1 — pip upkeep — **done 2026-08-12**
 
 Eight commits. **P0-10 is complete in both heads**, and three defects older than the slice went with it.
