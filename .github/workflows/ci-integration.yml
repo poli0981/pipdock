@@ -19,8 +19,13 @@ on:
       - 'crates/pipdock-core/src/snapshot/**'
       - 'crates/pipdock-core/src/graph/**'
       - 'crates/pipdock-core/src/envs/**'
+      - 'crates/pipdock-core/src/health/**'
       - 'crates/pipdock-core/tests/**'
       - 'spikes/capture.py'
+      # A Dependabot bump to the Code Health pins has to re-run the bootstrap: whether the new
+      # pin set still resolves to wheels on 3.10 and 3.14 is exactly what this job can answer
+      # and a unit test cannot.
+      - 'tools/**'
       - '.github/workflows/ci-integration.yml'
   schedule:
     # Nightly: the disposable-venv end-to-end pass.
@@ -107,6 +112,73 @@ jobs:
           .\target\debug\pipdock.exe env list
           .\target\debug\pipdock.exe doctor --env .itest
           .\target\debug\pipdock.exe list --env .itest --json
+
+      # The tools venv is the only thing PipDock installs into an environment of its own, and the
+      # one whose failure mode is silent: a bootstrap that resolves to an sdist on a new CPython
+      # would ship PD-BLD-001 to anyone who clicks Health. Running it on the floor and the ceiling
+      # of the supported range is what a unit test cannot do.
+      - name: End-to-end — the Code Health tools venv bootstraps
+        shell: pwsh
+        env:
+          # Redirects the whole app-data root (`store::default_app_data` reads LOCALAPPDATA with a
+          # temp_dir fallback), so this never touches a runner's real profile and needs no
+          # PipDock-side configuration knob. Verified locally before being relied on here.
+          LOCALAPPDATA: ${{ github.workspace }}\.itest-appdata
+        run: |
+          $ErrorActionPreference = 'Stop'
+          .\target\debug\pipdock.exe tools sync
+          if ($LASTEXITCODE -ne 0) { throw "the tools venv did not bootstrap" }
+
+          $status = .\target\debug\pipdock.exe tools status --json | ConvertFrom-Json
+          Write-Host ($status | ConvertTo-Json -Depth 5)
+          if ($status.need.state -ne 'fresh') {
+            throw "a just-synced tools venv reports '$($status.need.state)'"
+          }
+          foreach ($t in @('deptry', 'vulture', 'ruff')) {
+            if (-not $status.manifest.tools.$t) { throw "$t is missing from the manifest" }
+          }
+          # CODE-HEALTH-SPEC §1 is three tools. pip-audit is in the shipped ledger for the
+          # post-1.0 Security tab and must not reach the venv — its closure carries msgpack,
+          # which has no py3-none-any fallback to degrade to.
+          if ($status.manifest.pins -match 'pip-audit') {
+            throw "pip-audit reached the tools venv; see health::HEALTH_TOOLS"
+          }
+
+          # The manifest hash is the whole point: a second sync must do nothing.
+          $t0 = Get-Date
+          .\target\debug\pipdock.exe tools sync
+          $warm = ((Get-Date) - $t0).TotalSeconds
+          Write-Host "warm re-sync took ${warm}s"
+          if ($warm -gt 10) { throw "a fresh manifest did not short-circuit (${warm}s)" }
+
+          # A re-sync must repair the state PD-HLT-001 tells the user to re-sync out of. This
+          # shipped broken: `pip install -r` over satisfied pins is a no-op, so the sync installed
+          # nothing and then failed its own verification.
+          Remove-Item "$env:LOCALAPPDATA\PipDock\tools\.venv\Scripts\ruff.exe"
+          $need = (.\target\debug\pipdock.exe tools status --json | ConvertFrom-Json).need
+          if ($need.state -ne 'toolMissing' -or $need.tool -ne 'ruff') {
+            throw "a quarantined ruff.exe reported '$($need.state)', not toolMissing"
+          }
+          .\target\debug\pipdock.exe tools sync
+          if ($LASTEXITCODE -ne 0) { throw "a re-sync could not repair a missing tool" }
+
+          # Offline: PD-NET-011, exit 6, and no manifest left claiming the venv is good.
+          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\PipDock\tools"
+          $env:PIP_NO_INDEX = '1'
+          $out = .\target\debug\pipdock.exe tools sync 2>&1 | Out-String
+          $code = $LASTEXITCODE
+          Remove-Item Env:\PIP_NO_INDEX
+          Write-Host $out
+          if ($code -ne 6) { throw "an unreachable index exited $code, not 6" }
+          if ($out -notmatch 'PD-NET-011') { throw "an unreachable index did not report PD-NET-011" }
+          if (Test-Path "$env:LOCALAPPDATA\PipDock\tools\manifest.json") {
+            throw "a failed bootstrap left a manifest behind; the next run would think it was fresh"
+          }
+
+          # Required, not tidiness. The runner appends `exit $LASTEXITCODE` to every pwsh step,
+          # and the last command here *deliberately* exited 6 — so without this the step fails
+          # with every assertion having passed. Caught by running the script before trusting it.
+          exit 0
 
       - name: End-to-end — the SP-1 conflict is still reported
         shell: pwsh
