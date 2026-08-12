@@ -35,6 +35,7 @@ import type {
   RefreshReport,
   RollbackPreview,
   SnapshotMeta,
+  StepResult,
 } from './generated'
 
 export type * from './generated'
@@ -340,6 +341,19 @@ export const reportBugUrl = (env?: PyEnv, code?: string): Promise<BugReportLink>
  * version comes from `<python> -m pip --version`, so there is no env-free answer.
  */
 export const engineInfo = (env: PyEnv): Promise<EngineInfo[]> => invoke('engine_info', { env })
+
+/**
+ * Upgrade pip inside `env` (PRD P0-10).
+ *
+ * Runs pip whatever engine is configured — upgrading pip is a pip operation by definition
+ * (DATA-FLOW §7, amended by P1).
+ *
+ * Returns a `StepResult` carrying no versions: `from` and `to` are always absent, because the
+ * adapter runs one command and never reads a version. The caller re-probes the environment to
+ * refresh the row, which it has to do anyway. **No snapshot is taken** — DATA-FLOW §9.2's
+ * exemption, because a snapshot restored by pip is no use when pip is what is broken.
+ */
+export const pipUpgrade = (env: PyEnv): Promise<StepResult> => invoke('pip_upgrade', { env })
 
 /**
  * Subscribe to execution progress. Returns the unlisten function.
