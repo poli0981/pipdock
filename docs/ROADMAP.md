@@ -405,6 +405,27 @@ Tools venv, deptry/vulture/ruff runners + report UI + gated fix, pip upkeep, bug
 
 Decomposed **P1** pip upkeep · **P2** the tools venv · **P3** the runners + `HealthReport` · **P4** the Health screen · **P5** the gated `ruff --fix`. Three of the sentence's items are already spent: the bug-report deep link landed in S7, `PdOfflineBanner` in S4, and the keyboard map's `Ctrl+1..8` in S7 — what remains of "keyboard map" is `Enter` as primary action and folding the six `aria-live` regions. The icon/branding pass belongs with Phase 4's release slice; it churns binaries that must not sit inside a feature diff.
 
+### Phase 3 · P1 — pip upkeep — **done 2026-08-12**
+
+Eight commits. **P0-10 is complete in both heads**, and three defects older than the slice went with it.
+
+| | What landed |
+|---|---|
+| **Core** | `PipEngine::upgrade_pip` gains DATA-FLOW §2's PEP 668 guard and an `ensurepip` fallback; both heads call it directly rather than dispatching on the configured engine. `EnvRow.pip_version`, read out of the probe's own distribution list. |
+| **Bridge** | `pip_upgrade` registered — `NOT_YET` is down to four, two of them M3-general. |
+| **UI** | pip's version on every Environments row; *Upgrade pip* as a second inline button beside *Use*, below the planner floor only; a confirm that states the snapshot exemption. |
+| **Docs** | ARCHITECTURE §7's return type corrected; DATA-FLOW §7 (pip unconditionally) and §9.1/§9.2 (a fourth plan shape, and a visible exemption); UI-SPEC §5 gains a row. |
+
+**Three bugs that were not in the plan, none of them P1's own.**
+
+1. **A venv was reported externally managed whenever its base was.** A venv has no stdlib, so `sysconfig.get_path("stdlib")` resolves to the base — and every venv built from a Python shipping the marker (uv-managed, Debian, Homebrew, Fedora) refused every mutation with `PD-ENV-002`. pip's own `check_externally_managed` opens with the venv early-return that `probe.py` was missing. Found by making a venv from a uv-managed 3.11 to test P1 and watching `pip-upgrade` refuse it.
+2. **Every pip below the 22.2 floor is broken on Python 3.12+** — `distutils` and `pkgutil.ImpImporter` are both gone — so the button offered exactly when pip is too old ran a pip that could not start, and the traceback's `ModuleNotFoundError` classified as `PD-ENV-003`, "could not read this environment". Now falls back to `ensurepip`, which is stdlib and offline, chosen by asking `pip --version` rather than matching a traceback that differs by version.
+3. **Five locale strings were being discarded by the two-file merge.** `common.json` and `errors.json` both carry a top-level `errors` object, and a shallow spread replaced one with the other. `errors.unknown` was among them — `PdErrorRow`'s fallback for an unrecognized code, the thing S7 built so English developer text could never reach a user, rendering as the literal `errors.unknown`. Invisible to both existing i18n tests: one checks `Code::ALL`, the other checks en/vi parity, and both locales lost the same keys.
+
+**Exit criteria, counted by hand in the running app.** *Upgrade pip* → *Upgrade* is **2 clicks** from the landing screen. The row's version went 22.1.2 → 26.2.1 with exactly `["pip_upgrade", "env_probe"]` crossing the bridge — **no `env_scan`**, which is what "without a rescan" means and the only way to tell the two apart. The button then disappeared, the dialog's default focus was Cancel, and a refused upgrade rendered `PD-ENV-002` with localized copy and incremented `⚠ n`. Against real interpreters: 3.11 with a working pip 22.1.2 upgrades normally; 3.12 with the same pin, which cannot start, is repaired and ends at 26.2.1 running.
+
+**Deliberately not done:** the *Upgrade pip* button does **not** appear merely because a newer pip exists. That needs `pkg_outdated` — networked, per environment, N calls on the landing screen — to surface something Installed and Updates already offer. What those screens cannot do is upgrade a pip so old the planner behind them refuses to run, which is the only case the button takes.
+
 ### Phase 3 · P2 — the tools venv — **done 2026-08-12**
 
 Six commits. Code Health has an environment to run in, and `PD-HLT-001`'s shipped copy — *"Re-sync the tools environment"* — now refers to something the user can actually do.

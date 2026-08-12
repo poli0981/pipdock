@@ -73,15 +73,31 @@ summarises and installs over real commands. **"Update everything" is 4 clicks an
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-**Phase 3 P2 (the tools venv) is done** — `health::sync_tools_venv` builds
+**Phase 3 P1 and P2 are done.** P2 built the tools venv — `health::sync_tools_venv` fills
 `%LOCALAPPDATA%\PipDock\tools\.venv` from the shipped pins over `pipdock tools sync`, and there is
 no `TOOLS_PYTHON_MAX` because deptry ships an abi3 wheel (ROADMAP's premise for that const was
-wrong; the record says why). Next are **P1** (pip upkeep — `pip_upgrade` is the only command it
-needs, and `Engine::upgrade_pip`, the CLI command and `engine_info` all exist) and **P3** (the three
-runners + `HealthReport`, which P2 unblocked). `src-tauri/src/lib.rs`'s `NOT_YET` names the five
-commands still owed, each against its slice, and three tests keep that list honest in both
+wrong; the record says why). P1 closed **P0-10**: pip's version is on every Environments row and
+*Upgrade pip* is 2 clicks. **Next is P3** (the three runners + `HealthReport`), then P4 (the Health
+screen) and P5 (the gated `ruff --fix`); `~/.claude/plans/b-n-c-th-b-t-snappy-rabin.md` has all
+four decomposed, including six corrections to the specs found by running the pinned tools.
+`src-tauri/src/lib.rs`'s `NOT_YET` is down to **four** — `health_run`, `health_fix`, and
+`env_add_manual`/`logs_tail` which are M3-general — and three tests keep that list honest in both
 directions. P2 touched none of them: it is CLI-only on purpose, so P3's `health_run` owns the
 implicit sync rather than the frontend getting two ways to reach one operation.
+
+Three rules P1 left behind, all found by running rather than reading:
+
+- **A venv is never externally managed**, and `sysconfig.get_path("stdlib")` inside one resolves to
+  the *base*. `probe.py` was missing the early return pip's own `check_externally_managed` opens
+  with, so every venv built from a uv-managed, Debian, Homebrew or Fedora Python refused every
+  mutation. Anything reading a path out of `sysconfig` inside a venv is asking about the base.
+- **`envs::venv_scan` matches exactly `.venv`, `venv`, `env`, `.env`.** A scratch venv named
+  anything else is invisible to `env list` and to the GUI, and `env_add_manual` (*Browse…*) is
+  still owed — so hand-verification of any environment feature needs one of those four names in
+  the working directory.
+- **Every pip below 22.2 is broken on Python 3.12+** (`distutils`, `pkgutil.ImpImporter`), so the
+  one case *Upgrade pip* exists for is also a pip that cannot run. `upgrade_pip` falls back to
+  `ensurepip`, and decides by asking `pip --version` rather than matching a traceback.
 
 Three rules from S2/S3 that bind everything after them:
 
