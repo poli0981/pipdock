@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 complete; M2 Stages 1–4 done, S5 next**.
+Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 and M2 complete; Phase 3 P2 done, P1 and P3 next**.
 
 ## Read the docs before changing anything
 
@@ -73,10 +73,15 @@ summarises and installs over real commands. **"Update everything" is 4 clicks an
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-Next is **Phase 3 — Code Health**, and its first slice (P1, pip upkeep) needs only `pip_upgrade`:
-`Engine::upgrade_pip`, the CLI command and `engine_info` all exist. `src-tauri/src/lib.rs`'s
-`NOT_YET` names the five commands still owed, each against its slice, and three tests keep that
-list honest in both directions.
+**Phase 3 P2 (the tools venv) is done** — `health::sync_tools_venv` builds
+`%LOCALAPPDATA%\PipDock\tools\.venv` from the shipped pins over `pipdock tools sync`, and there is
+no `TOOLS_PYTHON_MAX` because deptry ships an abi3 wheel (ROADMAP's premise for that const was
+wrong; the record says why). Next are **P1** (pip upkeep — `pip_upgrade` is the only command it
+needs, and `Engine::upgrade_pip`, the CLI command and `engine_info` all exist) and **P3** (the three
+runners + `HealthReport`, which P2 unblocked). `src-tauri/src/lib.rs`'s `NOT_YET` names the five
+commands still owed, each against its slice, and three tests keep that list honest in both
+directions. P2 touched none of them: it is CLI-only on purpose, so P3's `health_run` owns the
+implicit sync rather than the frontend getting two ways to reach one operation.
 
 Three rules from S2/S3 that bind everything after them:
 
@@ -112,7 +117,7 @@ Things worth knowing before you change any of it:
 
 - **`cargo test` fails when `ui/src/ipc/generated.ts` is stale.** Fix with
   `cargo run -p xtask -- bindings`; the failure names that command and the first differing line.
-- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 54 snapshots) are the CLI's output
+- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 58 snapshots) are the CLI's output
   contract.** A diff there is a real behaviour change — re-bless deliberately, never reflexively.
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no

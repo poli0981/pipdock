@@ -20,12 +20,21 @@ The three tools are **never installed into the user's environment**. PipDock mai
 
 ```text
 %LOCALAPPDATA%\PipDock\tools\
-├─ .venv/                  # created with the newest discovered Python (≥3.10)
-├─ tools-requirements.txt  # exact pins, shipped with the app, updated per release via Dependabot
+├─ .venv/                  # created with the newest discovered Python (≥3.10), no upper bound
+├─ tools-requirements.txt  # the resolved three-tool subset actually installed, LF, no comments
 └─ manifest.json           # installed pin set + hash; mismatch with shipped pins ⇒ re-sync
 ```
 
-Bootstrap: on first Health run (or pin-set change), create/sync the venv from `tools-requirements.txt` using the configured engine, with progress in the console drawer. Pin policy: exact `==` pins resolved at PipDock release time (Dependabot PRs bump them, in their own group per RELEASE-CI §2); no floating versions at runtime. Offline: if bootstrap can't reach PyPI, Health reports PD-NET-011 and stays disabled; other tabs unaffected.
+Bootstrap: on first Health run (or pin-set change), create/sync the venv from `tools-requirements.txt`, with progress in the console drawer. Pin policy: exact `==` pins resolved at PipDock release time (Dependabot PRs bump them, in their own group per RELEASE-CI §2); no floating versions at runtime. Offline: if bootstrap can't reach PyPI, Health reports PD-NET-011 and stays disabled; other tabs unaffected.
+
+**Amended by Phase 3 · P2, 2026-08-12** — four corrections, each made against a running bootstrap:
+
+- **pip unconditionally, not "the configured engine".** The venv is created with `python -m venv` and populated with pip whatever the user selected. uv is a preference about the *user's* environments; Health going dark with `PD-ENG-001` because uv is not on PATH would be a failure with no relation to what was asked for, and pip is present wherever Python is.
+- **No upper Python bound, and no `TOOLS_PYTHON_MAX`.** ROADMAP assumed "deptry ships compiled wheels; no cp314 wheel means an sdist build". deptry does ship a Rust extension but builds it against CPython's **stable ABI** (`deptry-0.25.1-cp310-abi3-win_amd64.whl`), verified installing on 3.12.10 and 3.14.6 from the same file; vulture and ruff are `py3-none-*`. The one version-tagged member of the closure, `tomli`, also publishes a `py3-none-any` fallback. The install passes `--only-binary=:all:`, so a future gap is a clean `PD-NET-011` rather than an sdist build ending at `PD-BLD-001` — which would tell someone who clicked *Health* to install Visual Studio Build Tools.
+- **The repo's `tools/tools-requirements.txt` is the release-time ledger; the file written into `%LOCALAPPDATA%` is a rendering of it.** The ledger carries a fourth pin, `pip-audit`, for the post-1.0 Security tab (PRD P1-1). Health installs three. Rendering rather than copying is also what keeps the build machine's line endings out of the pin hash, which is taken over the *parsed* pin set for that reason.
+- **A sync rebuilds the venv rather than repairing it, and deletes `manifest.json` first.** `pip install -r` over satisfied pins is a no-op, so repairing a deleted `ruff.exe` installed nothing and then failed verification with `PD-HLT-001` — the state the code tells the user to re-sync out of. Deleting the manifest first means a torn sync reads as "never synced" rather than as a manifest claiming tools that are half-replaced.
+
+`python -m venv` exiting non-zero is **`PD-HLT-004`**, added in the same slice: `PD-NET-011` is `Area::Net` and would exit 6, so a script retrying on network failure would loop forever against a broken interpreter.
 
 ## 3. Inputs
 
