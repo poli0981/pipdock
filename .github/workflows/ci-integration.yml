@@ -224,11 +224,19 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $base = (python -c "import sysconfig;print(sysconfig.get_path('stdlib'))")
-          $marker = Join-Path $base 'EXTERNALLY-MANAGED'
+          # setup-python's interpreter by its own path, NOT `Get-Command python`. The "Install uv"
+          # step puts .uvtools\Scripts on PATH and a venv's Scripts holds a python.exe, so a PATH
+          # lookup here resolves to *that venv* — which is correctly not externally managed, so the
+          # assertion below failed against a fix that was working. Naming the interpreter removes
+          # the ambiguity in both directions: which one gets the marker, and which one is asked.
+          $basePython = Join-Path $env:pythonLocation 'python.exe'
+          if (-not (Test-Path $basePython)) { throw "no interpreter at $basePython" }
+
+          $marker = Join-Path (& $basePython -c "import sysconfig;print(sysconfig.get_path('stdlib'))") 'EXTERNALLY-MANAGED'
           Set-Content -Path $marker -Value "[externally-managed]`nError=planted by CI"
           try {
-            python -m venv .pep668
+            # From the base, so this is a venv rather than a venv of a venv.
+            & $basePython -m venv .pep668
             # `doctor --env`, not `env list`: an explicit path needs no discovery, so this does
             # not depend on the venv being named one of the four names venv_scan knows.
             $venv = .\target\debug\pipdock.exe doctor --env .pep668 --json | ConvertFrom-Json
@@ -239,14 +247,14 @@ jobs:
             # The other direction matters just as much: the base genuinely is managed, and a fix
             # that simply stopped looking would pass the assertion above while breaking PD-ENV-002
             # for the environments it exists to protect.
-            $sys = .\target\debug\pipdock.exe doctor --env (Get-Command python).Source --json |
-                   ConvertFrom-Json
+            $sys = .\target\debug\pipdock.exe doctor --env $basePython --json | ConvertFrom-Json
             if (-not $sys.externallyManaged) {
               throw "the base did not report the planted marker; the check stopped looking"
             }
           } finally {
             Remove-Item -LiteralPath $marker -ErrorAction SilentlyContinue
           }
+          exit 0
 
       - name: End-to-end — the SP-1 conflict is still reported
         shell: pwsh
