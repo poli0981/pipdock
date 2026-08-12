@@ -29,6 +29,8 @@ __pycache__/
 /.itest-appdata/
 
 # Editors / IDEs
+# `.claude/` holds git worktrees and a local dev-server launch config — machine state, not source.
+.claude/
 .idea/
 .vs/
 .vscode/*
