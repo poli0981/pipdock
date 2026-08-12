@@ -39,7 +39,15 @@ Bootstrap: on first Health run (or pin-set change), create/sync the venv from `t
 ## 3. Inputs
 
 - **Project folder** (persisted per environment in `index.db`): must contain Python sources; detection order for declared deps: `pyproject.toml` → `requirements*.txt` → none (deptry limited-mode notice).
-- **Associated environment**: the currently selected env; passed to deptry so "installed vs declared vs imported" compares against reality.
+- **Associated environment**: the currently selected env. Recorded on the report so a stale one can be told from a current one.
+
+**Amended by Phase 3 · P3, 2026-08-12 — deptry is *not* told about the environment, because it cannot be.** This line used to say the env is "passed to deptry so 'installed vs declared vs imported' compares against reality". **deptry 0.25.1 has no such option.** It ignores `VIRTUAL_ENV` and reads whatever its own interpreter can import — verified by watching it report `click`, which exists only in PipDock's tools venv, as `DEP003` transitive. Running it from the user's interpreter with the tools venv on `PYTHONPATH` does not help either: deptry's own dependencies come along. §2's isolation and this line's comparison are in conflict at this version, and isolation wins.
+
+The cost is bounded and named. deptry classifies an undeclared import as `DEP003` rather than `DEP001` when it can see the package, so the split is wrong for the nine packages the tools venv holds, and `DEP003` under-reports anything genuinely transitive in the *user's* environment. Both still mean "you imported something you did not declare", which §6 tells the user to fix the same way either way. `DEP003` is **not** suppressed: `--ignore DEP003` would turn a mislabelled finding into a missing one. The CLI and the Health screen say so where findings are shown.
+
+Also amended: the report type is **`HealthReport`**, not the `CheckReport` ARCHITECTURE §7 and CLI-SPEC §6 named — that name is taken by `engine.check()` and is a published `pipdock schema` contract.
+
+**What the tools actually emit**, since §5's sketch predates running them: deptry writes a *flat* list keyed by `module` (not a per-dependency object with a `locations` array) to a **file path**, not a stream — `--json-output` takes a location, so `-` would create a file called `-` in the project. vulture has no machine-readable output at all, and one of its eight message shapes names no identifier. ruff's documentation link is keyed by rule **name**, so §6's `.../rules/<code>` 404s; it is carried from ruff's own `url` field. All three exit **non-zero on findings**, and vulture uses **3**, not 1.
 
 ## 4. Invocations (from the tools venv's interpreter; argv arrays, CWD = project folder)
 

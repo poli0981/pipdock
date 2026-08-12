@@ -73,7 +73,14 @@ summarises and installs over real commands. **"Update everything" is 4 clicks an
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-**Phase 3 P1 and P2 are done.** P2 built the tools venv — `health::sync_tools_venv` fills
+**Phase 3 P1, P2 and P3 are done.** P3 built the runners: `pipdock health` runs deptry, vulture and
+ruff out of the tools venv and `health_run` streams the same over `health-progress`. **Only
+`health_fix` (P5) is still Phase 3's in `NOT_YET`**; P4 (the Health screen) needs no new command.
+Three tool facts are pinned by tests because the specs had them wrong: all three exit **non-zero on
+findings** and **vulture uses 3**; deptry emits a flat list keyed by *module* to a **file path** and
+**cannot be told which environment to compare against**; ruff's docs URL is keyed by rule **name**.
+
+P2 built the tools venv — `health::sync_tools_venv` fills
 `%LOCALAPPDATA%\PipDock\tools\.venv` from the shipped pins over `pipdock tools sync`, and there is
 no `TOOLS_PYTHON_MAX` because deptry ships an abi3 wheel (ROADMAP's premise for that const was
 wrong; the record says why). P1 closed **P0-10**: pip's version is on every Environments row and

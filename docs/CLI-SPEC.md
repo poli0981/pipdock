@@ -62,7 +62,7 @@ requests  held back at 2.30.0 (latest 2.32.3) — blocked by apiclient 1.4 (requ
 | Code | Meaning |
 |---|---|
 | 0 | success, all steps ok |
-| 1 | completed with per-package failures (see JSON `counts.failed`) |
+| 1 | completed with per-package failures (see JSON `counts.failed`); **or `health` found something** — a linter that exits 0 on findings is useless in a pre-commit hook, and `doctor` already uses this code for "found real problems" |
 | 2 | plan aborted, nothing executed (resolution impossible & user/skip policy removed everything; uninstall guard tripped without `--force`, PD-RES-004) |
 | 3 | environment error (PD-ENV-*, incl. PEP 668 block) |
 | 4 | engine unavailable / version too old (PD-ENG-*) |
@@ -73,7 +73,7 @@ requests  held back at 2.30.0 (latest 2.32.3) — blocked by apiclient 1.4 (requ
 
 ## 6. JSON contracts
 
-`--json` payloads are the serde-serialized core types (`Dist`, `OutdatedDist`, `ResolutionReport`, `ExecutionSummary`, `CheckReport`, `GuardReport`) — schema documented by `pipdock schema <type>` which prints the JSON Schema generated from the Rust types, so scripts can pin against it. Streaming commands (`update`, `install`, `health`) with `--json` emit NDJSON events matching the GUI's `plan-progress` payloads, terminated by a final `summary` object.
+`--json` payloads are the serde-serialized core types (`Dist`, `OutdatedDist`, `ResolutionReport`, `ExecutionSummary`, `CheckReport`, `GuardReport`, `HealthReport`) — schema documented by `pipdock schema <type>` which prints the JSON Schema generated from the Rust types, so scripts can pin against it. Streaming commands (`update`, `install`, `health`) with `--json` emit NDJSON events matching the GUI's `plan-progress` payloads, terminated by a final `summary` object.
 
 > **Not implemented, recorded 2026-08-12 (Phase 3 · P2).** No command in the binary emits NDJSON. `update`, `install`, `uninstall` and `tools sync` all stream engine output as plain lines to **stderr** and print a single final object to stdout; `health` is still the M3 stub. Either this paragraph or four commands are wrong, and closing it means changing the output shape of every streaming command at once — so it is its own slice, not a thing to half-do while adding a fifth. `tools sync` matches the existing behaviour deliberately rather than becoming the one command that is inconsistent with the other four.
 
