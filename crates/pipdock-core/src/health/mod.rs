@@ -4,9 +4,17 @@
 //! **report-only**, and the sole write path is `ruff --fix` / `ruff format` behind an explicit
 //! confirm. PipDock never edits `pyproject.toml` or `requirements.txt` for the user.
 
+pub mod deptry;
 pub mod project;
+pub mod report;
+pub mod ruff;
+pub mod vulture;
 
 pub use project::{DeclaredSource, declared_source};
+pub use report::{
+    DeptryIssue, FixApplicability, HealthReport, RuffFinding, RuffFindings, SourceLocation,
+    ToolProblem, VultureFinding,
+};
 
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
@@ -65,6 +73,31 @@ pub const HEALTH_TOOLS: &[&str] = &["deptry", "vulture", "ruff"];
 /// [`HEALTH_TOOLS`] for the wheel-tag evidence, and `--only-binary=:all:` for what happens if that
 /// ever stops being true.
 pub const MIN_TOOLS_PYTHON: (u32, u32) = crate::envs::MIN_PROBE_PYTHON;
+
+/// Did this tool *run and have something to say*, or did it fail?
+///
+/// **All three exit non-zero on findings, and they disagree about how.** This is the single most
+/// likely way to get this module wrong: a plain `!out.ok()` reports every successful run over a
+/// real project as `PD-HLT-002`, and a suite that only ever runs the tools over a clean fixture
+/// directory agrees with it. Verified by running the pinned versions on 2026-08-12:
+///
+/// * **deptry 0.25.1** — `0` clean, `1` findings
+/// * **vulture 2.16** — `0` none, `1` invalid input, `2` bad arguments, `3` dead code
+/// * **ruff 0.16.0** — `0` clean, `1` violations, `2` error
+///
+/// A pin bump has to re-check this, and its real gate is the fixture corpus plus the integration
+/// job — not this comment.
+#[must_use]
+pub fn is_findings_exit(tool: &str, code: Option<i32>) -> bool {
+    matches!(
+        (tool, code),
+        ("deptry" | "ruff", Some(0 | 1))
+            | (
+                "vulture",
+                Some(vulture::EXIT_NO_DEAD_CODE | vulture::EXIT_DEAD_CODE)
+            )
+    )
+}
 
 /// How many steps a sync reports: one venv, one install, one verification per tool.
 ///
@@ -997,6 +1030,61 @@ mod tests {
     }
 
     // -- the sync ---------------------------------------------------------------
+
+    // -- the exit-code table ----------------------------------------------------
+
+    #[test]
+    fn a_tool_that_found_something_is_not_a_tool_that_failed() {
+        // The whole point. Every one of these is a *successful* run over a project with problems,
+        // and reading them as failures is how this module ships broken while its tests pass.
+        assert!(is_findings_exit("deptry", Some(1)));
+        assert!(is_findings_exit("ruff", Some(1)));
+        assert!(
+            is_findings_exit("vulture", Some(3)),
+            "vulture uses 3, not 1"
+        );
+    }
+
+    #[test]
+    fn a_clean_run_is_still_a_run() {
+        for tool in HEALTH_TOOLS {
+            assert!(is_findings_exit(tool, Some(0)), "{tool} exit 0");
+        }
+    }
+
+    #[test]
+    fn vultures_other_codes_are_real_failures() {
+        // 1 is invalid input and 2 is bad arguments — the two that would otherwise be swallowed as
+        // "found dead code" by a table copied from deptry's.
+        assert!(!is_findings_exit("vulture", Some(1)));
+        assert!(!is_findings_exit("vulture", Some(2)));
+    }
+
+    #[test]
+    fn a_crash_or_a_signal_is_never_findings() {
+        for tool in HEALTH_TOOLS {
+            // `None` is the watchdog or a signal: `Output.code` is None when the process did not
+            // exit on its own, and reading that as clean would report a killed tool as passing.
+            assert!(!is_findings_exit(tool, None), "{tool} killed");
+            assert!(!is_findings_exit(tool, Some(101)), "{tool} panicked");
+            // 2 is a real failure for all three — ruff's "error", vulture's "bad arguments", and
+            // nothing deptry documents.
+            assert!(!is_findings_exit(tool, Some(2)), "{tool} exit 2");
+        }
+    }
+
+    #[test]
+    fn the_table_covers_exactly_the_tools_that_run() {
+        // A fourth tool added to HEALTH_TOOLS without a row here would fall through to `false` and
+        // report every clean run as a failure.
+        for tool in HEALTH_TOOLS {
+            assert!(
+                is_findings_exit(tool, Some(0)),
+                "{tool} has no row in the exit table"
+            );
+        }
+        assert!(!is_findings_exit("pip-audit", Some(0)), "not a health tool");
+    }
 
     #[test]
     fn the_step_count_matches_what_the_sync_actually_reports() {

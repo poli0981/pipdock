@@ -1,0 +1,40 @@
+[
+  {
+    "cell": null,
+    "code": "invalid-syntax",
+    "end_location": {
+      "column": 11,
+      "row": 1
+    },
+    "filename": "C:\\proj\\broken.py",
+    "fix": null,
+    "location": {
+      "column": 10,
+      "row": 1
+    },
+    "message": "Expected a parameter or the end of the parameter list",
+    "name": "invalid-syntax",
+    "noqa_row": null,
+    "severity": "error",
+    "url": null
+  },
+  {
+    "cell": null,
+    "code": "invalid-syntax",
+    "end_location": {
+      "column": 1,
+      "row": 2
+    },
+    "filename": "C:\\proj\\broken.py",
+    "fix": null,
+    "location": {
+      "column": 11,
+      "row": 1
+    },
+    "message": "Expected `)`, found newline",
+    "name": "invalid-syntax",
+    "noqa_row": null,
+    "severity": "error",
+    "url": null
+  }
+]

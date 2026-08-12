@@ -27,3 +27,9 @@ crates/pipdock-core/tests/fixtures/**/*.txt -text
 # The JSON sidecars are ours, not the engines'. They are ordinary text and must stay diffable:
 # meta.json is the contract the drift job gates on, so its diff has to be legible.
 crates/pipdock-core/tests/fixtures/**/*.json text eol=crlf
+
+# ...except under health/, where the JSON *is* the tool's output rather than a sidecar of ours.
+# deptry and ruff write it, so it gets the same byte-for-byte treatment the engine .txt captures
+# get — the rule above would have rewritten a captured document's line endings and quietly made it
+# something no tool ever emitted. Later rules win, which is what lets this sit as an exception.
+crates/pipdock-core/tests/fixtures/health/** -text

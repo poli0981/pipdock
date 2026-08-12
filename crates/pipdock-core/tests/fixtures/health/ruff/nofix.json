@@ -1,0 +1,21 @@
+[
+  {
+    "cell": null,
+    "code": "E722",
+    "end_location": {
+      "column": 11,
+      "row": 4
+    },
+    "filename": "C:\\proj\\nofix.py",
+    "fix": null,
+    "location": {
+      "column": 5,
+      "row": 4
+    },
+    "message": "Do not use bare `except`",
+    "name": "bare-except",
+    "noqa_row": 4,
+    "severity": "error",
+    "url": "https://docs.astral.sh/ruff/rules/bare-except"
+  }
+]

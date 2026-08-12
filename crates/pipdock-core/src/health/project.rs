@@ -11,7 +11,9 @@ use crate::errors::{Code, PdError, Result};
 ///
 /// deptry needs one of these to have anything to compare against. `None` is not an error — it is
 /// the "limited-mode notice" §3 asks the UI to show, and the other two tools do not care.
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 #[serde(tag = "kind", rename_all = "camelCase")]
 pub enum DeclaredSource {
     /// A `pyproject.toml`, which is what deptry prefers.

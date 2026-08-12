@@ -1,0 +1,14 @@
+[
+    {
+        "error": {
+            "code": "DEP002",
+            "message": "'httpx' defined as a dependency but not used in the codebase"
+        },
+        "module": "httpx",
+        "location": {
+            "file": "pyproject.toml",
+            "line": null,
+            "column": null
+        }
+    }
+]

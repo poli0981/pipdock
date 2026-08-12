@@ -1,0 +1,8 @@
+pkg\app.py:1: unused import 'os' (90% confidence)
+pkg\app.py:2: unused import 'json' (90% confidence)
+pkg\app.py:6: unused class 'Handler' (60% confidence)
+pkg\app.py:7: unused method 'handle' (60% confidence)
+pkg\app.py:10: unused method 'dead' (60% confidence)
+pkg\app.py:12: unreachable code after 'return' (100% confidence)
+pkg\app.py:15: unused function 'unused_helper' (60% confidence)
+pkg\app.py:19: unused variable 'CONFIG' (60% confidence)
