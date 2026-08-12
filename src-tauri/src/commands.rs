@@ -8,11 +8,11 @@
 //! `Serialize` error type, and the frontend contract in `ui/src/ipc` is a flat
 //! `{ code, message, stderrTail }`. One conversion here beats a shape the UI has to unwrap.
 
-use pipdock_core::engine;
+use pipdock_core::engine::{self, Engine as _, pip::PipEngine};
 use pipdock_core::envs::{self, ScanProgress};
 use pipdock_core::flow;
 use pipdock_core::index::{self, NameIndex};
-use pipdock_core::model::EnvSource;
+use pipdock_core::model::{EnvSource, StepResult};
 use pipdock_core::pins::{self, Pin};
 use pipdock_core::plan::{Decision, ExecutionSummary};
 use pipdock_core::settings::{self, Consent, Settings};
@@ -744,6 +744,42 @@ fn forward_progress(
             let _ = emitter.emit("plan-progress", &event);
         }
     });
+}
+
+/// Upgrade pip inside `env` (PRD P0-10).
+///
+/// **`PipEngine` unconditionally**, never `engine::for_id(settings.engine)`. Upgrading pip is a pip
+/// operation by definition; the engine setting is a preference about how the *user's* environments
+/// are resolved, and DATA-FLOW §7 (as amended by P1) says so. The CLI does the same.
+///
+/// **Returns `StepResult`, not `ExecutionSummary`.** ARCHITECTURE §7's row was wrong: there is no
+/// plan, no phase and no per-package counts here, and inventing them would be four lies for one
+/// step. The before/after version pair is not in it either — the caller re-probes, which it has to
+/// do anyway to refresh the row.
+///
+/// **No snapshot** (DATA-FLOW §9.2's exemption, and it is deliberate). A snapshot's only restore
+/// path is `pip install pip==X` executed *by pip*, so one taken to protect against a broken pip has
+/// no consumer that could use it. The exemption is made visible rather than silent: the confirm
+/// dialog says no snapshot is taken.
+///
+/// Claims the mutation slot because two pip invocations against one site-packages would interleave.
+///
+/// # Errors
+/// `PD-ENV-002` on a PEP 668 environment; `PD-RES-003` when a plan is already in flight; whatever
+/// `classify_stderr` makes of a failed install.
+#[tauri::command]
+pub async fn pip_upgrade(state: tauri::State<'_, AppState>, env: PyEnv) -> Wire<StepResult> {
+    // `claim` rather than `claim_update`: there is nothing parked to expect. It discards a parked
+    // session, which is reachable only if a preview is open — and the plan panel replaces the whole
+    // content area while one is, so the Environments row is not clickable.
+    state.sessions.claim().await?;
+
+    let result = PipEngine.upgrade_pip(&env).await;
+    // Released on **both** paths. A claim that is never released leaves every later command
+    // answering PD-RES-003 for a plan that never existed — S5 bug 1, and the reason this is not an
+    // early `?`.
+    state.release().await;
+    Ok(result?)
 }
 
 /// Detected version and availability for **both** engines (ARCHITECTURE §7).

@@ -24,9 +24,8 @@ pub mod state;
 /// `COMMANDS` and reality disagree in either direction.
 pub const NOT_YET: &[(&str, &str)] = &[
     ("env_add_manual", "M3 — Browse… has no surface yet"),
-    ("health_run", "Phase 3 — Code Health"),
-    ("health_fix", "Phase 3 — Code Health"),
-    ("pip_upgrade", "Phase 3 P1 — pip upkeep"),
+    ("health_run", "Phase 3 P3 — the runners"),
+    ("health_fix", "Phase 3 P5 — the gated ruff --fix"),
     ("logs_tail", "M3 — needs the logging subsystem"),
 ];
 
@@ -71,6 +70,7 @@ pub fn run() {
             commands::snapshot_rollback,
             commands::report_bug_url,
             commands::engine_info,
+            commands::pip_upgrade,
             commands::index_search,
             commands::index_refresh,
             commands::pkg_metadata,

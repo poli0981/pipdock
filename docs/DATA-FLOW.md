@@ -155,10 +155,20 @@ M3 rather than bolted onto a preview. Until then the preview's promise is precis
 
 1. No mutating engine call without an **accepted proof** for this session: a `ResolutionReport` for
    a resolve-shaped plan (update, install), a `GuardReport` plus a `GuardAck` for a removal (§5), a
-   `RollbackPlan` for a restore (§8). Originally written as "a `ResolutionReport`", which the
+   `RollbackPlan` for a restore (§8), and **nothing for pip upkeep, which is not resolver-planned
+   and cannot be** (§7; added by P1). Originally written as "a `ResolutionReport`", which the
    uninstall path cannot produce — there is nothing to resolve — leaving the one flow with no
-   preview also the one flow the invariant did not describe.
-2. No mutating engine call without a successful snapshot write.
+   preview also the one flow the invariant did not describe. The fourth shape is the same lesson a
+   second time: pip below 22.2 cannot produce `--dry-run --report` output *at all*, which is
+   precisely the case the feature exists for, so demanding a report would refuse the only
+   environments that need it. `pip_upgrade` is one IPC message parking nothing, so it needs no
+   waiver type either — those exist for a decision made in one message and consumed in another.
+2. No mutating engine call without a successful snapshot write, **except pip upkeep** (added by P1).
+   A snapshot's only restore path is `pip install pip==X` executed *by pip*, so one taken to protect
+   against a broken pip has no consumer that could use it. The exemption is **made visible rather
+   than silent**: the confirm dialog states that no snapshot is taken. That is what keeps it an
+   exemption rather than an erosion — every other mutating path still writes one, and
+   `flow::proof_from` still refuses `NotTaken` with `PD-SNP-001`.
 3. `plan_execute` refuses a report older than 10 minutes or if the env's probe hash changed (env drifted → re-resolve).
 4. Every failure surfaced to UI/CLI carries a catalog code.
 5. Pinned packages never appear in a `PlanRequest.upgrades` unless the user explicitly unpinned them this session.

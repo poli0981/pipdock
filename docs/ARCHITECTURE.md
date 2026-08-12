@@ -138,7 +138,7 @@ This table is the surface. A command that is not listed here does not exist; add
 | `health_run` | `CheckReport` | Run the Code Health tools against a project folder. |
 | `health_fix` | `ExecutionSummary` | Apply the gated `ruff` fix. |
 | `engine_info` | `EngineInfo[]` | Detected version and availability per engine. Settings shows both, so this returns both. |
-| `pip_upgrade` | `ExecutionSummary` | Upgrade pip itself in the selected environment. |
+| `pip_upgrade` | `StepResult` | Upgrade pip itself in the selected environment. **Not `ExecutionSummary`** — there is no plan, no phase and no per-package counts, and inventing them would be four lies for one step. Carries no versions either (`from`/`to` are always absent): the caller re-probes, which it must do anyway to refresh the row. |
 | `settings_get` | `Settings` | Read stored settings. |
 | `settings_set` | `Settings` | Persist settings, returning what was actually stored rather than what was sent. |
 | `legal_consent_get` | `ConsentState` | Whether the legal gate can be skipped for this build's documents. |
