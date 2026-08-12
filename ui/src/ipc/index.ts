@@ -124,6 +124,14 @@ export interface EnvRow {
   envHash: string
   env?: PyEnv
   packages?: number
+  /**
+   * The environment's own pip, out of the probe's distribution list — not `engine_info`, which
+   * would add two subprocesses per row to the landing screen.
+   *
+   * Absent means the probe found no pip, which is a real state (`--without-pip`, or `-I` hiding a
+   * user-site install), not "not yet known".
+   */
+  pipVersion?: string
   error?: PdError
 }
 
