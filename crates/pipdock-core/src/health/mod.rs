@@ -5,6 +5,7 @@
 //! confirm. PipDock never edits `pyproject.toml` or `requirements.txt` for the user.
 
 use std::collections::BTreeMap;
+use std::path::{Path, PathBuf};
 
 use crate::errors::{Code, PdError, Result};
 use crate::model::{PinnedSpec, PkgName, Version};
@@ -126,6 +127,140 @@ pub fn requirements_body(pins: &[PinnedSpec]) -> String {
         acc.push('\n');
         acc
     })
+}
+
+/// The manifest filename inside the tools directory.
+const MANIFEST_FILE: &str = "manifest.json";
+
+/// `<app_data>\tools` — the layout CODE-HEALTH-SPEC §2 draws.
+#[must_use]
+pub fn tools_dir(app_data: &Path) -> PathBuf {
+    app_data.join("tools")
+}
+
+/// `<tools_dir>\.venv\Scripts\python.exe`.
+#[must_use]
+pub fn venv_python(tools_dir: &Path) -> PathBuf {
+    tools_dir.join(".venv").join("Scripts").join("python.exe")
+}
+
+/// `<tools_dir>\.venv\Scripts\<tool>.exe` — the console script pip installs for each tool.
+#[must_use]
+pub fn tool_exe(tools_dir: &Path, tool: &str) -> PathBuf {
+    tools_dir
+        .join(".venv")
+        .join("Scripts")
+        .join(format!("{tool}.exe"))
+}
+
+/// What was installed into the tools venv, and against which pins.
+///
+/// **On-disk only, for now.** It deliberately does not derive `JsonSchema` and is not in
+/// `SCHEMA_TYPES`: P2 has no IPC surface, and a type that crosses the bridge is a contract that has
+/// to be kept. The day P3 or P4 returns it from a Tauri command it inherits `snapshot::Meta`'s
+/// discipline — `#[serde(alias)]` on every renamed field, because manifests written by earlier
+/// builds will be on disk and a manifest that no longer parses silently re-syncs the venv on every
+/// launch. The field names below already serialize camelCase, so that rename should never happen.
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ToolsManifest {
+    /// SHA-256 of the normalized pin set — see [`pins_hash`].
+    pub pins_hash: String,
+    /// The pins as installed, `name==version`, sorted by name.
+    pub pins: Vec<String>,
+    /// The version each tool actually reported from `--version`, keyed by tool name.
+    ///
+    /// Reported, not assumed: a pin says what was requested, this says what answered. P3's
+    /// `HealthReport.toolVersions` (CODE-HEALTH-SPEC §5) is this map.
+    pub tools: BTreeMap<String, String>,
+    /// `exec::canonical_interpreter` of the venv's python.
+    ///
+    /// **An identity, not a path to execute.** It is case-folded (SP-6), which is fine to run on
+    /// Windows and therefore tempting; the path actually invoked is always re-derived from the
+    /// tools directory through [`venv_python`], so that a moved app-data folder still works.
+    pub python: String,
+    /// The interpreter's version, e.g. `"3.14.6"`.
+    pub python_version: String,
+    /// The build that wrote it, as `snapshot::Meta` records.
+    pub app_version: String,
+    /// When it was written, RFC 3339.
+    pub synced_at: String,
+}
+
+/// Why a re-sync is owed, or that it is not.
+///
+/// An enum rather than a `bool` because `doctor` and P4's Health screen have to *say* why, and
+/// because `ToolMissing` is the state `PD-HLT-001`'s shipped copy is about ("Re-sync the tools
+/// environment"). A `bool` would make "antivirus quarantined `ruff.exe`" indistinguishable from
+/// "up to date".
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "state", rename_all = "camelCase")]
+pub enum SyncNeed {
+    /// The venv matches the shipped pins and every tool is on disk.
+    Fresh,
+    /// No manifest — never synced, or a previous sync was interrupted before it finished.
+    NeverSynced,
+    /// The shipped pin set has moved since the venv was built, typically a Dependabot bump.
+    #[serde(rename_all = "camelCase")]
+    PinsChanged {
+        /// The hash the manifest recorded.
+        from: String,
+        /// The hash this build ships.
+        to: String,
+    },
+    /// The manifest is current but the venv's interpreter is gone.
+    InterpreterGone,
+    /// The manifest is current but a tool's console script is not on disk.
+    ToolMissing(String),
+}
+
+impl SyncNeed {
+    /// Whether a sync has to run.
+    #[must_use]
+    pub fn is_needed(&self) -> bool {
+        !matches!(self, Self::Fresh)
+    }
+}
+
+/// Read `manifest.json`, if there is a readable one.
+///
+/// `None` for absent, unreadable and unparseable alike — all three mean the same thing to every
+/// caller, which is "re-sync". Distinguishing them would offer the user a choice they cannot act on.
+#[must_use]
+pub fn read_manifest(tools_dir: &Path) -> Option<ToolsManifest> {
+    let raw = std::fs::read_to_string(tools_dir.join(MANIFEST_FILE)).ok()?;
+    serde_json::from_str(&raw).ok()
+}
+
+/// Whether the tools venv matches the shipped pins **and** its tools are actually on disk.
+///
+/// Both halves matter. Comparing hashes alone would report `Fresh` for a venv whose `ruff.exe` an
+/// antivirus quarantined, which is precisely the case `PD-HLT-001` exists for.
+///
+/// # Errors
+/// `PD-PKG-002` when the shipped ledger is malformed — a build-time mistake, surfaced here because
+/// this is the first thing every caller does.
+pub fn needs_sync(tools_dir: &Path) -> Result<SyncNeed> {
+    let want = pins_hash(&pins()?);
+
+    let Some(manifest) = read_manifest(tools_dir) else {
+        return Ok(SyncNeed::NeverSynced);
+    };
+    if manifest.pins_hash != want {
+        return Ok(SyncNeed::PinsChanged {
+            from: manifest.pins_hash,
+            to: want,
+        });
+    }
+    if !venv_python(tools_dir).is_file() {
+        return Ok(SyncNeed::InterpreterGone);
+    }
+    for tool in HEALTH_TOOLS {
+        if !tool_exe(tools_dir, tool).is_file() {
+            return Ok(SyncNeed::ToolMissing((*tool).to_owned()));
+        }
+    }
+    Ok(SyncNeed::Fresh)
 }
 
 /// Sort by normalized name, so a reordered ledger is not a re-sync.
@@ -289,6 +424,147 @@ mod tests {
         assert!(!body.contains("pip-audit"));
         assert_eq!(body.lines().count(), HEALTH_TOOLS.len());
         assert!(body.ends_with('\n'));
+    }
+
+    // -- the manifest and the re-sync predicate ---------------------------------
+
+    #[test]
+    fn a_directory_with_no_manifest_has_never_been_synced() {
+        let dir = scratch("never");
+
+        assert_eq!(
+            needs_sync(&dir).expect("ledger parses"),
+            SyncNeed::NeverSynced
+        );
+        assert!(needs_sync(&dir).expect("ledger parses").is_needed());
+    }
+
+    #[test]
+    fn an_unparseable_manifest_reads_as_never_synced() {
+        // Not its own state: absent, unreadable and corrupt all mean "re-sync" to every caller.
+        let dir = scratch("corrupt");
+        write_venv(&dir, HEALTH_TOOLS);
+        std::fs::write(dir.join(MANIFEST_FILE), "{ not json").expect("write");
+
+        assert_eq!(
+            needs_sync(&dir).expect("ledger parses"),
+            SyncNeed::NeverSynced
+        );
+    }
+
+    #[test]
+    fn a_matching_manifest_with_every_tool_present_is_fresh() {
+        let dir = scratch("fresh");
+        write_venv(&dir, HEALTH_TOOLS);
+        write_manifest(&dir, &pins_hash(&pins().expect("ledger parses")));
+
+        assert_eq!(needs_sync(&dir).expect("ledger parses"), SyncNeed::Fresh);
+        assert!(!needs_sync(&dir).expect("ledger parses").is_needed());
+    }
+
+    /// The case a hash comparison alone would call `Fresh`, and the one PD-HLT-001 is about.
+    #[test]
+    fn a_quarantined_tool_is_detected_even_though_the_hash_still_matches() {
+        let dir = scratch("quarantined");
+        write_venv(&dir, &["deptry", "vulture"]); // ruff.exe never written
+        write_manifest(&dir, &pins_hash(&pins().expect("ledger parses")));
+
+        assert_eq!(
+            needs_sync(&dir).expect("ledger parses"),
+            SyncNeed::ToolMissing("ruff".to_owned())
+        );
+    }
+
+    #[test]
+    fn a_stale_hash_reports_both_sides_so_the_user_can_see_what_moved() {
+        let dir = scratch("stale");
+        write_venv(&dir, HEALTH_TOOLS);
+        write_manifest(&dir, &"0".repeat(64));
+
+        let want = pins_hash(&pins().expect("ledger parses"));
+        assert_eq!(
+            needs_sync(&dir).expect("ledger parses"),
+            SyncNeed::PinsChanged {
+                from: "0".repeat(64),
+                to: want,
+            }
+        );
+    }
+
+    #[test]
+    fn a_missing_interpreter_is_its_own_state() {
+        let dir = scratch("gone");
+        write_venv(&dir, HEALTH_TOOLS);
+        std::fs::remove_file(venv_python(&dir)).expect("remove python");
+        write_manifest(&dir, &pins_hash(&pins().expect("ledger parses")));
+
+        assert_eq!(
+            needs_sync(&dir).expect("ledger parses"),
+            SyncNeed::InterpreterGone
+        );
+    }
+
+    #[test]
+    fn a_manifest_round_trips_through_its_on_disk_form() {
+        let dir = scratch("roundtrip");
+        write_venv(&dir, HEALTH_TOOLS);
+        write_manifest(&dir, "abc");
+
+        let read = read_manifest(&dir).expect("written manifest is readable");
+        assert_eq!(read.pins_hash, "abc");
+        assert_eq!(read.tools.get("ruff").map(String::as_str), Some("0.16.0"));
+    }
+
+    /// The camelCase spelling is the shape a future IPC surface would inherit, so pin it now —
+    /// a later rename is what would need `#[serde(alias)]`.
+    #[test]
+    fn the_manifest_serializes_camel_case() {
+        let dir = scratch("camel");
+        write_venv(&dir, HEALTH_TOOLS);
+        write_manifest(&dir, "abc");
+
+        let raw = std::fs::read_to_string(dir.join(MANIFEST_FILE)).expect("read");
+        for key in ["pinsHash", "pythonVersion", "appVersion", "syncedAt"] {
+            assert!(raw.contains(key), "expected {key} in {raw}");
+        }
+        assert!(!raw.contains('_'), "no snake_case key may survive: {raw}");
+    }
+
+    /// A scratch directory of our own, cleaned on entry. Matches `store`'s idiom rather than
+    /// adding a `tempfile` dev-dependency that would have to clear `cargo audit` forever.
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pd-health-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    /// Lay out a plausible venv: an interpreter plus a console script per named tool.
+    fn write_venv(tools_dir: &Path, tools: &[&str]) {
+        let scripts = tools_dir.join(".venv").join("Scripts");
+        std::fs::create_dir_all(&scripts).expect("create Scripts");
+        std::fs::write(venv_python(tools_dir), "").expect("write python.exe");
+        for tool in tools {
+            std::fs::write(tool_exe(tools_dir, tool), "").expect("write tool");
+        }
+    }
+
+    fn write_manifest(tools_dir: &Path, hash: &str) {
+        let installed = pins().expect("ledger parses");
+        let manifest = ToolsManifest {
+            pins_hash: hash.to_owned(),
+            pins: installed.iter().map(PinnedSpec::to_requirement).collect(),
+            tools: installed
+                .iter()
+                .map(|p| (p.name.to_string(), p.version.to_string()))
+                .collect(),
+            python: "c:\\x\\.venv\\scripts\\python.exe".to_owned(),
+            python_version: "3.14.6".to_owned(),
+            app_version: env!("CARGO_PKG_VERSION").to_owned(),
+            synced_at: "2026-08-12T00:00:00Z".to_owned(),
+        };
+        let json = serde_json::to_string_pretty(&manifest).expect("serialize");
+        std::fs::write(tools_dir.join(MANIFEST_FILE), json).expect("write manifest");
     }
 
     /// Parse a ledger fragment and hash it, the way `pins`/`pins_hash` do for the real one.
