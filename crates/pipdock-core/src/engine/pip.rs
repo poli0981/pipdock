@@ -218,12 +218,28 @@ impl Engine for PipEngine {
             ));
         }
 
-        let out = Command::python(&env.interpreter)
-            .args(["-m", "pip", "install", "-U", "pip"])
-            .run()
-            .await?;
+        let out = Self::install_latest_pip(&env.interpreter).await?;
         if !out.ok() {
-            return Err(PdError::from_engine_stderr(&out.stderr));
+            // A failed upgrade has two very different causes, and the difference is the whole
+            // feature. The interesting one: **every pip below the 22.2 planner floor is broken on
+            // Python 3.12+** — `distutils` and `pkgutil.ImpImporter` were both removed, so pip
+            // cannot import itself, and `install -U pip` fails for the same reason the upgrade was
+            // being offered. Left alone the user gets a traceback whose `ModuleNotFoundError` the
+            // classifier reads as `PD-ENV-003`, "PipDock could not read this environment": nothing
+            // probed, nothing actionable.
+            //
+            // Asking `pip --version` separates the two rather than pattern-matching the traceback:
+            // a pip that cannot answer that cannot do anything, and one that can had a real install
+            // failure worth reporting as-is. One extra process, and only when something already
+            // went wrong.
+            if Self::pip_runs(&env.interpreter).await {
+                return Err(PdError::from_engine_stderr(&out.stderr));
+            }
+            Self::ensurepip(&env.interpreter).await?;
+            let retry = Self::install_latest_pip(&env.interpreter).await?;
+            if !retry.ok() {
+                return Err(PdError::from_engine_stderr(&retry.stderr));
+            }
         }
         Ok(StepResult {
             pkg: PkgName::parse("pip").unwrap_or_else(|_| unreachable!("pip is a valid name")),
@@ -233,6 +249,58 @@ impl Engine for PipEngine {
             code: None,
             stderr_tail: None,
         })
+    }
+}
+
+impl PipEngine {
+    /// `<python> -m pip install -U pip`.
+    async fn install_latest_pip(interpreter: &std::path::Path) -> Result<crate::exec::Output> {
+        Command::python(interpreter)
+            .args(["-m", "pip", "install", "-U", "pip"])
+            .run()
+            .await
+    }
+
+    /// Can this environment's pip start at all?
+    ///
+    /// `--version` is the cheapest question that requires pip to import successfully, which is the
+    /// thing actually in doubt. Deliberately not a stderr pattern: the tracebacks differ by Python
+    /// version (`distutils` on 3.12, `pkgutil.ImpImporter` on 3.12 for older pips still) and by pip
+    /// version, and a rule matching them would go stale silently.
+    async fn pip_runs(interpreter: &std::path::Path) -> bool {
+        Command::python(interpreter)
+            .args(["-m", "pip", "--version"])
+            .timeout(std::time::Duration::from_secs(30))
+            .run()
+            .await
+            .is_ok_and(|out| out.ok())
+    }
+
+    /// Reinstall pip from the copy bundled with the interpreter (`ensurepip`).
+    ///
+    /// The documented recovery for a pip that cannot import itself, and the reason it works here is
+    /// that it is **stdlib and offline**: the bundled wheel ships with CPython, so this repairs an
+    /// environment that has no working installer and needs no network to do it. What it lands is
+    /// whatever that Python bundles — always at or above the planner floor for any Python new
+    /// enough to have broken the old pip — which the caller then upgrades to the real latest.
+    ///
+    /// # Errors
+    /// `PD-ENG-001` when `ensurepip` is unavailable or fails. That is the honest code: pip is the
+    /// engine, it is not runnable, and it could not be bootstrapped either.
+    async fn ensurepip(interpreter: &std::path::Path) -> Result<()> {
+        let out = Command::python(interpreter)
+            .args(["-m", "ensurepip", "--upgrade"])
+            .run()
+            .await?;
+        if out.ok() {
+            return Ok(());
+        }
+        Err(PdError::new(
+            Code::EngNotFound,
+            "this environment's pip cannot run and could not be rebuilt with ensurepip; \
+             recreate the virtual environment",
+        )
+        .with_stderr(&out.stderr))
     }
 }
 
