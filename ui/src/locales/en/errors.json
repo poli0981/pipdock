@@ -30,6 +30,7 @@
     "PD-HLT-001": "A Code Health tool is missing. Re-sync the tools environment.",
     "PD-HLT-002": "A Code Health tool stopped with an error. The other results still apply.",
     "PD-HLT-003": "A Code Health tool took too long and was stopped. The report is partial.",
+    "PD-HLT-004": "Code Health could not build its tools environment. Check your Python install.",
     "PD-INT-001": "PipDock hit an internal error.",
     "PD-ENG-999": "The engine failed for a reason PipDock does not recognise yet."
   }

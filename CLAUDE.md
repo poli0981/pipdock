@@ -12,8 +12,8 @@ The design is fully specified. Read in this order; do not invent behaviour that 
 3. `docs/DATA-FLOW.md` — update/install/uninstall/rollback state machines, engine command mapping, **invariants §9**
 4. `docs/UI-SPEC.md` — design tokens, screens, click budgets, keyboard map
 5. `docs/CLI-SPEC.md` — commands, flags, exit codes, JSON contracts
-6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **32 in Rust**
-   (`Code::ALL`, pinned by two tests); the doc tabulates 30 because it folds `PD-HLT-001..003`
+6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **33 in Rust**
+   (`Code::ALL`, pinned by two tests); the doc tabulates 30 because it folds `PD-HLT-001..004`
    into one row. Adding a code means the catalog, `Code::ALL`, both counts, the
    "no code without a fixture" gate in `classifier_corpus.rs`, **both `locales/*/errors.json`**,
    a regenerated `codes.json` (`cargo run -p xtask -- ipc-fixtures`), and re-blessed goldens —

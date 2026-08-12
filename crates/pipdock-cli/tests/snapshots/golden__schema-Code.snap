@@ -162,6 +162,11 @@ expression: out
       "type": "string"
     },
     {
+      "const": "PD-HLT-004",
+      "description": "`python -m venv` failed while building the tools environment.\n\n**Raised by PipDock, not classified from engine stderr.** Its own code rather than a reused\none: `PD-NET-011` is `Area::Net`, so `run::exit_for` would map a broken interpreter to exit\n6 and a script retrying on network failure would loop forever; `PD-HLT-001` tells the user\nto re-sync, which is the operation that just failed; and a Python built without `venv` is\nnot `PD-INT-001`'s \"a PipDock bug\".",
+      "type": "string"
+    },
+    {
       "const": "PD-INT-001",
       "description": "A PipDock bug: panic or unexpected state.",
       "type": "string"

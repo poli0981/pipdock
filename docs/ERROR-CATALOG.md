@@ -37,7 +37,7 @@
 | PD-SNP-002 | rollback target release unavailable on PyPI | deleted/yanked upstream | Partial rollback offered; affected pins listed |
 | PD-SYS-001 | `path too long` patterns | MAX_PATH without long-path opt-in | Enable Windows long paths (help link) |
 | PD-SYS-002 | disk full (`No space left`/`WinError 112`) | storage | Free space |
-| PD-HLT-001..003 | tool missing / non-zero / watchdog timeout | tools venv issue | Re-sync tools env; partial report shown |
+| PD-HLT-001..004 | tool missing / non-zero / watchdog timeout / venv creation failed | tools venv issue | Re-sync tools env; partial report shown. **PD-HLT-004 is raised by PipDock**, not classified from stderr — `python -m venv` exited non-zero, so the fix is the interpreter, not another re-sync |
 | PD-INT-001 | panic/unexpected | PipDock bug | Report-bug deep link prefilled |
 | PD-ENG-999 | unclassified engine failure | unknown | stderr tail shown; report-bug encouraged (feeds catalog growth) |
 

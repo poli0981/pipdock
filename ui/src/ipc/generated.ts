@@ -125,6 +125,7 @@ export type Code =
   | 'PD-HLT-001'
   | 'PD-HLT-002'
   | 'PD-HLT-003'
+  | 'PD-HLT-004'
   | 'PD-INT-001';
 
 /** Aggregate counts rendered as "13 successful, 2 failed, 1 skipped" (DATA-FLOW §6). */

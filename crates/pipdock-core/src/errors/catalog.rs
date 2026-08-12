@@ -194,6 +194,15 @@ pub enum Code {
     /// A Code Health tool exceeded its watchdog timeout; partial report shown.
     #[serde(rename = "PD-HLT-003")]
     HltTimeout,
+    /// `python -m venv` failed while building the tools environment.
+    ///
+    /// **Raised by PipDock, not classified from engine stderr.** Its own code rather than a reused
+    /// one: `PD-NET-011` is `Area::Net`, so `run::exit_for` would map a broken interpreter to exit
+    /// 6 and a script retrying on network failure would loop forever; `PD-HLT-001` tells the user
+    /// to re-sync, which is the operation that just failed; and a Python built without `venv` is
+    /// not `PD-INT-001`'s "a PipDock bug".
+    #[serde(rename = "PD-HLT-004")]
+    HltVenvCreateFailed,
 
     // -- PD-INT: internal ---------------------------------------------------
     /// A PipDock bug: panic or unexpected state.
@@ -238,6 +247,7 @@ impl Code {
             Self::HltToolMissing => "PD-HLT-001",
             Self::HltToolFailed => "PD-HLT-002",
             Self::HltTimeout => "PD-HLT-003",
+            Self::HltVenvCreateFailed => "PD-HLT-004",
             Self::IntUnexpected => "PD-INT-001",
         }
     }
@@ -269,7 +279,10 @@ impl Code {
             Self::PrmSitePackagesReadOnly | Self::PrmFileLocked => Area::Prm,
             Self::SnpWriteFailed | Self::SnpTargetUnavailable => Area::Snp,
             Self::SysPathTooLong | Self::SysDiskFull => Area::Sys,
-            Self::HltToolMissing | Self::HltToolFailed | Self::HltTimeout => Area::Hlt,
+            Self::HltToolMissing
+            | Self::HltToolFailed
+            | Self::HltTimeout
+            | Self::HltVenvCreateFailed => Area::Hlt,
             Self::IntUnexpected => Area::Int,
         }
     }
@@ -307,6 +320,7 @@ impl Code {
         Self::HltToolMissing,
         Self::HltToolFailed,
         Self::HltTimeout,
+        Self::HltVenvCreateFailed,
         Self::IntUnexpected,
         Self::EngUnclassified,
     ];
@@ -563,7 +577,7 @@ mod tests {
     fn every_variant_is_listed_in_all() {
         // `ALL` drives the fixture-coverage gate, so a variant missing from it would silently
         // escape that gate. There is no derive for "enumerate variants", hence this count check.
-        assert_eq!(Code::ALL.len(), 32, "add the new variant to Code::ALL");
+        assert_eq!(Code::ALL.len(), 33, "add the new variant to Code::ALL");
     }
 
     #[test]
@@ -710,9 +724,9 @@ mod tests {
 
     #[test]
     fn every_documented_code_has_exactly_one_variant() {
-        // Rust has 32; docs/ERROR-CATALOG.md tabulates 30, because it folds PD-HLT-001..003 into
+        // Rust has 33; docs/ERROR-CATALOG.md tabulates 30, because it folds PD-HLT-001..004 into
         // one row. Pin the number so the next person adding a code has to notice the docs exist.
-        assert_eq!(Code::ALL.len(), 32);
+        assert_eq!(Code::ALL.len(), 33);
         let wire: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(
             wire.len(),
