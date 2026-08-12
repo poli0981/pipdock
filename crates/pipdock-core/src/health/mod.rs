@@ -8,7 +8,10 @@ pub mod deptry;
 pub mod project;
 pub mod report;
 pub mod ruff;
+pub mod run;
 pub mod vulture;
+
+pub use run::{RunOptions, has_findings, run_steps};
 
 pub use project::{DeclaredSource, declared_source};
 pub use report::{
