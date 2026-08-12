@@ -19,6 +19,9 @@ on:
       - 'crates/pipdock-core/src/snapshot/**'
       - 'crates/pipdock-core/src/graph/**'
       - 'crates/pipdock-core/src/envs/**'
+      # Not under envs/, and the only tests it has parse a canned document — so its real behaviour
+      # against a real interpreter is only ever exercised here.
+      - 'crates/pipdock-core/src/probe.py'
       - 'crates/pipdock-core/src/health/**'
       - 'crates/pipdock-core/tests/**'
       - 'spikes/capture.py'
@@ -179,6 +182,71 @@ jobs:
           # and the last command here *deliberately* exited 6 — so without this the step fails
           # with every assertion having passed. Caught by running the script before trusting it.
           exit 0
+
+      # P0-10, and the two ways it goes wrong. On 3.10 an old pip runs and upgrades normally; on
+      # 3.14 *every* pip below the 22.2 planner floor is broken — distutils and pkgutil.ImpImporter
+      # are both gone — so `install -U pip` fails for the same reason the upgrade was offered, and
+      # only the ensurepip fallback gets out of it. One matrix, both paths, neither reachable from
+      # a unit test.
+      - name: End-to-end — pip upkeep, including a pip too broken to upgrade itself
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          python -m venv .oldpip
+          .\.oldpip\Scripts\python.exe -m pip install --quiet --disable-pip-version-check "pip==22.1.2"
+
+          # `list --env`, not `env list`: discovery only finds venvs named .venv/venv/env/.env
+          # (envs::venv_scan), so a suffixed one is invisible to it. Same probe either way — this
+          # is the very list EnvRow.pipVersion is read out of.
+          $before = (.\target\debug\pipdock.exe list --env .oldpip --json | ConvertFrom-Json |
+                     Where-Object { $_.name -eq 'pip' }).version
+          if ($before -ne '22.1.2') { throw "the probe reported pip '$before', not 22.1.2" }
+
+          # Runs pip whatever engine is configured — uv is on PATH in this job, which is what makes
+          # this leg meaningful rather than incidental.
+          .\target\debug\pipdock.exe pip-upgrade --env .oldpip --engine uv
+          if ($LASTEXITCODE -ne 0) { throw "pip-upgrade failed (exit $LASTEXITCODE)" }
+
+          $after = (.\target\debug\pipdock.exe list --env .oldpip --json | ConvertFrom-Json |
+                    Where-Object { $_.name -eq 'pip' }).version
+          if ($after -eq '22.1.2') { throw "pip was not upgraded; still $after" }
+          Write-Host "pip $before -> $after"
+          # It must actually run afterwards — on 3.14 it could not before.
+          .\.oldpip\Scripts\python.exe -m pip --version
+          if ($LASTEXITCODE -ne 0) { throw "pip still cannot start after the upgrade" }
+
+      # PEP 668. A venv is never externally managed, and a venv has no stdlib of its own — so
+      # `sysconfig.get_path('stdlib')` resolves to the *base*, and every venv built from a Python
+      # that ships the marker (uv-managed, Debian, Homebrew, Fedora) reported itself managed and
+      # PipDock refused to mutate it. The marker is planted here rather than hoped for, because the
+      # runner's own Python does not carry one.
+      - name: End-to-end — a venv is never externally managed, but its base still is
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $base = (python -c "import sysconfig;print(sysconfig.get_path('stdlib'))")
+          $marker = Join-Path $base 'EXTERNALLY-MANAGED'
+          Set-Content -Path $marker -Value "[externally-managed]`nError=planted by CI"
+          try {
+            python -m venv .pep668
+            # `doctor --env`, not `env list`: an explicit path needs no discovery, so this does
+            # not depend on the venv being named one of the four names venv_scan knows.
+            $venv = .\target\debug\pipdock.exe doctor --env .pep668 --json | ConvertFrom-Json
+            if ($venv.externallyManaged) {
+              throw "a venv reported externallyManaged; PipDock would refuse to touch it"
+            }
+
+            # The other direction matters just as much: the base genuinely is managed, and a fix
+            # that simply stopped looking would pass the assertion above while breaking PD-ENV-002
+            # for the environments it exists to protect.
+            $sys = .\target\debug\pipdock.exe doctor --env (Get-Command python).Source --json |
+                   ConvertFrom-Json
+            if (-not $sys.externallyManaged) {
+              throw "the base did not report the planted marker; the check stopped looking"
+            }
+          } finally {
+            Remove-Item -LiteralPath $marker -ErrorAction SilentlyContinue
+          }
 
       - name: End-to-end — the SP-1 conflict is still reported
         shell: pwsh
