@@ -149,6 +149,9 @@ const OS_PATH_TOO_LONG: i32 = 206;
 /// `ERROR_DISK_FULL`.
 const OS_DISK_FULL: i32 = 112;
 
+/// `ERROR_SHARING_VIOLATION` — the file is open in another process.
+const OS_SHARING_VIOLATION: i32 = 32;
+
 /// `<app_data>\tools` — the layout CODE-HEALTH-SPEC §2 draws.
 #[must_use]
 pub fn tools_dir(app_data: &Path) -> PathBuf {
@@ -228,7 +231,15 @@ pub enum SyncNeed {
     /// The manifest is current but the venv's interpreter is gone.
     InterpreterGone,
     /// The manifest is current but a tool's console script is not on disk.
-    ToolMissing(String),
+    ///
+    /// A struct variant, not a newtype: `#[serde(tag = "state")]` is internal tagging, and serde
+    /// cannot represent a tagged newtype wrapping a string. As a newtype this serialized fine in
+    /// every unit test and panicked the first time `tools status --json` reached it.
+    #[serde(rename_all = "camelCase")]
+    ToolMissing {
+        /// Which tool is absent.
+        tool: String,
+    },
 }
 
 impl SyncNeed {
@@ -274,7 +285,9 @@ pub fn needs_sync(tools_dir: &Path) -> Result<SyncNeed> {
     }
     for tool in HEALTH_TOOLS {
         if !tool_exe(tools_dir, tool).is_file() {
-            return Ok(SyncNeed::ToolMissing((*tool).to_owned()));
+            return Ok(SyncNeed::ToolMissing {
+                tool: (*tool).to_owned(),
+            });
         }
     }
     Ok(SyncNeed::Fresh)
@@ -390,6 +403,18 @@ pub async fn sync_tools_venv(
     std::fs::write(&requirements, requirements_body(&pins))
         .map_err(|e| fs_failure("write the tools requirements", &e))?;
 
+    // The venv is rebuilt, not repaired. `pip install -r` over an existing venv is a no-op when
+    // the pins are already satisfied — so a sync run to replace a deleted `ruff.exe` installed
+    // nothing, and then failed its own verification with `PD-HLT-001`. That is the exact state
+    // PD-HLT-001's copy tells the user to re-sync out of, and re-syncing could not.
+    //
+    // Worse, it wedged: the manifest is deleted above, so every later run took the same path and
+    // failed identically, with no way out but deleting the folder by hand.
+    //
+    // A sync means "make this directory match the pins", and the only way to guarantee that from
+    // an arbitrary broken state is to start from nothing. The cost lands only where a sync was
+    // needed anyway — `needs_sync` short-circuits the common case in ~30 ms.
+    remove_venv(&venv)?;
     create_venv(base_python, &venv, &sink.at(0)).await?;
     install_pins(&venv, &requirements, &sink.at(1)).await?;
     let tools = verify_tools(tools_dir, sink).await?;
@@ -419,6 +444,26 @@ pub async fn sync_tools_venv(
         return Err(fs_failure("write the tools manifest", &e));
     }
     Ok(manifest)
+}
+
+/// Clear the way for a fresh venv.
+///
+/// A locked file here is the common Windows failure — something is running out of the venv — and
+/// `PD-PRM-002` says exactly that, rather than leaving it as a generic "could not build".
+fn remove_venv(venv: &Path) -> Result<()> {
+    match std::fs::remove_dir_all(venv) {
+        Ok(()) => Ok(()),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(()),
+        Err(e) if e.raw_os_error() == Some(OS_SHARING_VIOLATION) => Err(PdError::new(
+            Code::PrmFileLocked,
+            format!(
+                "could not replace {}: a file in it is in use. Close anything running from the \
+                 tools environment and retry: {e}",
+                venv.display()
+            ),
+        )),
+        Err(e) => Err(fs_failure("replace the tools venv", &e)),
+    }
 }
 
 /// Step 0 — `python -m venv <tools_dir>\.venv`.
@@ -727,7 +772,7 @@ fn fs_failure(what: &str, e: &std::io::Error) -> PdError {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::engine::ProgressEvent;
+    use crate::engine::{CancellationToken, ProgressEvent};
 
     /// The gate that turns a Dependabot rename into a `cargo test` failure rather than a
     /// `PD-HLT-001` on a user's machine.
@@ -860,8 +905,36 @@ mod tests {
 
         assert_eq!(
             needs_sync(&dir).expect("ledger parses"),
-            SyncNeed::ToolMissing("ruff".to_owned())
+            SyncNeed::ToolMissing {
+                tool: "ruff".to_owned()
+            }
         );
+    }
+
+    /// `#[serde(tag = "state")]` is internal tagging, which cannot represent a newtype variant
+    /// wrapping a string. As `ToolMissing(String)` every unit test passed and `tools status --json`
+    /// panicked the first time a tool was actually missing — so serialize every variant here.
+    #[test]
+    fn every_sync_state_survives_serialization() {
+        for need in [
+            SyncNeed::Fresh,
+            SyncNeed::NeverSynced,
+            SyncNeed::PinsChanged {
+                from: "a".to_owned(),
+                to: "b".to_owned(),
+            },
+            SyncNeed::InterpreterGone,
+            SyncNeed::ToolMissing {
+                tool: "ruff".to_owned(),
+            },
+        ] {
+            let json = serde_json::to_value(&need)
+                .unwrap_or_else(|e| panic!("{need:?} must serialize: {e}"));
+            assert!(
+                json.get("state").is_some(),
+                "{need:?} must carry its tag: {json}"
+            );
+        }
     }
 
     #[test]
@@ -1054,6 +1127,37 @@ mod tests {
             seen.iter().any(|e| matches!(e, ProgressEvent::Line { .. })),
             "the console drawer needs streamed lines, not one burst at the end"
         );
+    }
+
+    /// The bug a green suite hid: a sync that could not repair the one state it exists to repair.
+    ///
+    /// `pip install -r` over a venv whose pins are already satisfied is a no-op, so deleting
+    /// `ruff.exe` and re-syncing installed nothing and then failed its own verification with
+    /// `PD-HLT-001` — permanently, because the manifest had already been removed.
+    #[tokio::test]
+    #[ignore = "hits real PyPI; run with --ignored"]
+    async fn a_sync_repairs_a_venv_that_lost_a_tool() {
+        let dir = scratch("repair");
+        let candidates = crate::envs::scan().await;
+        let (python, _) = choose_tools_python(&candidates)
+            .await
+            .expect("this machine has a Python 3.10+");
+        let sink = || {
+            let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+            ProgressSink::new(tx, SYNC_STEPS, CancellationToken::new())
+        };
+
+        sync_tools_venv(&dir, &python, &sink())
+            .await
+            .expect("first bootstrap succeeds");
+        std::fs::remove_file(tool_exe(&dir, "ruff")).expect("quarantine ruff");
+        assert!(needs_sync(&dir).expect("ledger parses").is_needed());
+
+        sync_tools_venv(&dir, &python, &sink())
+            .await
+            .expect("a re-sync must repair it, not fail on it");
+
+        assert_eq!(needs_sync(&dir).expect("ledger parses"), SyncNeed::Fresh);
     }
 
     /// A scratch directory of our own, cleaned on entry. Matches `store`'s idiom rather than
