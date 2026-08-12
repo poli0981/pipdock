@@ -87,6 +87,19 @@ pub struct EnvRow {
     /// How many distributions the probe saw.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub packages: Option<usize>,
+    /// The environment's own pip, when it has one (PRD P0-10).
+    ///
+    /// **Read out of the probe's distribution list, not from `engine_info`.** `engine_info` spawns
+    /// two subprocesses per call — pip's `--version` and uv's — so calling it per row would add
+    /// 2N spawns to the landing screen on top of the N `probe.py` runs already happening. pip is
+    /// an ordinary distribution in site-packages and the probe has already read it; this is the
+    /// same list `packages` counts.
+    ///
+    /// `None` means the probe found no pip, which is a real state — a `--without-pip` venv, or a
+    /// system Python where `-I` hid a user-site install (ARCHITECTURE §4's trade-off, disclosed as
+    /// `hidden_user_site`). It is not "unknown".
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub pip_version: Option<String>,
     /// Present when the probe failed; the row renders as unusable with this code.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<WireError>,
@@ -101,6 +114,7 @@ async fn probe_row(path: std::path::PathBuf, source: EnvSource) -> EnvRow {
             source,
             env_hash,
             packages: Some(probed.dists.len()),
+            pip_version: pip_version_of(&probed.dists),
             env: Some(probed.env),
             error: None,
         },
@@ -110,9 +124,21 @@ async fn probe_row(path: std::path::PathBuf, source: EnvSource) -> EnvRow {
             env_hash,
             env: None,
             packages: None,
+            pip_version: None,
             error: Some(e.into()),
         },
     }
+}
+
+/// pip's version out of a probed distribution list.
+///
+/// Names arrive PEP 503-normalized from `PkgName::parse`, so an exact match is enough — there is no
+/// casing or separator variant of `pip` to worry about.
+fn pip_version_of(dists: &[pipdock_core::Dist]) -> Option<String> {
+    dists
+        .iter()
+        .find(|d| d.name.as_str() == "pip")
+        .map(|d| d.version.0.clone())
 }
 
 /// Discover environments, streaming `scan-progress` as each source is read.
@@ -135,7 +161,12 @@ pub async fn env_scan(app: tauri::AppHandle) -> Wire<Vec<EnvRow>> {
     Ok(rows)
 }
 
-/// Probe one interpreter, for the manual *Browse…* path.
+/// Probe one interpreter, for the manual *Browse…* path — and to refresh a single row.
+///
+/// The second use is what P0-10 needs: after `pip_upgrade` the Environments row must show the new
+/// version without a full rescan, and one probe is the cheapest honest way to get it. That makes
+/// carrying `pip_version` here load-bearing rather than tidy — a row refreshed through a path that
+/// omitted it would blank the field it was refreshed to update.
 ///
 /// # Errors
 /// `PD-ENV-001` when there is no usable interpreter there, `PD-ENV-003` when the probe output
@@ -149,6 +180,7 @@ pub async fn env_probe(interpreter: String) -> Wire<EnvRow> {
         source: EnvSource::Manual,
         env_hash: envs::env_hash(&path),
         packages: Some(probed.dists.len()),
+        pip_version: pip_version_of(&probed.dists),
         env: Some(probed.env),
         error: None,
     })

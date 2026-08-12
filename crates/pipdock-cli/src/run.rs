@@ -197,6 +197,11 @@ pub async fn env_list(opts: &GlobalOpts) -> Result<Exit> {
                     "hiddenUserSite": p.env.hidden_user_site,
                     "packages": p.dists.len(),
                     "envHash": envs::env_hash(path),
+                    // Same field the GUI's EnvRow carries, out of the same list, so `env list`
+                    // and the Environments screen cannot disagree about which pip is installed.
+                    "pipVersion": p.dists.iter()
+                        .find(|d| d.name.as_str() == "pip")
+                        .map(|d| d.version.0.clone()),
                 }),
                 Err(e) => serde_json::json!({
                     "interpreter": path,

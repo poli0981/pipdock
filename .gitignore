@@ -16,9 +16,9 @@ dist-ssr/
 # Environments (test venvs created by the integration suite / spikes)
 .venv/
 venv/
-# Verifying an environment feature by hand needs a venv the GUI can *see*, and `env_add_manual`
-# (Browse…) is still owed — so venv_scan's "below the working directory" is the only way in, which
-# means the repo root. `.venv-oldpip` for the pip-upkeep floor, and whatever the next one needs.
+# Scratch venvs for verifying by hand. Note that the GUI will only ever *see* one named exactly
+# `.venv`, `venv`, `env` or `.env` in the working directory — `envs::venv_scan` matches that fixed
+# list and `env_add_manual` (Browse…) is still owed — so a suffixed one here is CLI-only.
 /.venv-*/
 __pycache__/
 *.py[cod]
