@@ -7,8 +7,10 @@
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 
-use crate::errors::{Code, PdError, Result};
-use crate::model::{PinnedSpec, PkgName, Version};
+use crate::compat::PyVersion;
+use crate::engine::ProgressSink;
+use crate::errors::{Area, Code, PdError, Result, classify_stderr};
+use crate::model::{EnvSource, ExecMode, PinnedSpec, PkgName, StepStatus, Version};
 
 /// CODE-HEALTH-SPEC §4: per-tool watchdog; exceeding it yields a partial report (`PD-HLT-003`).
 pub const TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120);
@@ -59,6 +61,12 @@ pub const HEALTH_TOOLS: &[&str] = &["deptry", "vulture", "ruff"];
 /// [`HEALTH_TOOLS`] for the wheel-tag evidence, and `--only-binary=:all:` for what happens if that
 /// ever stops being true.
 pub const MIN_TOOLS_PYTHON: (u32, u32) = crate::envs::MIN_PROBE_PYTHON;
+
+/// How many steps a sync reports: one venv, one install, one verification per tool.
+///
+/// Public because the caller builds the [`ProgressSink`], and a sink whose `total` disagrees with
+/// what actually runs is a progress bar that stops at four fifths.
+pub const SYNC_STEPS: usize = 2 + HEALTH_TOOLS.len();
 
 /// The pin set to install, parsed out of the shipped ledger and sorted by normalized name.
 ///
@@ -131,6 +139,15 @@ pub fn requirements_body(pins: &[PinnedSpec]) -> String {
 
 /// The manifest filename inside the tools directory.
 const MANIFEST_FILE: &str = "manifest.json";
+
+/// The resolved requirements written beside the venv, for the user to read.
+const REQUIREMENTS_FILE: &str = "tools-requirements.txt";
+
+/// `ERROR_FILENAME_EXCED_RANGE` — Windows' "the path is too long".
+const OS_PATH_TOO_LONG: i32 = 206;
+
+/// `ERROR_DISK_FULL`.
+const OS_DISK_FULL: i32 = 112;
 
 /// `<app_data>\tools` — the layout CODE-HEALTH-SPEC §2 draws.
 #[must_use]
@@ -327,18 +344,390 @@ fn validated_version(raw: &str) -> Result<Version> {
     Ok(Version(raw.to_owned()))
 }
 
-/// Create or re-sync the tools venv from the shipped `tools-requirements.txt`.
+/// Create or re-sync the tools venv from the shipped pin ledger.
+///
+/// Three arguments rather than none, each for a reason that has already bitten:
+///
+/// * `tools_dir` is passed, not derived from `store::default_app_data()` inside — the same rule
+///   `index::metadata`/`refresh` follow. Without it there is no way to run a sync in a test or in
+///   CI without clobbering the developer's real `%LOCALAPPDATA%\PipDock\tools`.
+/// * `base_python` is taken, not discovered. Discovery is [`choose_tools_python`] over
+///   `envs::scan()`, which spawns four subprocesses; a sync is not the place to hide a
+///   machine-wide sweep, and passing it lets `--python` force a specific interpreter.
+/// * `sink` carries the [`CancellationToken`](tokio_util::sync::CancellationToken), so a bootstrap
+///   stops through the same path as everything else. Build it with [`SYNC_STEPS`].
+///
+/// Returns the manifest it wrote, because the caller prints the tool versions and P3's
+/// `HealthReport.toolVersions` (CODE-HEALTH-SPEC §5) is exactly this map.
 ///
 /// # Errors
-/// Returns `PD-NET-011` when bootstrap cannot reach PyPI; Health stays disabled and every other
-/// tab is unaffected (CODE-HEALTH-SPEC §2).
-pub fn sync_tools_venv() -> Result<()> {
-    todo!(r"M3: create %LOCALAPPDATA%\PipDock\tools\.venv from exact pins")
+/// `PD-HLT-004` when the venv cannot be created; `PD-NET-011` when the pin set cannot be
+/// installed, which is CODE-HEALTH-SPEC §2's single "could not bootstrap" code; `PD-HLT-001` and
+/// `PD-HLT-002` when a tool is absent or unrunnable after a successful install; `PD-HLT-003` on a
+/// tool's watchdog; `PD-SYS-001`/`PD-SYS-002` for long paths and full disks; `PD-PKG-002` when the
+/// shipped ledger is malformed.
+pub async fn sync_tools_venv(
+    tools_dir: &Path,
+    base_python: &Path,
+    sink: &ProgressSink,
+) -> Result<ToolsManifest> {
+    let pins = pins()?;
+    let venv = tools_dir.join(".venv");
+    let requirements = tools_dir.join(REQUIREMENTS_FILE);
+    let manifest_path = tools_dir.join(MANIFEST_FILE);
+
+    std::fs::create_dir_all(tools_dir).map_err(|e| fs_failure("create the tools directory", &e))?;
+
+    // Deleted **before** anything is touched, which inverts `snapshot::create`'s data-then-metadata
+    // ordering — and for the opposite reason. A snapshot writes a sidecar that did not exist; a
+    // re-sync replaces a manifest that already describes the *old* pin set. If the sync then dies
+    // half-way, a surviving manifest would claim tools that have just been part-replaced. With it
+    // gone, a torn sync reads as `NeverSynced` and the next run redoes the whole thing.
+    let _ = std::fs::remove_file(&manifest_path);
+
+    // A rendering of the ledger, not a copy: this is where the excluded `pip-audit` pin, the
+    // comments, and whatever line endings the build machine checked out stop.
+    std::fs::write(&requirements, requirements_body(&pins))
+        .map_err(|e| fs_failure("write the tools requirements", &e))?;
+
+    create_venv(base_python, &venv, &sink.at(0)).await?;
+    install_pins(&venv, &requirements, &sink.at(1)).await?;
+    let tools = verify_tools(tools_dir, sink).await?;
+
+    let python = venv_python(tools_dir);
+    let manifest = ToolsManifest {
+        pins_hash: pins_hash(&pins),
+        pins: pins.iter().map(PinnedSpec::to_requirement).collect(),
+        tools,
+        python: crate::exec::canonical_interpreter(&python),
+        python_version: reported_version(&python)
+            .await
+            .unwrap_or_else(|| "unknown".to_owned()),
+        app_version: env!("CARGO_PKG_VERSION").to_owned(),
+        synced_at: jiff::Timestamp::now().to_string(),
+    };
+
+    let json = serde_json::to_string_pretty(&manifest).map_err(|e| {
+        PdError::new(
+            Code::HltVenvCreateFailed,
+            format!("serialize manifest: {e}"),
+        )
+    })?;
+    // Written last: until it exists, the venv is not claimed to be anything.
+    if let Err(e) = std::fs::write(&manifest_path, json) {
+        let _ = std::fs::remove_file(&manifest_path);
+        return Err(fs_failure("write the tools manifest", &e));
+    }
+    Ok(manifest)
+}
+
+/// Step 0 — `python -m venv <tools_dir>\.venv`.
+///
+/// `--upgrade-deps` is deliberately **not** passed. It would make this step reach PyPI, so an
+/// offline machine would fail here with a venv-creation code instead of at the install step with
+/// `PD-NET-011`, which is the honest one and the one CODE-HEALTH-SPEC §2 names.
+async fn create_venv(base_python: &Path, venv: &Path, sink: &ProgressSink) -> Result<()> {
+    sink.started(None, ExecMode::Batch);
+    let out = crate::exec::Command::python(base_python)
+        .args(["-m", "venv"])
+        .arg(venv.display().to_string())
+        .cancel(sink.cancel.clone())
+        .run_streaming(sink, None, ExecMode::Batch)
+        .await
+        .map_err(|e| venv_failure(e, base_python));
+
+    match out {
+        Ok(out) if out.ok() => {
+            sink.finished(None, ExecMode::Batch, StepStatus::Ok);
+            Ok(())
+        }
+        Ok(out) => {
+            sink.finished(None, ExecMode::Batch, StepStatus::Failed);
+            Err(PdError::new(
+                Code::HltVenvCreateFailed,
+                format!(
+                    "`{} -m venv` exited {}",
+                    base_python.display(),
+                    out.code.unwrap_or(-1)
+                ),
+            )
+            .with_stderr(&out.stderr))
+        }
+        Err(e) => {
+            sink.finished(None, ExecMode::Batch, StepStatus::Failed);
+            Err(e)
+        }
+    }
+}
+
+/// Step 1 — install the pin set with the venv's own pip.
+///
+/// pip unconditionally, never the configured engine. **This amends CODE-HEALTH-SPEC §2**, which
+/// says "using the configured engine": uv is a preference about the *user's* environments, and
+/// Health must not be unavailable with `PD-ENG-001` because uv is not on PATH. pip is present
+/// wherever Python is.
+///
+/// `--only-binary=:all:` is load-bearing rather than defensive. Without it a pin with no wheel
+/// falls back to an sdist build, which ends at `PD-BLD-001` — telling someone who clicked *Health*
+/// to install Visual Studio Build Tools. With it, the same situation is a clean resolution failure
+/// this maps to `PD-NET-011`. As of 2026-08-12 it never fires, which is exactly when to add it.
+async fn install_pins(venv: &Path, requirements: &Path, sink: &ProgressSink) -> Result<()> {
+    let python = venv.join("Scripts").join("python.exe");
+    sink.started(None, ExecMode::Batch);
+
+    let out = crate::exec::Command::python(&python)
+        .args([
+            "-m",
+            "pip",
+            "install",
+            "--only-binary=:all:",
+            "--disable-pip-version-check",
+            "--no-input",
+            "-r",
+        ])
+        .arg(requirements.display().to_string())
+        .cancel(sink.cancel.clone())
+        .run_streaming(sink, None, ExecMode::Batch)
+        .await
+        .map_err(bootstrap_failure);
+
+    match out {
+        Ok(out) if out.ok() => {
+            sink.finished(None, ExecMode::Batch, StepStatus::Ok);
+            Ok(())
+        }
+        Ok(out) => {
+            sink.finished(None, ExecMode::Batch, StepStatus::Failed);
+            // Classify first, then fold everything that is not a local-machine problem into
+            // PD-NET-011. CODE-HEALTH-SPEC §2 makes that the single "Health could not bootstrap"
+            // code, and the distinctions the classifier draws — "no matching distribution" versus
+            // "connection timed out" — are not ones the user can act on differently here.
+            let classified = classify_stderr(&out.stderr);
+            let code = match classified.area() {
+                Area::Sys | Area::Prm => classified,
+                _ => Code::NetToolsBootstrapFailed,
+            };
+            Err(PdError::new(
+                code,
+                format!(
+                    "tools venv bootstrap failed: pip exited {}",
+                    out.code.unwrap_or(-1)
+                ),
+            )
+            .with_stderr(&out.stderr))
+        }
+        Err(e) => {
+            sink.finished(None, ExecMode::Batch, StepStatus::Failed);
+            Err(e)
+        }
+    }
+}
+
+/// Step 2..n — every tool is on disk and answers `--version`.
+///
+/// Per-tool and sequential, so `ExecMode::Isolated` is the honest phase. The install exiting zero
+/// is not proof the console scripts exist: this is the check `PD-HLT-001`'s shipped copy assumes
+/// somebody performs.
+async fn verify_tools(tools_dir: &Path, sink: &ProgressSink) -> Result<BTreeMap<String, String>> {
+    let mut versions = BTreeMap::new();
+
+    for (i, tool) in HEALTH_TOOLS.iter().enumerate() {
+        let step = sink.at(2 + i);
+        let name = PkgName::parse(tool)?;
+        step.started(Some(name.clone()), ExecMode::Isolated);
+
+        let exe = tool_exe(tools_dir, tool);
+        if !exe.is_file() {
+            step.finished(Some(name), ExecMode::Isolated, StepStatus::Failed);
+            return Err(PdError::new(
+                Code::HltToolMissing,
+                format!("{tool} is not in the tools venv after a successful install"),
+            ));
+        }
+
+        let out = crate::exec::Command::new(&exe)
+            .arg("--version")
+            .timeout(TOOL_TIMEOUT)
+            .cancel(step.cancel.clone())
+            .run()
+            .await
+            .map_err(|e| tool_failure(e, tool));
+
+        match out {
+            Ok(out) if out.ok() => {
+                versions.insert((*tool).to_owned(), parse_tool_version(&out.stdout, tool));
+                step.finished(Some(name), ExecMode::Isolated, StepStatus::Ok);
+            }
+            Ok(out) => {
+                step.finished(Some(name), ExecMode::Isolated, StepStatus::Failed);
+                return Err(PdError::new(
+                    Code::HltToolFailed,
+                    format!("{tool} --version exited {}", out.code.unwrap_or(-1)),
+                )
+                .with_stderr(&out.stderr));
+            }
+            Err(e) => {
+                step.finished(Some(name), ExecMode::Isolated, StepStatus::Failed);
+                return Err(e);
+            }
+        }
+    }
+    Ok(versions)
+}
+
+/// The version out of `<tool> --version`, which all three print as `<name> <version>`.
+///
+/// Falls back to the whole trimmed line rather than failing: a tool that answered is working, and
+/// refusing to record its version would turn a cosmetic surprise into a failed bootstrap.
+fn parse_tool_version(stdout: &str, tool: &str) -> String {
+    let line = stdout.lines().next().unwrap_or("").trim();
+    line.strip_prefix(tool)
+        .map_or(line, str::trim)
+        .trim_start_matches('v')
+        .to_owned()
+}
+
+/// The newest discovered interpreter that can host the tools venv.
+///
+/// Candidates are supplied rather than discovered here: `envs::scan()` spawns four subprocesses,
+/// and a sync is not the place to hide a machine-wide sweep. It also lets `--python` skip discovery
+/// entirely, which is what makes CI deterministic.
+///
+/// # Errors
+/// `PD-ENV-001` when nothing at or above [`MIN_TOOLS_PYTHON`] can be run.
+pub async fn choose_tools_python(
+    candidates: &[crate::envs::Candidate],
+) -> Result<(PathBuf, String)> {
+    let floor = PyVersion::parse(&format!("{}.{}", MIN_TOOLS_PYTHON.0, MIN_TOOLS_PYTHON.1))?;
+    let mut best: Option<(PathBuf, String, PyVersion)> = None;
+    let mut seen = std::collections::HashSet::new();
+
+    for candidate in candidates {
+        // A project's `.venv` is the user's, and they may delete it tomorrow. Building PipDock's
+        // permanent tools environment on top of one would break Health later for a reason nobody
+        // could connect to the cause — and `venv_scan` finds whatever is below the *current
+        // working directory*, which for the CLI is wherever the user happened to be standing.
+        if candidate.source == EnvSource::VenvScan {
+            continue;
+        }
+        let Some(raw) = reported_version(&candidate.path).await else {
+            continue;
+        };
+        let Ok(version) = PyVersion::parse(&raw) else {
+            continue;
+        };
+        // SP-6: dedupe on what the probe reported, not on the discovery path — a shim and its
+        // target are one interpreter, and a shim that could not run has already dropped out above.
+        if !seen.insert(crate::exec::canonical_interpreter(&candidate.path)) {
+            continue;
+        }
+        if version < floor {
+            continue;
+        }
+        // Strictly greater, so ties keep the earlier candidate and `scan`'s source ordering
+        // (registry first) decides. Otherwise the choice would depend on iteration luck.
+        if best.as_ref().is_none_or(|(_, _, b)| version > *b) {
+            best = Some((candidate.path.clone(), raw, version));
+        }
+    }
+
+    best.map(|(path, raw, _)| (path, raw)).ok_or_else(|| {
+        PdError::new(
+            Code::EnvInterpreterMissing,
+            format!(
+                "no Python {}.{} or newer was discovered; Code Health needs one to build its tools environment",
+                MIN_TOOLS_PYTHON.0, MIN_TOOLS_PYTHON.1
+            ),
+        )
+    })
+}
+
+/// What an interpreter says its version is, e.g. `"3.14.6"`, or `None` if it could not be run.
+///
+/// Deliberately **not** `envs::probe`: that writes a temp file and enumerates every installed
+/// distribution, which CLAUDE.md flags as the hot path costing 200+ metadata reads. All that is
+/// wanted here is three numbers, and this costs one process.
+///
+/// Returns the string rather than a [`PyVersion`] because both callers need it printable — the
+/// manifest records it and the CLI shows it — and `PyVersion` is an ordering type with no
+/// `Display`. Callers that need to compare parse it themselves.
+async fn reported_version(path: &Path) -> Option<String> {
+    let out = crate::exec::Command::python(path)
+        .args([
+            "-c",
+            "import sys;print('.'.join(map(str,sys.version_info[:3])))",
+        ])
+        .timeout(std::time::Duration::from_secs(15))
+        .run()
+        .await
+        .ok()?;
+    if !out.ok() {
+        return None;
+    }
+    let raw = out.stdout.trim();
+    (!raw.is_empty()).then(|| raw.to_owned())
+}
+
+/// Re-read a failure out of `exec` before it reaches the user.
+///
+/// `exec::Command::stopped` raises `PD-INT-001` for **both** its watchdog and cancellation, so
+/// every timeout anywhere in PipDock currently says "PipDock hit an internal error". That is a
+/// pre-existing defect and bigger than this module, but it must not be inherited here: a bootstrap
+/// that stalled for ten minutes is a reachability failure, not a bug report.
+fn is_timeout(e: &PdError) -> bool {
+    e.code == Code::IntUnexpected && e.message.contains("timed out")
+}
+
+/// Remap an `exec` failure from the install step.
+fn bootstrap_failure(e: PdError) -> PdError {
+    if is_timeout(&e) {
+        return PdError::new(
+            Code::NetToolsBootstrapFailed,
+            format!("tools venv bootstrap timed out ({})", e.message),
+        );
+    }
+    e
+}
+
+/// Remap an `exec` failure from the venv step.
+fn venv_failure(e: PdError, base_python: &Path) -> PdError {
+    if is_timeout(&e) {
+        return PdError::new(
+            Code::HltVenvCreateFailed,
+            format!("`{} -m venv` timed out", base_python.display()),
+        );
+    }
+    e
+}
+
+/// Remap an `exec` failure from a tool's `--version`.
+fn tool_failure(e: PdError, tool: &str) -> PdError {
+    if is_timeout(&e) {
+        return PdError::new(
+            Code::HltTimeout,
+            format!("{tool} --version exceeded its {TOOL_TIMEOUT:?} watchdog"),
+        );
+    }
+    e
+}
+
+/// Map a filesystem failure onto the code whose user action actually differs.
+///
+/// Everything that is not a long path or a full disk is "could not build the tools environment",
+/// which is what `PD-HLT-004` says.
+fn fs_failure(what: &str, e: &std::io::Error) -> PdError {
+    let code = match e.raw_os_error() {
+        Some(OS_PATH_TOO_LONG) => Code::SysPathTooLong,
+        Some(OS_DISK_FULL) => Code::SysDiskFull,
+        _ => Code::HltVenvCreateFailed,
+    };
+    PdError::new(code, format!("could not {what}: {e}"))
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::engine::ProgressEvent;
 
     /// The gate that turns a Dependabot rename into a `cargo test` failure rather than a
     /// `PD-HLT-001` on a user's machine.
@@ -528,6 +917,143 @@ mod tests {
             assert!(raw.contains(key), "expected {key} in {raw}");
         }
         assert!(!raw.contains('_'), "no snake_case key may survive: {raw}");
+    }
+
+    // -- the sync ---------------------------------------------------------------
+
+    #[test]
+    fn the_step_count_matches_what_the_sync_actually_reports() {
+        // A sink whose total disagrees with what runs is a progress bar that stops at four fifths.
+        assert_eq!(SYNC_STEPS, 2 + HEALTH_TOOLS.len());
+        assert_eq!(SYNC_STEPS, 5);
+    }
+
+    #[test]
+    fn a_tool_version_line_loses_its_tool_name() {
+        // All three print `<name> <version>`; ruff has also shipped a `ruff 0.16.0` / `v0.16.0` mix.
+        assert_eq!(parse_tool_version("ruff 0.16.0\n", "ruff"), "0.16.0");
+        assert_eq!(parse_tool_version("deptry 0.25.1", "deptry"), "0.25.1");
+        assert_eq!(parse_tool_version("vulture 2.16\n", "vulture"), "2.16");
+        assert_eq!(parse_tool_version("ruff v0.16.0", "ruff"), "0.16.0");
+    }
+
+    #[test]
+    fn an_unrecognised_version_line_is_kept_whole_rather_than_failing() {
+        // A tool that answered is working. Refusing to record its version would turn a cosmetic
+        // surprise into a failed bootstrap.
+        assert_eq!(
+            parse_tool_version("something else\n", "ruff"),
+            "something else"
+        );
+    }
+
+    /// `exec::Command::stopped` raises PD-INT-001 for both its watchdog and cancellation, so the
+    /// remaps below are the only thing standing between a stalled download and a bug report.
+    #[test]
+    fn a_watchdog_never_reaches_the_user_as_an_internal_error() {
+        let timed_out = || PdError::new(Code::IntUnexpected, "timed out after 600s: pip.exe");
+
+        assert_eq!(
+            bootstrap_failure(timed_out()).code,
+            Code::NetToolsBootstrapFailed
+        );
+        assert_eq!(
+            venv_failure(timed_out(), Path::new("py.exe")).code,
+            Code::HltVenvCreateFailed
+        );
+        assert_eq!(tool_failure(timed_out(), "ruff").code, Code::HltTimeout);
+    }
+
+    #[test]
+    fn a_cancellation_is_not_mistaken_for_a_watchdog() {
+        // `stopped` builds both from the same constructor; only the message tells them apart, and
+        // a cancel must not be reported as a bootstrap failure.
+        let cancelled = PdError::new(Code::IntUnexpected, "cancelled: pip.exe");
+
+        assert_eq!(bootstrap_failure(cancelled).code, Code::IntUnexpected);
+    }
+
+    #[test]
+    fn the_filesystem_codes_are_the_ones_whose_user_action_differs() {
+        use std::io::Error;
+
+        assert_eq!(
+            fs_failure("x", &Error::from_raw_os_error(OS_PATH_TOO_LONG)).code,
+            Code::SysPathTooLong
+        );
+        assert_eq!(
+            fs_failure("x", &Error::from_raw_os_error(OS_DISK_FULL)).code,
+            Code::SysDiskFull
+        );
+        assert_eq!(
+            fs_failure("x", &Error::other("whatever")).code,
+            Code::HltVenvCreateFailed
+        );
+    }
+
+    #[tokio::test]
+    async fn a_project_venv_is_never_chosen_to_host_the_tools() {
+        // `venv_scan` finds whatever is below the *current working directory*. Building PipDock's
+        // permanent tools env on a venv the user may delete tomorrow breaks Health later for a
+        // reason nobody could connect to the cause.
+        let only_a_project_venv = [crate::envs::Candidate {
+            path: PathBuf::from(r"C:\proj\.venv\Scripts\python.exe"),
+            source: EnvSource::VenvScan,
+        }];
+
+        let err = choose_tools_python(&only_a_project_venv)
+            .await
+            .expect_err("a project venv is not a candidate");
+        assert_eq!(err.code, Code::EnvInterpreterMissing);
+    }
+
+    #[tokio::test]
+    async fn nothing_discoverable_is_a_catalog_code_not_a_panic() {
+        let err = choose_tools_python(&[])
+            .await
+            .expect_err("no candidates means no interpreter");
+        assert_eq!(err.code, Code::EnvInterpreterMissing);
+    }
+
+    /// The whole bootstrap, against real PyPI, into a scratch directory.
+    ///
+    /// `#[ignore]`d because `cargo test --workspace` must not need a network. CI runs it explicitly
+    /// (`ci-integration.yml`), and so should anyone touching this module:
+    /// `cargo test -p pipdock-core -- --ignored the_bootstrap`.
+    #[tokio::test]
+    #[ignore = "hits real PyPI; run with --ignored"]
+    async fn the_bootstrap_produces_a_venv_that_reports_fresh() {
+        let dir = scratch("bootstrap");
+        let candidates = crate::envs::scan().await;
+        let (python, _) = choose_tools_python(&candidates)
+            .await
+            .expect("this machine has a Python 3.10+");
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let events = tokio::spawn(async move {
+            let mut seen = Vec::new();
+            while let Some(e) = rx.recv().await {
+                seen.push(e);
+            }
+            seen
+        });
+        let sink = ProgressSink::new(tx, SYNC_STEPS, Default::default());
+
+        let manifest = sync_tools_venv(&dir, &python, &sink)
+            .await
+            .expect("bootstrap succeeds");
+        drop(sink);
+
+        assert_eq!(manifest.tools.len(), HEALTH_TOOLS.len());
+        assert_eq!(needs_sync(&dir).expect("ledger parses"), SyncNeed::Fresh);
+        // The exclusion, checked where it actually matters rather than only in the rendering.
+        assert!(!manifest.pins.iter().any(|p| p.starts_with("pip-audit")));
+
+        let seen = events.await.expect("collector");
+        assert!(
+            seen.iter().any(|e| matches!(e, ProgressEvent::Line { .. })),
+            "the console drawer needs streamed lines, not one burst at the end"
+        );
     }
 
     /// A scratch directory of our own, cleaned on entry. Matches `store`'s idiom rather than
