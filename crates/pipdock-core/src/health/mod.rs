@@ -11,6 +11,9 @@ pub mod ruff;
 pub mod run;
 pub mod vulture;
 
+// `run::run` would read as a stutter and collides with the module name at the call site, so the
+// function is re-exported under the name the caller means.
+pub use run::run as run_tools;
 pub use run::{RunOptions, has_findings, run_steps};
 
 pub use project::{DeclaredSource, declared_source};

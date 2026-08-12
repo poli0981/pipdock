@@ -315,16 +315,33 @@ fn collect(report: &mut HealthReport, tool: &str, stdout: &str) -> Result<()> {
     Ok(())
 }
 
-/// Re-read an `exec` timeout as the tool's own watchdog code.
+/// Re-read an `exec` failure as one of the tool's own codes.
 ///
-/// `exec::Command::stopped` raises `PD-INT-001` for both its watchdog and cancellation, so without
-/// this a tool that ran long would tell the user PipDock hit an internal error — and `PD-HLT-003`,
-/// which exists for exactly this, would never be reachable.
+/// `exec` speaks the *engine's* vocabulary, and two of its codes are actively wrong on this path:
+///
+/// * `PD-INT-001` for its watchdog — `Command::stopped` uses it for both timeout and cancellation,
+///   so a tool that ran long would tell the user PipDock hit an internal error, and `PD-HLT-003`,
+///   which exists for exactly this, would be unreachable.
+/// * `PD-ENG-001` when the binary cannot be spawned. Its shipped copy is "Install the engine, or
+///   switch engine in Settings", which is nonsense for a corrupted `ruff.exe`. `PD-HLT-001` says
+///   "re-sync the tools environment", and re-syncing is precisely the fix.
+///
+/// Found by replacing a tool with a non-executable file of the same name — present, so the sync
+/// check said Fresh, and unrunnable, so the run reached this path.
 fn watchdog(e: PdError, tool: &str) -> PdError {
     if e.code == Code::IntUnexpected && e.message.contains("timed out") {
         return PdError::new(
             Code::HltTimeout,
             format!("{tool} exceeded its {TOOL_TIMEOUT:?} watchdog; its results are missing"),
+        );
+    }
+    if e.code == Code::EngNotFound {
+        return PdError::new(
+            Code::HltToolMissing,
+            format!(
+                "{tool} is in the tools environment but could not be run: {}",
+                e.message
+            ),
         );
     }
     e
@@ -476,5 +493,15 @@ mod tests {
     fn a_cancellation_is_not_a_watchdog() {
         let cancelled = PdError::new(Code::IntUnexpected, "cancelled: ruff.exe");
         assert_eq!(watchdog(cancelled, "ruff").code, Code::IntUnexpected);
+    }
+
+    /// A tool that is present but cannot be executed — antivirus damage, a truncated download, a
+    /// wrong-architecture binary. `exec` calls that `PD-ENG-001`, whose copy tells the user to
+    /// install an engine or change it in Settings; `PD-HLT-001` tells them to re-sync the tools
+    /// environment, which is the thing that actually fixes it.
+    #[test]
+    fn a_tool_that_cannot_be_spawned_is_a_health_code_not_an_engine_one() {
+        let unrunnable = PdError::new(Code::EngNotFound, "could not run ruff.exe: os error 216");
+        assert_eq!(watchdog(unrunnable, "ruff").code, Code::HltToolMissing);
     }
 }

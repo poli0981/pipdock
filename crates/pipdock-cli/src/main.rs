@@ -64,6 +64,29 @@ pub enum EngineArg {
     Uv,
 }
 
+/// Which Code Health tool to run (CODE-HEALTH-SPEC §1).
+#[derive(Debug, Clone, Copy, ValueEnum)]
+pub enum ToolArg {
+    /// Unused, missing and transitive-only dependencies.
+    Deptry,
+    /// Dead code.
+    Vulture,
+    /// Lint findings, and the only fixes PipDock ever applies.
+    Ruff,
+}
+
+impl ToolArg {
+    /// The name the tools venv installs it under.
+    #[must_use]
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Deptry => "deptry",
+            Self::Vulture => "vulture",
+            Self::Ruff => "ruff",
+        }
+    }
+}
+
 /// Options accepted by every command (CLI-SPEC §2).
 #[derive(Debug, Args)]
 pub struct GlobalOpts {
@@ -203,9 +226,13 @@ enum Command {
         /// Project folder; defaults to the folder remembered for this environment.
         #[arg(long, value_name = "DIR")]
         path: Option<PathBuf>,
-        /// Run a single tool instead of all three.
+        // A `ValueEnum` rather than a free string, so a typo is refused before a subprocess runs
+        // and `--help` lists what is accepted — CLI-SPEC §3 always documented these three values.
+        // Kept out of the doc comment: clap renders those as user-facing help, and the reasoning
+        // is for whoever changes this, not for whoever runs it.
+        /// Run a single tool instead of all three. Repeatable.
         #[arg(long)]
-        tool: Option<String>,
+        tool: Vec<ToolArg>,
         /// Apply ruff's safe fixes. Prompts before writing.
         #[arg(long)]
         fix: bool,
@@ -383,14 +410,8 @@ async fn main() -> ExitCode {
             run::snapshot_diff(&cli.global, id).await
         }
 
-        // The last unimplemented command. Health belongs to M3 with the Code Health tools
-        // environment, and saying which milestone it arrives in beats a stub that appears to
-        // work — this is a tool whose whole promise is telling you what it is about to do.
-        Command::Health { .. } => {
-            eprintln!(
-                "error[PD-INT-001]: `health` arrives in M3, with the Code Health tools                  environment. See docs/CODE-HEALTH-SPEC.md."
-            );
-            Ok(Exit::Internal)
+        Command::Health { path, tool, fix } => {
+            run::health(&cli.global, path.as_deref(), tool, *fix).await
         }
     };
 
