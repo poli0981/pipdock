@@ -1,0 +1,545 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "Code": {
+      "description": "Every code PipDock can surface at v1 launch.\n\n`docs/TESTING.md` §2 requires at least one captured stderr fixture per variant before ship;\nthe test that enforces \"no code without fixture\" lives beside the classifiers.",
+      "oneOf": [
+        {
+          "const": "PD-ENV-001",
+          "description": "Interpreter path missing or not executable — the env was deleted or moved.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENV-002",
+          "description": "PEP 668 `EXTERNALLY-MANAGED` marker present; mutation blocked by default.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENV-003",
+          "description": "`probe.py` exited non-zero or produced unparseable output.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-001",
+          "description": "pip or uv binary not found.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-002",
+          "description": "pip older than 22.2, which predates `--dry-run --report`.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-003",
+          "description": "uv emitted a shape the adapter does not recognize (uv newer than PipDock).",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-999",
+          "description": "Fallback for engine failures no classifier matched. Always last.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-001",
+          "description": "`ResolutionImpossible` or the uv equivalent: constraints cannot be satisfied.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-002",
+          "description": "Plan older than 10 minutes, or the env's probe hash changed since the preview.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-003",
+          "description": "A plan is already resolving or executing in this session.\n\nThe GUI drives one resumable flow across several IPC calls, so \"start a plan\" and \"run the\nplan\" are different messages arriving at different times — nothing structurally stops a\nsecond one arriving in between. Refusing is the only safe answer: two concurrent plans\nwould interleave engine commands against one environment, and DATA-FLOW §9.3's staleness\ncheck would be comparing against a set the other plan is busy changing.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-004",
+          "description": "A removal was asked for that the reverse-dependency guard refused (DATA-FLOW §5).\n\nIts own code rather than a reused one. The CLI printed `PD-PKG-002` here, which means \"no\nmatching distribution\" — the opposite of the truth: every package involved exists, and\nthat is precisely why the removal is being refused. A user grepping their logs for a typo\nwould have found this instead.\n\nNot raised when the guard merely *finds* dependents. That is a report the caller shows and\nthe user answers; the code appears only when execution is attempted anyway without the\nuser having accepted the breakage.",
+          "type": "string"
+        },
+        {
+          "const": "PD-BLD-001",
+          "description": "MSVC build tools required but absent.",
+          "type": "string"
+        },
+        {
+          "const": "PD-BLD-002",
+          "description": "Build backend failed (`pyproject.toml` error, `metadata-generation-failed`).",
+          "type": "string"
+        },
+        {
+          "const": "PD-BLD-003",
+          "description": "Generic sdist wheel-build failure.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-001",
+          "description": "No matching distribution, and metadata shows a requires-python mismatch.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-002",
+          "description": "No matching distribution: name or version typo, or the release is gone.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-003",
+          "description": "The requested release was yanked.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-004",
+          "description": "Downloaded artifact failed hash verification.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-001",
+          "description": "Timeout, connection aborted, or DNS failure.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-002",
+          "description": "TLS/SSL verification failed — typically proxy or AV interception.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-010",
+          "description": "PEP 691 index refresh failed; the stale index stays searchable.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-011",
+          "description": "Code Health tools-venv bootstrap could not reach PyPI.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PRM-001",
+          "description": "`PermissionError` writing site-packages (admin-owned Python).",
+          "type": "string"
+        },
+        {
+          "const": "PD-PRM-002",
+          "description": "File locked by a running process (`WinError 32`).",
+          "type": "string"
+        },
+        {
+          "const": "PD-SNP-001",
+          "description": "Snapshot write failed before execution. **The plan is aborted; nothing runs.**",
+          "type": "string"
+        },
+        {
+          "const": "PD-SNP-002",
+          "description": "A release needed to restore a snapshot is no longer available on PyPI.",
+          "type": "string"
+        },
+        {
+          "const": "PD-SYS-001",
+          "description": "`MAX_PATH` exceeded without the long-path opt-in.",
+          "type": "string"
+        },
+        {
+          "const": "PD-SYS-002",
+          "description": "Disk full.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-001",
+          "description": "A Code Health tool is missing from the tools venv.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-002",
+          "description": "A Code Health tool exited non-zero.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-003",
+          "description": "A Code Health tool exceeded its watchdog timeout; partial report shown.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-004",
+          "description": "`python -m venv` failed while building the tools environment.\n\n**Raised by PipDock, not classified from engine stderr.** Its own code rather than a reused\none: `PD-NET-011` is `Area::Net`, so `run::exit_for` would map a broken interpreter to exit\n6 and a script retrying on network failure would loop forever; `PD-HLT-001` tells the user\nto re-sync, which is the operation that just failed; and a Python built without `venv` is\nnot `PD-INT-001`'s \"a PipDock bug\".",
+          "type": "string"
+        },
+        {
+          "const": "PD-INT-001",
+          "description": "A PipDock bug: panic or unexpected state.",
+          "type": "string"
+        }
+      ]
+    },
+    "DeclaredSource": {
+      "description": "Where the project declares its dependencies, if anywhere.\n\ndeptry needs one of these to have anything to compare against. `None` is not an error — it is\nthe \"limited-mode notice\" §3 asks the UI to show, and the other two tools do not care.",
+      "oneOf": [
+        {
+          "description": "A `pyproject.toml`, which is what deptry prefers.",
+          "properties": {
+            "kind": {
+              "const": "pyproject",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "One or more `requirements*.txt`, named so the UI can say which.",
+          "properties": {
+            "files": {
+              "description": "File names, sorted, relative to the project folder.",
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "kind": {
+              "const": "requirements",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "files"
+          ],
+          "type": "object"
+        },
+        {
+          "description": "Neither. deptry runs in limited mode and its findings mean less.",
+          "properties": {
+            "kind": {
+              "const": "none",
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind"
+          ],
+          "type": "object"
+        }
+      ]
+    },
+    "DeptryIssue": {
+      "description": "One deptry violation, grouped by the dependency it is about.\n\n**deptry emits a flat list**, one object per `(code, module, location)`:\n`{\"error\":{\"code\",\"message\"},\"module\",\"location\":{\"file\",\"line\",\"column\"}}`. §5 sketched a\nper-dependency object with a `locations` array; that shape does not exist. Grouping happens here\nrather than in the UI so the GUI, `pipdock health --json` and P4's saved report cannot disagree.",
+      "properties": {
+        "code": {
+          "description": "deptry's own code — `DEP001`..`DEP004`. Never a PipDock catalog code.",
+          "type": "string"
+        },
+        "dep": {
+          "description": "The name deptry reported.\n\n**A module name, not necessarily a distribution.** `yaml` is `PyYAML`, `cv2` is\n`opencv-python`. Anything handing this to a package operation has to reconcile it first.",
+          "type": "string"
+        },
+        "locations": {
+          "description": "Where it was found. Empty when deptry named no location.",
+          "items": {
+            "$ref": "#/$defs/SourceLocation"
+          },
+          "type": "array"
+        },
+        "message": {
+          "description": "deptry's message, verbatim.\n\nNot a `kind` derived from the code: that mapping would be PipDock's, maintained in two\nlanguages, against a tool that adds codes on its own schedule.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "code",
+        "dep",
+        "message"
+      ],
+      "type": "object"
+    },
+    "FixApplicability": {
+      "description": "How safe ruff considers its own fix.\n\nOnly `Safe` is ever applied: P5 runs plain `ruff check --fix`, which is what `--unsafe-fixes`\nexists to opt out of, and CODE-HEALTH-SPEC §1 makes the write path the narrow one.",
+      "oneOf": [
+        {
+          "const": "safe",
+          "description": "Applied by `ruff check --fix`.",
+          "type": "string"
+        },
+        {
+          "const": "unsafe",
+          "description": "Needs `--unsafe-fixes`, which PipDock never passes.",
+          "type": "string"
+        },
+        {
+          "const": "display",
+          "description": "Shown but never applied.",
+          "type": "string"
+        }
+      ]
+    },
+    "RuffFinding": {
+      "description": "One ruff finding.",
+      "properties": {
+        "code": {
+          "description": "The rule code, e.g. `F401`.\n\nOptional because the field is not ours. ruff 0.16.0 always sets it — a syntax error comes\nthrough as `invalid-syntax` rather than null, which is **not** what CODE-HEALTH-SPEC §6\nassumed — but tolerating null costs one `??` in the UI and stops a format change from\nfailing every run.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "column": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filename": {
+          "description": "Absolute, as ruff reports it.",
+          "type": "string"
+        },
+        "fix": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FixApplicability"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether ruff offers a fix, and how confident it is in it."
+        },
+        "message": {
+          "description": "ruff's message, verbatim.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The rule slug, e.g. `unused-import`.",
+          "type": "string"
+        },
+        "row": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "url": {
+          "description": "ruff's own documentation link.\n\n**Carried, never constructed.** The URL is keyed by rule *name*, so §6's\n`https://docs.astral.sh/ruff/rules/<code>` 404s — `I001` lives at `.../unsorted-imports`.\nNull for a syntax error, which has no rule page.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "message",
+        "filename",
+        "row",
+        "column"
+      ],
+      "type": "object"
+    },
+    "RuffFindings": {
+      "description": "ruff's findings and the two counts the fix path is built on.",
+      "properties": {
+        "findings": {
+          "description": "Every finding, in ruff's order.",
+          "items": {
+            "$ref": "#/$defs/RuffFinding"
+          },
+          "type": "array"
+        },
+        "fixable": {
+          "description": "How many carry a **safe** fix — what `ruff check --fix` would actually apply.\n\nCounted here rather than in the UI because P5's confirm dialog and the CLI's prompt have to\nname the same number, and two implementations of \"count the safe ones\" will not stay equal.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fixableFiles": {
+          "description": "How many distinct files those touch. The number P5's dialog names.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "findings",
+        "fixable",
+        "fixableFiles"
+      ],
+      "type": "object"
+    },
+    "SourceLocation": {
+      "description": "A file and, when the tool knew it, a position in it.",
+      "properties": {
+        "column": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        },
+        "file": {
+          "description": "Relative to the project folder where the tool reported it that way.",
+          "type": "string"
+        },
+        "line": {
+          "description": "1-based. Absent for a whole-file finding such as an unused dependency in `pyproject.toml`.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": [
+            "integer",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "file"
+      ],
+      "type": "object"
+    },
+    "ToolProblem": {
+      "description": "One tool that was asked to run and did not finish.\n\nDeliberately `PdError`-shaped so the UI can hand it straight to `PdErrorRow` rather than\ninventing a second error presentation for the same catalog codes.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code",
+          "description": "The catalog code, so the row is localized from the same table as every other error."
+        },
+        "message": {
+          "description": "Developer-facing detail. Never shown as-is (I18N §1).",
+          "type": "string"
+        },
+        "stderrTail": {
+          "description": "Tail of the tool's stderr, capped as ERROR-CATALOG §3 caps every other one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool": {
+          "description": "Which tool: `deptry`, `vulture` or `ruff`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "VultureFinding": {
+      "description": "One vulture finding.\n\n**vulture has no machine-readable output.** Its text form is\n`<path>:<line>: <message> (<NN>% confidence)`, and `message` is `unused <typ> '<name>'` for\nseven kinds and `unreachable code after '<token>'` for the eighth — which is why `name` is\noptional rather than parsed out of every line. §5 has it required; amended.",
+      "properties": {
+        "confidence": {
+          "description": "vulture's confidence percentage. Below 100 is a candidate, not a fact (§6).",
+          "format": "uint8",
+          "maximum": 255,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "line": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "message": {
+          "description": "The whole message, verbatim.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The identifier, when the message names one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "path": {
+          "description": "As vulture printed it, relative to the project folder.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "path",
+        "line",
+        "message",
+        "confidence"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A Code Health run, whole or partial.\n\nThe only type in this module that reaches the wire, so the only one in `SCHEMA_TYPES` — the\nbindings generator hoists everything it references out of `$defs` into its own TS declaration.",
+  "properties": {
+    "declared": {
+      "$ref": "#/$defs/DeclaredSource",
+      "description": "What the project declares its dependencies in (§3's detection order)."
+    },
+    "deptry": {
+      "description": "deptry's findings, grouped by dependency.",
+      "items": {
+        "$ref": "#/$defs/DeptryIssue"
+      },
+      "type": "array"
+    },
+    "env": {
+      "description": "`canonical_interpreter` of the environment deptry compared against.",
+      "type": "string"
+    },
+    "problems": {
+      "description": "Why a requested tool contributed nothing.\n\n**Empty means every tool in `ran` completed.** This is what makes `PD-HLT-003`'s \"partial\nreport shown\" a shape rather than a promise: one tool failing does not fail the run, it\nlands here and the other two still report.",
+      "items": {
+        "$ref": "#/$defs/ToolProblem"
+      },
+      "type": "array"
+    },
+    "project": {
+      "description": "Absolute project folder the tools ran in. Data, never localized (I18N §2).",
+      "type": "string"
+    },
+    "ran": {
+      "description": "Which tools were asked to run.\n\n**What makes an empty list readable.** Without it, \"no deptry findings\" and \"deptry never\nran\" are the same empty array, and the UI would have to render one as the other — which is\nthe \"never render a state you have not loaded\" rule applied to a tab.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    },
+    "ranAt": {
+      "description": "When the run finished, RFC 3339.",
+      "type": "string"
+    },
+    "ruff": {
+      "$ref": "#/$defs/RuffFindings",
+      "description": "ruff's findings, plus the counts P5's confirm dialog needs."
+    },
+    "toolVersions": {
+      "additionalProperties": {
+        "type": "string"
+      },
+      "description": "The version each tool reported, out of the tools manifest.",
+      "type": "object"
+    },
+    "vulture": {
+      "description": "vulture's findings, in the order it reported them.",
+      "items": {
+        "$ref": "#/$defs/VultureFinding"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "project",
+    "env",
+    "ranAt",
+    "toolVersions",
+    "declared",
+    "ran",
+    "deptry",
+    "vulture",
+    "ruff"
+  ],
+  "title": "HealthReport",
+  "type": "object"
+}

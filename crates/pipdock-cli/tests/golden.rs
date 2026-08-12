@@ -9,8 +9,8 @@
 //! * the clap surface — every command's help, which is the flag contract scripts read;
 //! * the exhaustive exit-code table (CLI-SPEC §5), which the docs call a public contract;
 //! * the `--json` error envelope;
-//! * `pipdock schema <T>` for every type in `SCHEMA_TYPES` — 23 as of S6 — which is the JSON
-//!   contract CLI-SPEC §6 promises consumers can pin against.
+//! * `pipdock schema <T>` for every type in `SCHEMA_TYPES` — 25 as of Phase 3 P3 — which is the
+//!   JSON contract CLI-SPEC §6 promises consumers can pin against.
 //!
 //! That last one earns its keep beyond regression cover: the M2 bridge changes the wire format to
 //! camelCase and makes `Code` serialize as `PD-*` rather than as its Rust variant name. These
@@ -53,6 +53,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "Decision",
     "Intent",
     "Code",
+    "HealthReport",
 ];
 
 fn pipdock() -> Command {

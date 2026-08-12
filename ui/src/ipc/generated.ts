@@ -144,6 +144,46 @@ export type Decision =
   | 'skip'
   | 'force-latest';
 
+/**
+ * Where the project declares its dependencies, if anywhere.
+ *
+ * deptry needs one of these to have anything to compare against. `None` is not an error — it is
+ * the "limited-mode notice" §3 asks the UI to show, and the other two tools do not care.
+ */
+export type DeclaredSource =
+  | { kind: 'pyproject' }
+  | { files: string[]; kind: 'requirements' }
+  | { kind: 'none' };
+
+/**
+ * One deptry violation, grouped by the dependency it is about.
+ *
+ * **deptry emits a flat list**, one object per `(code, module, location)`:
+ * `{"error":{"code","message"},"module","location":{"file","line","column"}}`. §5 sketched a
+ * per-dependency object with a `locations` array; that shape does not exist. Grouping happens here
+ * rather than in the UI so the GUI, `pipdock health --json` and P4's saved report cannot disagree.
+ */
+export interface DeptryIssue {
+  /** deptry's own code — `DEP001`..`DEP004`. Never a PipDock catalog code. */
+  code: string;
+  /**
+   * The name deptry reported.
+   *
+   * **A module name, not necessarily a distribution.** `yaml` is `PyYAML`, `cv2` is
+   * `opencv-python`. Anything handing this to a package operation has to reconcile it first.
+   */
+  dep: string;
+  /** Where it was found. Empty when deptry named no location. */
+  locations?: SourceLocation[];
+  /**
+   * deptry's message, verbatim.
+   *
+   * Not a `kind` derived from the code: that mapping would be PipDock's, maintained in two
+   * languages, against a tool that adds codes on its own schedule.
+   */
+  message: string;
+}
+
 /** The difference between two environment states. */
 export interface Diff {
   /** Present now, absent in the snapshot. */
@@ -233,6 +273,17 @@ export interface ExecutionSummary {
 }
 
 /**
+ * How safe ruff considers its own fix.
+ *
+ * Only `Safe` is ever applied: P5 runs plain `ruff check --fix`, which is what `--unsafe-fixes`
+ * exists to opt out of, and CODE-HEALTH-SPEC §1 makes the write path the narrow one.
+ */
+export type FixApplicability =
+  | 'safe'
+  | 'unsafe'
+  | 'display';
+
+/**
  * What the flow needs next.
  *
  * Crosses IPC, so the GUI's two decision points are a round trip apart (see the module docs).
@@ -269,6 +320,47 @@ export interface GuardReport {
    * "remove dependents too" option.
    */
   withDependents: PkgName[];
+}
+
+/**
+ * A Code Health run, whole or partial.
+ *
+ * The only type in this module that reaches the wire, so the only one in `SCHEMA_TYPES` — the
+ * bindings generator hoists everything it references out of `$defs` into its own TS declaration.
+ */
+export interface HealthReport {
+  /** What the project declares its dependencies in (§3's detection order). */
+  declared: DeclaredSource;
+  /** deptry's findings, grouped by dependency. */
+  deptry: DeptryIssue[];
+  /** `canonical_interpreter` of the environment deptry compared against. */
+  env: string;
+  /**
+   * Why a requested tool contributed nothing.
+   *
+   * **Empty means every tool in `ran` completed.** This is what makes `PD-HLT-003`'s "partial
+   * report shown" a shape rather than a promise: one tool failing does not fail the run, it
+   * lands here and the other two still report.
+   */
+  problems?: ToolProblem[];
+  /** Absolute project folder the tools ran in. Data, never localized (I18N §2). */
+  project: string;
+  /**
+   * Which tools were asked to run.
+   *
+   * **What makes an empty list readable.** Without it, "no deptry findings" and "deptry never
+   * ran" are the same empty array, and the UI would have to render one as the other — which is
+   * the "never render a state you have not loaded" rule applied to a tab.
+   */
+  ran: string[];
+  /** When the run finished, RFC 3339. */
+  ranAt: string;
+  /** ruff's findings, plus the counts P5's confirm dialog needs. */
+  ruff: RuffFindings;
+  /** The version each tool reported, out of the tools manifest. */
+  toolVersions: Record<string, string>;
+  /** vulture's findings, in the order it reported them. */
+  vulture: VultureFinding[];
 }
 
 /** A package the resolver could not take all the way to `latest`. */
@@ -500,6 +592,54 @@ export interface RollbackPreview {
   unrestorable: string[];
 }
 
+/** One ruff finding. */
+export interface RuffFinding {
+  /**
+   * The rule code, e.g. `F401`.
+   *
+   * Optional because the field is not ours. ruff 0.16.0 always sets it — a syntax error comes
+   * through as `invalid-syntax` rather than null, which is **not** what CODE-HEALTH-SPEC §6
+   * assumed — but tolerating null costs one `??` in the UI and stops a format change from
+   * failing every run.
+   */
+  code?: string | null;
+  /** 1-based. */
+  column: number;
+  /** Absolute, as ruff reports it. */
+  filename: string;
+  /** Whether ruff offers a fix, and how confident it is in it. */
+  fix?: FixApplicability | null;
+  /** ruff's message, verbatim. */
+  message: string;
+  /** The rule slug, e.g. `unused-import`. */
+  name: string;
+  /** 1-based. */
+  row: number;
+  /**
+   * ruff's own documentation link.
+   *
+   * **Carried, never constructed.** The URL is keyed by rule *name*, so §6's
+   * `https://docs.astral.sh/ruff/rules/<code>` 404s — `I001` lives at `.../unsorted-imports`.
+   * Null for a syntax error, which has no rule page.
+   */
+  url?: string | null;
+}
+
+/** ruff's findings and the two counts the fix path is built on. */
+export interface RuffFindings {
+  /** Every finding, in ruff's order. */
+  findings: RuffFinding[];
+  /**
+   * How many carry a **safe** fix — what `ruff check --fix` would actually apply.
+   *
+   * Counted here rather than in the UI because P5's confirm dialog and the CLI's prompt have to
+   * name the same number, and two implementations of "count the safe ones" will not stay equal.
+   */
+  fixable: number;
+  /** How many distinct files those touch. The number P5's dialog names. */
+  fixableFiles: number;
+}
+
 /**
  * The `.meta.json` sidecar (ARCHITECTURE §6).
  *
@@ -528,6 +668,16 @@ export interface SnapshotMeta {
   packageCount: number;
   /** Why it was taken. */
   trigger: Trigger;
+}
+
+/** A file and, when the tool knew it, a position in it. */
+export interface SourceLocation {
+  /** 1-based. */
+  column?: number | null;
+  /** Relative to the project folder where the tool reported it that way. */
+  file: string;
+  /** 1-based. Absent for a whole-file finding such as an unused dependency in `pyproject.toml`. */
+  line?: number | null;
 }
 
 /** What the user asked for: a name, optionally constrained. */
@@ -576,6 +726,23 @@ export type Stream =
   | 'stdout'
   | 'stderr';
 
+/**
+ * One tool that was asked to run and did not finish.
+ *
+ * Deliberately `PdError`-shaped so the UI can hand it straight to `PdErrorRow` rather than
+ * inventing a second error presentation for the same catalog codes.
+ */
+export interface ToolProblem {
+  /** The catalog code, so the row is localized from the same table as every other error. */
+  code: Code;
+  /** Developer-facing detail. Never shown as-is (I18N §1). */
+  message: string;
+  /** Tail of the tool's stderr, capped as ERROR-CATALOG §3 caps every other one. */
+  stderrTail?: string | null;
+  /** Which tool: `deptry`, `vulture` or `ruff`. */
+  tool: string;
+}
+
 /** What caused a snapshot to be taken. Shown as the trigger label on the timeline (UI-SPEC §4). */
 export type Trigger =
   | { plan: { planId: string } }
@@ -584,3 +751,24 @@ export type Trigger =
 
 /** A version string as the engine reported it. Never reshaped or localized (I18N §2). */
 export type Version = string;
+
+/**
+ * One vulture finding.
+ *
+ * **vulture has no machine-readable output.** Its text form is
+ * `<path>:<line>: <message> (<NN>% confidence)`, and `message` is `unused <typ> '<name>'` for
+ * seven kinds and `unreachable code after '<token>'` for the eighth — which is why `name` is
+ * optional rather than parsed out of every line. §5 has it required; amended.
+ */
+export interface VultureFinding {
+  /** vulture's confidence percentage. Below 100 is a candidate, not a fact (§6). */
+  confidence: number;
+  /** 1-based. */
+  line: number;
+  /** The whole message, verbatim. */
+  message: string;
+  /** The identifier, when the message names one. */
+  name?: string | null;
+  /** As vulture printed it, relative to the project folder. */
+  path: string;
+}

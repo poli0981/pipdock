@@ -282,6 +282,10 @@ pub fn json_schema(type_name: &str) -> Result<serde_json::Value> {
         "Decision" => Decision,
         "Intent" => crate::flow::Intent,
         "Code" => crate::errors::Code,
+        // Only `HealthReport`, not its parts: the bindings generator hoists every `$defs` entry
+        // into its own TS declaration, so `DeptryIssue` and the rest arrive without being listed.
+        // Registering them separately would emit each twice.
+        "HealthReport" => crate::health::HealthReport,
     }
 }
 
@@ -311,6 +315,7 @@ pub const SCHEMA_TYPES: &[&str] = &[
     "Decision",
     "Intent",
     "Code",
+    "HealthReport",
 ];
 
 /// DATA-FLOW §9.3: a report older than this is refused by [`execute`] and must be re-resolved.
