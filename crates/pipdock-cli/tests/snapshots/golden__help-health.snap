@@ -21,7 +21,12 @@ Options:
           - uv:  `uv pip --python <python>`
 
       --tool <TOOL>
-          Run a single tool instead of all three
+          Run a single tool instead of all three. Repeatable
+
+          Possible values:
+          - deptry:  Unused, missing and transitive-only dependencies
+          - vulture: Dead code
+          - ruff:    Lint findings, and the only fixes PipDock ever applies
 
       --fix
           Apply ruff's safe fixes. Prompts before writing

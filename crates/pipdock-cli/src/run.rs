@@ -23,7 +23,7 @@ pub use pipdock_core::flow::Intent;
 use pipdock_core::store::Store;
 use pipdock_core::{health, index, pins, plan, report, settings, snapshot};
 
-use crate::{EngineArg, Exit, GlobalOpts};
+use crate::{EngineArg, Exit, GlobalOpts, ToolArg};
 
 /// Resolve which engine to drive.
 ///
@@ -867,6 +867,183 @@ pub async fn tools_sync(opts: &GlobalOpts, force: bool, python: Option<&Path>) -
         }
     }
     Ok(Exit::Success)
+}
+
+/// `pipdock health`
+///
+/// Exits **1 when any tool reported a finding**, 0 when all of them were clean. A linter that
+/// exits 0 on findings is useless in a pre-commit hook, and `doctor` already returns
+/// `PartialFailure` for "found real problems" — CLI-SPEC §5's description of code 1 is amended to
+/// cover it. Failures still map through `exit_for`, so a tools venv that will not build is
+/// distinguishable from a project with lint.
+///
+/// # Errors
+/// `PD-ENV-003` when the project folder cannot be read, plus whatever the implicit tools-venv sync
+/// raises. A single tool failing is **not** an error: it lands in `problems` and the rest report.
+pub async fn health(
+    opts: &GlobalOpts,
+    path: Option<&Path>,
+    tools: &[ToolArg],
+    fix: bool,
+) -> Result<Exit> {
+    if fix {
+        // Refused rather than half-shipped. The write path is P5's, and it needs a confirm, a
+        // dirty-tree check and a named waiver — none of which exist yet, and all of which the user
+        // would reasonably assume were there if this silently ran ruff --fix.
+        eprintln!(
+            "error[PD-INT-001]: `--fix` arrives with the gated write path. \
+             See docs/CODE-HEALTH-SPEC.md §1."
+        );
+        return Ok(Exit::Internal);
+    }
+
+    let env = select_env(opts).await?;
+    let env_hash = envs::env_hash(&env.interpreter);
+    let app_data = app_data_dir();
+    let store = Store::open(&app_data)?;
+
+    // CLI-SPEC §3's `--path` default: what was used here last, else the working directory. An
+    // error naming the flag beats silently scanning wherever the shell happened to be.
+    let project = match path {
+        Some(p) => p.to_path_buf(),
+        None => match store.health_project(&env_hash)? {
+            Some(folder) => PathBuf::from(folder),
+            None => std::env::current_dir().map_err(|e| {
+                PdError::new(
+                    Code::EnvProbeFailed,
+                    format!("no project folder: pass --path ({e})"),
+                )
+            })?,
+        },
+    };
+
+    let tools_dir = health::tools_dir(&app_data);
+    let sync_needed = health::needs_sync(&tools_dir)?.is_needed();
+    let run_opts = health::RunOptions {
+        tools: tools.iter().map(|t| t.as_str().to_owned()).collect(),
+        ..health::RunOptions::default()
+    };
+
+    // The total is decided **before** the first event. A progress bar cannot learn its own total
+    // halfway, and whether a sync is owed is exactly the thing that changes it.
+    let total = health::run_steps(&run_opts) + if sync_needed { health::SYNC_STEPS } else { 0 };
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
+    let quiet = opts.quiet;
+    let pump = tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if let Some(line) = event.line().filter(|_| !quiet) {
+                eprintln!("{line}");
+            }
+        }
+    });
+    let sink = engine::ProgressSink::new(tx, total, CancellationToken::new());
+
+    let outcome = async {
+        if sync_needed {
+            if !opts.quiet && !opts.json {
+                println!("building the Code Health tools environment (first run)…");
+            }
+            let (python, _) = health::choose_tools_python(&envs::scan().await).await?;
+            health::sync_tools_venv(&tools_dir, &python, &sink).await?;
+        }
+        health::run_tools(
+            &tools_dir,
+            &project,
+            &env,
+            &run_opts,
+            &sink.at(if sync_needed { health::SYNC_STEPS } else { 0 }),
+        )
+        .await
+    }
+    .await;
+
+    drop(sink);
+    let _ = pump.await;
+    let report = outcome?;
+
+    // Remembered on every run, not only successful ones: the question it answers is "where did we
+    // last do this", and a run that found problems still happened here.
+    store.set_health_project(
+        &env_hash,
+        &project.display().to_string(),
+        &jiff::Timestamp::now().to_string(),
+    )?;
+
+    print_health(opts, &report);
+    Ok(if health::has_findings(&report) {
+        Exit::PartialFailure
+    } else {
+        Exit::Success
+    })
+}
+
+/// Print a health report, as JSON or as the human summary.
+fn print_health(opts: &GlobalOpts, report: &health::HealthReport) {
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(report).unwrap_or_default()
+        );
+        return;
+    }
+
+    println!("project     : {}", report.project);
+    match &report.declared {
+        health::DeclaredSource::Pyproject => println!("declared in : pyproject.toml"),
+        health::DeclaredSource::Requirements { files } => {
+            println!("declared in : {}", files.join(", "));
+        }
+        health::DeclaredSource::None => {
+            // §3's limited-mode notice. deptry still runs; its findings just mean less.
+            println!("declared in : nothing found — deptry's results are limited");
+        }
+    }
+
+    for issue in &report.deptry {
+        println!("{} {} — {}", issue.code, issue.dep, issue.message);
+        for loc in &issue.locations {
+            match loc.line {
+                Some(line) => println!("            {}:{line}", loc.file),
+                None => println!("            {}", loc.file),
+            }
+        }
+    }
+    for finding in &report.vulture {
+        println!(
+            "{}:{} {} ({}%)",
+            finding.path, finding.line, finding.message, finding.confidence
+        );
+    }
+    for finding in &report.ruff.findings {
+        println!(
+            "{}:{}:{} {} {}",
+            finding.filename,
+            finding.row,
+            finding.column,
+            finding.code.as_deref().unwrap_or("-"),
+            finding.message
+        );
+    }
+
+    println!(
+        "\n{} dependency, {} dead-code, {} lint ({} safely fixable in {} file(s))",
+        report.deptry.len(),
+        report.vulture.len(),
+        report.ruff.findings.len(),
+        report.ruff.fixable,
+        report.ruff.fixable_files
+    );
+    // The limitation, said out loud rather than left in a doc comment: deptry compares against
+    // PipDock's tools environment because it has no way to be told about another one.
+    if !report.deptry.is_empty() {
+        println!(
+            "note        : deptry compares imports against PipDock's own tools environment, \
+             not this one — DEP001 and DEP003 can be swapped for packages it happens to hold"
+        );
+    }
+    for problem in &report.problems {
+        eprintln!("error[{}]: {}", problem.code, problem.message);
+    }
 }
 
 /// `pipdock tools status`
