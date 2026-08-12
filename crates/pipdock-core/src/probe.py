@@ -58,7 +58,23 @@ def _externally_managed() -> bool:
     The marker sits next to the stdlib in the `stdlib` scheme path. Its mere
     presence is what pip keys off, so PipDock does the same -- contents are not
     parsed. Drives PD-ENV-002.
+
+    **A virtual environment is never externally managed**, and returning early is
+    not an optimisation. A venv has no stdlib of its own: `sysconfig.get_path`
+    resolves to the *base* installation, so every venv created from a Python that
+    ships the marker -- uv-managed builds, Debian, Homebrew, Fedora -- reported
+    itself as managed and PipDock refused to mutate it. Found by making a venv
+    from a uv-managed 3.11 and watching `pip-upgrade` refuse with PD-ENV-002 on
+    an environment whose whole purpose is being safe to install into.
+
+    This mirrors pip's own `check_externally_managed`, which opens with the same
+    `running_under_virtualenv()` early return before it looks for the file. The
+    `platstdlib` candidate below is a deliberate superset of pip's single
+    `stdlib` check; on Windows they resolve to the same directory.
     """
+    if sys.prefix != sys.base_prefix:
+        return False
+
     candidates = []
     for key in ("stdlib", "platstdlib"):
         try:
