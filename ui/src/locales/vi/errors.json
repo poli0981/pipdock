@@ -30,6 +30,7 @@
     "PD-HLT-001": "Thiếu một công cụ của Sức khỏe mã. Hãy đồng bộ lại môi trường công cụ.",
     "PD-HLT-002": "Một công cụ của Sức khỏe mã dừng với lỗi. Các kết quả khác vẫn dùng được.",
     "PD-HLT-003": "Một công cụ của Sức khỏe mã chạy quá lâu và đã bị dừng. Báo cáo chưa đầy đủ.",
+    "PD-HLT-004": "Sức khỏe mã không tạo được môi trường công cụ. Hãy kiểm tra bản cài Python.",
     "PD-INT-001": "PipDock gặp lỗi nội bộ.",
     "PD-ENG-999": "Bộ máy thất bại vì lý do PipDock chưa nhận ra."
   }

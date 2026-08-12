@@ -170,6 +170,7 @@ fn no_code_without_a_fixture() {
         ("PD-HLT-001", "health: tool missing from the tools venv"),
         ("PD-HLT-002", "health: tool exited non-zero"),
         ("PD-HLT-003", "health: tool exceeded its watchdog"),
+        ("PD-HLT-004", "health: the tools venv could not be created"),
         ("PD-INT-001", "anywhere: a PipDock bug"),
         ("PD-ENG-999", "the fallback itself"),
     ]);
