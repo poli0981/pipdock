@@ -4,6 +4,10 @@
 //! **report-only**, and the sole write path is `ruff --fix` / `ruff format` behind an explicit
 //! confirm. PipDock never edits `pyproject.toml` or `requirements.txt` for the user.
 
+pub mod project;
+
+pub use project::{DeclaredSource, declared_source};
+
 use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 

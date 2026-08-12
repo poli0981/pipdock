@@ -11,7 +11,7 @@
 
 use std::path::{Path, PathBuf};
 
-use rusqlite::Connection;
+use rusqlite::{Connection, OptionalExtension as _};
 
 use crate::errors::{Code, PdError, Result};
 
@@ -19,7 +19,7 @@ use crate::errors::{Code, PdError, Result};
 pub const DB_FILE: &str = "index.db";
 
 /// Schema version this build expects. Bump when adding a migration.
-pub const SCHEMA_VERSION: i64 = 2;
+pub const SCHEMA_VERSION: i64 = 3;
 
 /// An open store.
 #[derive(Debug)]
@@ -153,6 +153,16 @@ impl Store {
                      PRIMARY KEY (env_hash, pkg)
                  );
 
+                 -- The project folder Code Health runs its tools in, per environment
+                 -- (CODE-HEALTH-SPEC §3). Its own table rather than a `kv` row because it is
+                 -- keyed and carries a second column; `kv` is for scalars. Same env_hash the
+                 -- pins use, case-folded upstream (SP-6).
+                 CREATE TABLE IF NOT EXISTS health_projects (
+                     env_hash  TEXT PRIMARY KEY,
+                     folder    TEXT NOT NULL,
+                     last_run  TEXT
+                 );
+
                  -- Small scalars that do not deserve a table of their own: when the name index
                  -- was last refreshed, how many projects it holds.
                  CREATE TABLE IF NOT EXISTS kv (
@@ -250,6 +260,42 @@ impl Store {
     pub fn default_env(&self) -> Result<Option<RecentEnv>> {
         Ok(self.recent_envs()?.into_iter().find(|e| e.is_default))
     }
+
+    /// The project folder Code Health last ran in for this environment (CODE-HEALTH-SPEC §3).
+    ///
+    /// Per environment, because deptry compares declared dependencies against what is *installed*
+    /// — the same folder against a different env is a different question.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the read fails.
+    pub fn health_project(&self, env_hash: &str) -> Result<Option<String>> {
+        self.conn
+            .query_row(
+                "SELECT folder FROM health_projects WHERE env_hash = ?1",
+                [env_hash],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|e| PdError::new(Code::IntUnexpected, format!("read health project: {e}")))
+    }
+
+    /// Remember the folder, and when it was last run in.
+    ///
+    /// `last_run` is written on every save rather than only on success: the question it answers is
+    /// "when did we last do this here", and a run that failed still happened.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the write fails.
+    pub fn set_health_project(&self, env_hash: &str, folder: &str, now: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO health_projects (env_hash, folder, last_run) VALUES (?1, ?2, ?3)
+                 ON CONFLICT(env_hash) DO UPDATE SET folder = ?2, last_run = ?3",
+                [env_hash, folder, now],
+            )
+            .map(|_| ())
+            .map_err(|e| PdError::new(Code::IntUnexpected, format!("save health project: {e}")))
+    }
 }
 
 /// Default app data root, `%LOCALAPPDATA%\PipDock` (ARCHITECTURE §6).
@@ -278,12 +324,56 @@ mod tests {
             .filter_map(std::result::Result::ok)
             .collect();
 
-        for expected in ["envs", "meta_cache", "names", "pins"] {
+        for expected in ["envs", "health_projects", "meta_cache", "names", "pins"] {
             assert!(
                 tables.contains(&expected.to_owned()),
                 "missing {expected}: {tables:?}"
             );
         }
+    }
+
+    #[test]
+    fn a_project_folder_is_remembered_per_environment() {
+        // Per environment, not per folder: deptry compares declared dependencies against what is
+        // *installed*, so the same folder against a different env is a different question.
+        let store = Store::in_memory().expect("open");
+
+        assert_eq!(store.health_project("aaa").expect("read"), None);
+
+        store
+            .set_health_project("aaa", r"C:\proj\one", "2026-08-12T00:00:00Z")
+            .expect("write");
+        store
+            .set_health_project("bbb", r"C:\proj\two", "2026-08-12T00:00:00Z")
+            .expect("write");
+
+        assert_eq!(
+            store.health_project("aaa").expect("read").as_deref(),
+            Some(r"C:\proj\one")
+        );
+        assert_eq!(
+            store.health_project("bbb").expect("read").as_deref(),
+            Some(r"C:\proj\two")
+        );
+    }
+
+    #[test]
+    fn choosing_a_different_folder_replaces_rather_than_duplicates() {
+        // env_hash is the primary key, so the upsert is the whole mechanism — a plain INSERT would
+        // fail on the second save and the user's new choice would silently not stick.
+        let store = Store::in_memory().expect("open");
+
+        store
+            .set_health_project("aaa", r"C:\proj\one", "2026-08-12T00:00:00Z")
+            .expect("first");
+        store
+            .set_health_project("aaa", r"C:\proj\two", "2026-08-12T01:00:00Z")
+            .expect("second");
+
+        assert_eq!(
+            store.health_project("aaa").expect("read").as_deref(),
+            Some(r"C:\proj\two")
+        );
     }
 
     #[test]
