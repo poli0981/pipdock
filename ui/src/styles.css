@@ -155,7 +155,8 @@
     /* Destructive controls, which are otherwise indistinguishable once their tint is dropped. */
     button[data-action='force'],
     button[data-action='uninstall'],
-    button[data-action='rollback'] {
+    button[data-action='rollback'],
+    button[data-action='upgrade-pip'] {
       border: 2px solid CanvasText;
     }
   }

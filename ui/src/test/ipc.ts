@@ -39,6 +39,8 @@ export interface IpcMock {
   uninstallExecute: ReturnType<typeof vi.fn>
   onPlanProgress: ReturnType<typeof vi.fn>
   envScan: ReturnType<typeof vi.fn>
+  envProbe: ReturnType<typeof vi.fn>
+  pipUpgrade: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
 
@@ -64,6 +66,8 @@ export function ipcMock(): IpcMock {
     // Returns the unlisten function the store stores and calls in its `finally`.
     onPlanProgress: vi.fn().mockResolvedValue(() => undefined),
     envScan: vi.fn().mockResolvedValue([]),
+    envProbe: vi.fn(),
+    pipUpgrade: vi.fn().mockResolvedValue(undefined),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
     // and a stub that always answered one way would make every error test agree with itself.
     isPdError: (value: unknown): boolean =>

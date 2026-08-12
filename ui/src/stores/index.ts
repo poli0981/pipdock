@@ -17,6 +17,7 @@ import { create } from 'zustand'
 import type { NavKey } from '@/components/nav'
 import { FALLBACK_LOCALE, type Locale } from '@/i18n'
 import {
+  envProbe,
   envScan,
   isPdError,
   legalConsentGet,
@@ -24,6 +25,7 @@ import {
   pinAdd,
   pinList,
   pinRemove,
+  pipUpgrade,
   pkgList,
   pkgOutdated,
   snapshotCreate,
@@ -130,6 +132,16 @@ interface EnvState {
   scan: () => Promise<void>
   setProgress: (progress: ScanProgress) => void
   select: (interpreter: string) => void
+  /** Which row's pip upgrade is running, by interpreter path — the button's busy state. */
+  upgradingPip: string | null
+  /**
+   * Upgrade pip in one environment and refresh that row (PRD P0-10).
+   *
+   * Re-probes rather than rescanning: a rescan spawns `probe.py` once per discovered interpreter,
+   * and only one row's version can have changed. It also cannot move the selection, which a
+   * rescan can.
+   */
+  upgradePip: (interpreter: string) => Promise<void>
 
   // -- the package slice, for Installed and Updates ------------------------------------------
 
@@ -291,6 +303,28 @@ export const useEnvStore = create<EnvState>((set, get) => ({
   },
 
   setProgress: (progress) => set({ progress }),
+
+  upgradingPip: null,
+
+  upgradePip: async (interpreter) => {
+    const row = get().rows.find((r) => r.interpreter === interpreter)
+    if (row?.env === undefined || get().upgradingPip !== null) return
+
+    set({ upgradingPip: interpreter, error: null })
+    try {
+      await pipUpgrade(row.env)
+      // A whole new array, not a mutated element: zustand compares references, so writing
+      // `row.pipVersion = …` in place would leave the screen showing the old number until some
+      // unrelated field happened to change.
+      const fresh = await envProbe(interpreter)
+      set((state) => ({
+        rows: state.rows.map((r) => (r.interpreter === interpreter ? fresh : r)),
+        upgradingPip: null,
+      }))
+    } catch (e) {
+      set({ upgradingPip: null, error: asPdError(e) })
+    }
+  },
 
   // Clearing the package slice here is load-bearing: without it, switching environments shows the
   // previous one's packages under the new one's name. Invisible to any test that loads one env.

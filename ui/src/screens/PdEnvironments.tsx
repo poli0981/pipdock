@@ -10,14 +10,19 @@
  */
 
 import { openUrl } from '@tauri-apps/plugin-opener'
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { PdDialog } from '@/components/PdDialog'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { onScanProgress, type EnvRow } from '@/ipc'
 import { PdEnvDetail } from '@/screens/PdEnvDetail'
+import { PIP_MIN_FOR_REPORT, pipNeedsUpgrade } from '@/screens/pip'
 import { useEnvStore } from '@/stores'
+
+/** `22.2`, for the dialog's copy. Data, not prose — interpolated, never translated (I18N §2). */
+const FLOOR = PIP_MIN_FOR_REPORT.join('.')
 
 function SourceChip({ row }: { row: EnvRow }) {
   const { t } = useTranslation()
@@ -33,6 +38,9 @@ function Row({ row }: { row: EnvRow }) {
   const selected = useEnvStore((s) => s.selected)
   const select = useEnvStore((s) => s.select)
   const openEnv = useEnvStore((s) => s.openEnv)
+  const upgradePip = useEnvStore((s) => s.upgradePip)
+  const upgrading = useEnvStore((s) => s.upgradingPip === row.interpreter)
+  const [confirming, setConfirming] = useState(false)
   const isSelected = selected === row.interpreter
   const managed = row.env?.externallyManaged === true
 
@@ -60,6 +68,7 @@ function Row({ row }: { row: EnvRow }) {
           {/* Version and counts are data, not prose — never translated (I18N §2). */}
           {`Py ${row.env.pythonVersion}`}
           {row.packages === undefined ? '' : ` · ${t('status.packages', { count: row.packages })}`}
+          {row.pipVersion === undefined ? '' : ` · pip ${row.pipVersion}`}
         </p>
       ) : null}
 
@@ -104,8 +113,58 @@ function Row({ row }: { row: EnvRow }) {
           >
             {t('actions.open')}
           </button>
+          {/* P0-10. A second inline button rather than a `⋮` menu: there is no row overflow menu
+              anywhere in the app, and the first one should not arrive to hold a single action.
+              Shown only below the planner's floor — see `pipNeedsUpgrade`. */}
+          {pipNeedsUpgrade(row.pipVersion) ? (
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(true)
+              }}
+              disabled={upgrading}
+              data-action="upgrade-pip"
+              className="rounded-pd border border-warn px-3 py-1 text-data text-warn disabled:opacity-40"
+            >
+              {upgrading ? t('env.pipUpgrading') : t('env.pipUpgrade')}
+            </button>
+          ) : null}
         </div>
       )}
+
+      {confirming ? (
+        <PdDialog
+          label={row.interpreter}
+          title={t('env.pipUpgradeTitle')}
+          cancelLabel={t('actions.cancel')}
+          busy={upgrading}
+          onCancel={() => {
+            setConfirming(false)
+          }}
+          actions={
+            <button
+              type="button"
+              onClick={() => {
+                setConfirming(false)
+                void upgradePip(row.interpreter)
+              }}
+              data-action="upgrade-pip"
+              className="rounded-pd border border-warn px-3 py-1 text-data text-warn"
+            >
+              {t('env.pipUpgradeConfirm')}
+            </button>
+          }
+        >
+          <p className="text-data text-text-dim">
+            {t('env.pipUpgradeBody', { version: row.pipVersion ?? '', floor: FLOOR })}
+          </p>
+          {/* DATA-FLOW §9.2's exemption, said out loud. A snapshot's only restore path is
+              `pip install pip==X` run *by pip*, so one taken here would have no consumer if pip
+              broke — but an unannounced exception to "every mutation is snapshotted" is how an
+              exemption becomes an erosion. */}
+          <p className="mt-2 text-data text-warn">{t('env.pipUpgradeNoSnapshot')}</p>
+        </PdDialog>
+      ) : null}
     </li>
   )
 }
