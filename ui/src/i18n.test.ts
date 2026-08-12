@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest'
 import { FALLBACK_LOCALE, resolveLocale, resources, SUPPORTED_LOCALES } from './i18n'
+import enCommon from './locales/en/common.json'
+import enErrors from './locales/en/errors.json'
+import viCommon from './locales/vi/common.json'
+import viErrors from './locales/vi/errors.json'
 import codes from './test/fixtures/codes.json'
 
 /** `Code::ALL`, generated from the Rust enum — see `crates/pipdock-core/src/fixtures.rs`. */
@@ -25,6 +29,34 @@ function keyPaths(obj: unknown, prefix = ''): string[] {
 function pluralBase(key: string): string {
   return key.replace(/_(zero|one|two|few|many|other)$/, '')
 }
+
+describe('the two-file merge', () => {
+  /**
+   * Every key from **both** source files must survive into the shipped catalog.
+   *
+   * The bug this exists for: `common.json` and `errors.json` both have a top-level `errors`
+   * object — the codes in one, the row's furniture in the other — so a shallow
+   * `{ ...common, ...errors }` dropped five strings per locale, `errors.unknown` among them. That
+   * is `PdErrorRow`'s fallback for an unrecognized code, so the one thing standing between the
+   * user and raw English developer text rendered as the literal `errors.unknown`.
+   *
+   * **Neither existing test could see it.** The catalog test only asks about `Code::ALL`, and the
+   * parity test compares en against vi — which agreed perfectly, because both lost the same keys.
+   * Only comparing the merge against its own inputs catches a merge that discards one.
+   */
+  const SOURCES = { en: [enCommon, enErrors], vi: [viCommon, viErrors] } as const
+
+  for (const locale of SUPPORTED_LOCALES) {
+    it(`${locale} keeps every key from both source files`, () => {
+      const shipped = new Set(keyPaths(resources[locale].common))
+      const missing = SOURCES[locale]
+        .flatMap((file) => keyPaths(file))
+        .filter((key) => !shipped.has(key))
+
+      expect(missing, `lost in the merge: ${missing.join(', ')}`).toEqual([])
+    })
+  }
+})
 
 describe('the error catalog', () => {
   // The gap S7 exists to close: 26 of the 32 codes had no copy at all, so a PEP 668 refusal, an

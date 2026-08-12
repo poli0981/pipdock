@@ -45,8 +45,15 @@ export function resolveLocale(languageTag: string | undefined): Locale {
 export const resources = {
   // Merged, not nested: `errors.json` is `{ "errors": { … } }`, so the keys land at
   // `errors.PD-XXX-NNN` exactly where `common.json` used to hold them and no call site moves.
-  en: { common: { ...enCommon, ...enErrors } },
-  vi: { common: { ...viCommon, ...viErrors } },
+  //
+  // **The `errors` sub-object is merged, not spread over.** Both files have a top-level `errors`
+  // key — the codes in one, the row's own furniture (`title`, `retry`, `unknown`, `logPrivacy`,
+  // `logCopied`) in the other — so `{ ...common, ...errors }` replaced the second with the first
+  // and silently dropped five strings in both languages. `errors.unknown` was among them, which is
+  // the fallback `PdErrorRow` shows instead of leaking `PdError.message`: an unrecognized code
+  // rendered the literal text `errors.unknown`. Found by clicking a button and reading the row.
+  en: { common: { ...enCommon, errors: { ...enCommon.errors, ...enErrors.errors } } },
+  vi: { common: { ...viCommon, errors: { ...viCommon.errors, ...viErrors.errors } } },
 } as const
 
 /**
