@@ -123,6 +123,7 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 | Rollback last snapshot | **4** | Environments → *Open* → timeline entry → *Rollback…* → *Roll back* (2 from a run's summary, via *Roll back to this*) |
 | Switch engine | **3** | Settings → engine radio → (auto-saved) back |
 | Run Code Health | **3** | Health → Run (folder persisted) → view |
+| Upgrade pip | **2** | *Upgrade pip* → *Upgrade* (Environments is the landing screen, so no tab click). The button appears only when pip is below the 22.2 planner floor — the case the ordinary Updates path cannot fix, because the planner it needs will not run. |
 
 ## 6. Component inventory (prefix `Pd`)
 
