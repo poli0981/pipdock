@@ -18,6 +18,11 @@ dist-ssr/
 venv/
 __pycache__/
 *.py[cod]
+# ci-integration.yml builds these in the workspace. Harmless on an ephemeral runner, but a
+# developer running the same steps locally gets an untracked venv that `git add -A` would sweep up.
+/.itest/
+/.uvtools/
+/.itest-appdata/
 
 # Editors / IDEs
 .idea/
