@@ -383,19 +383,30 @@ against the slice that owes it.
 
 ### Where to pick up
 
-**Phase 3.** Its first slice, P1 (pip upkeep), is the smallest: `pip_upgrade` is the only command it
-needs, `Engine::upgrade_pip` and the CLI already exist, and `engine_info` — which the Environments
-row needs to show a version — landed here. The plan's decomposition (P1 pip upkeep · P2 tools venv ·
-P3 runners + `HealthReport` · P4 the Health screen · P5 the gated `ruff --fix`) is in
-`~/.claude/plans/b-n-l-n-plan-cho-eventual-wadler.md`, along with the two decisions worth not
-re-deriving: the tools venv is populated with **pip** unconditionally rather than the configured
-engine, and the health report type is **`HealthReport`**, because `CheckReport` is already taken by
-`engine.check()` and is a published `pipdock schema` contract.
+**Phase 3 is three-fifths done.** P1 (pip upkeep), P2 (the tools venv) and P3 (the runners and
+`HealthReport`) are merged, each with a stage table above. **Next is P4 — the Health screen** — then
+P5, the gated `ruff --fix`. `~/.claude/plans/b-n-c-th-b-t-snappy-rabin.md` decomposes both
+commit-by-commit.
 
-**Ten minutes before any of it:** install `tools-requirements.txt`'s pin set into a scratch venv on
-3.14 and on 3.13. `py -0p` reports 3.14 first on this machine and `deptry` ships compiled wheels; no
-cp314 wheel means an sdist build and PD-BLD-001 with no user action. That answer sets
-`TOOLS_PYTHON_MAX` and is the top unknown in all of M3.
+`NOT_YET` is down to three, and **only `health_fix` is Phase 3's**: P4 needs no new Tauri command,
+because `health_run` already returns everything the screen renders and `EnvRow` is the established
+place to hang the per-environment project folder (P1 set that precedent with `pipVersion`).
+
+Four things P4 will otherwise rediscover, all verified rather than assumed:
+
+- `@tauri-apps/plugin-dialog` is registered in Rust and granted `dialog:allow-open`, but is **not in
+  `package.json`** — there is no JS binding installed. `dialog:allow-save` is not granted at all.
+- `capabilities/external-links.json` scopes `opener:allow-open-url` to `https://github.com/*`, so
+  every ruff rule link **fails silently** until `docs.astral.sh` is added. Invisible in dev.
+- UI-SPEC §6 says **14 of 16** components exist, not 15. `PdHealthReport` makes it 15;
+  `PdEnvSwitcher` is still absent.
+- deptry names a **module**, not a distribution — `yaml` is `PyYAML`. The "Review in Uninstall…"
+  handoff has to reconcile that or it hands the guard a name it will reject with `PD-PKG-002`.
+
+**One decision is open**, and it is the only one in three slices the owner did not make: deptry
+cannot be told which environment to compare against, so §2's isolation and §3's comparison conflict.
+P3 chose isolation and disclosed the cost — see CODE-HEALTH-SPEC §3's amendment block and
+[PR #32](https://github.com/poli0981/pipdock/pull/32). Revisit before Code Health ships.
 
 **All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 
