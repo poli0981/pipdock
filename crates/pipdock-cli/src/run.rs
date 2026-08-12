@@ -7,7 +7,9 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
 
-use pipdock_core::engine::{self, Engine, ProgressEvent, pip::PipEngine, uv::UvEngine};
+use pipdock_core::engine::{
+    self, CancellationToken, Engine, ProgressEvent, pip::PipEngine, uv::UvEngine,
+};
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::flow::{
@@ -19,7 +21,7 @@ use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
 /// translating what the user asked for into a `PlanRequest` is flow logic the GUI needs too.
 pub use pipdock_core::flow::Intent;
 use pipdock_core::store::Store;
-use pipdock_core::{index, pins, plan, report, settings, snapshot};
+use pipdock_core::{health, index, pins, plan, report, settings, snapshot};
 
 use crate::{EngineArg, Exit, GlobalOpts};
 
@@ -305,6 +307,12 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
     let pip_ok = pip.available;
     let check_ok = check.as_ref().map(|c| c.ok).unwrap_or(false);
 
+    // Whether Code Health can run at all. Deliberately **not** part of the exit rule below: Health
+    // is optional, and a fresh install exiting 1 because it has not built a tools venv yet would
+    // make `doctor` useless as a health check for everything else.
+    let tools = health::tools_dir(&app_data_dir());
+    let tools_need = health::needs_sync(&tools);
+
     if opts.json {
         println!(
             "{}",
@@ -316,6 +324,11 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
                 "hiddenUserSite": env.hidden_user_site,
                 "engines": { "pip": pip, "uv": uv },
                 "check": check.as_ref().ok(),
+                "toolsVenv": {
+                    "path": tools,
+                    "need": tools_need.as_ref().ok(),
+                    "manifest": health::read_manifest(&tools),
+                },
             }))
             .unwrap_or_default()
         );
@@ -351,6 +364,15 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
                 }
             }
             Err(e) => println!("check       : could not run ({})", e.code),
+        }
+        match &tools_need {
+            Ok(need) => {
+                println!("code health : {}", describe_need(need));
+                if need.is_needed() {
+                    println!("              run `pipdock tools sync`");
+                }
+            }
+            Err(e) => println!("code health : could not tell ({})", e.code),
         }
     }
 
@@ -763,6 +785,138 @@ pub async fn env_use(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
         );
     }
     Ok(Exit::Success)
+}
+
+/// `pipdock tools sync`
+///
+/// The re-sync `PD-HLT-001`'s shipped copy already tells users to run — until now there was no way
+/// to do it. Not `--env`-scoped: the tools venv is PipDock's own, one per installation, and never
+/// the user's environment (CODE-HEALTH-SPEC §1).
+///
+/// # Errors
+/// As `health::sync_tools_venv`. `PD-ENV-001` when no Python 3.10+ is discoverable.
+pub async fn tools_sync(opts: &GlobalOpts, force: bool, python: Option<&Path>) -> Result<Exit> {
+    let dir = health::tools_dir(&app_data_dir());
+
+    if !force {
+        let need = health::needs_sync(&dir)?;
+        if !need.is_needed() {
+            if opts.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&need).unwrap_or_default()
+                );
+            } else {
+                println!("tools environment is current ({})", dir.display());
+            }
+            return Ok(Exit::Success);
+        }
+        if !opts.quiet && !opts.json {
+            println!("{}", describe_need(&need));
+        }
+    }
+
+    let base = match python {
+        Some(path) => path.to_path_buf(),
+        None => {
+            // One sweep, driven here rather than hidden inside the sync — `scan` spawns four
+            // subprocesses and the caller owns the "newest >= 3.10" policy.
+            let (path, version) = health::choose_tools_python(&envs::scan().await).await?;
+            if !opts.quiet && !opts.json {
+                println!("building on Python {version} ({})", path.display());
+            }
+            path
+        }
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
+    let quiet = opts.quiet;
+    let pump = tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            // The lifecycle markers carry no text; the CLI streams tool output only.
+            if let Some(line) = event.line().filter(|_| !quiet) {
+                eprintln!("{line}");
+            }
+        }
+    });
+
+    // A fresh token nothing trips, matching every other CLI path: the CLI installs no Ctrl-C
+    // handler, and the flows build their own tokens for the GUI's `plan_cancel` to reach. Killing
+    // the process still tears the tree down — `exec::TreeGuard`'s job object closes with the last
+    // handle — which is verified rather than assumed: a killed sync leaves no orphan pip.
+    let sink = engine::ProgressSink::new(tx, health::SYNC_STEPS, CancellationToken::new());
+    let manifest = health::sync_tools_venv(&dir, &base, &sink).await;
+    drop(sink);
+    let _ = pump.await;
+    let manifest = manifest?;
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&manifest).unwrap_or_default()
+        );
+    } else if !opts.quiet {
+        println!("tools environment synced at {}", dir.display());
+        for (tool, version) in &manifest.tools {
+            println!("  {tool} {version}");
+        }
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock tools status`
+///
+/// # Errors
+/// `PD-PKG-002` when the shipped pin ledger is malformed — a build-time mistake.
+pub async fn tools_status(opts: &GlobalOpts) -> Result<Exit> {
+    let dir = health::tools_dir(&app_data_dir());
+    let need = health::needs_sync(&dir)?;
+    let manifest = health::read_manifest(&dir);
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!({
+                "path": dir,
+                "need": need,
+                "manifest": manifest,
+            }))
+            .unwrap_or_default()
+        );
+        return Ok(Exit::Success);
+    }
+
+    println!("tools environment: {}", dir.display());
+    println!("{}", describe_need(&need));
+    if let Some(m) = manifest {
+        println!("python {} ({})", m.python_version, m.python);
+        println!("synced {}", m.synced_at);
+        for (tool, version) in &m.tools {
+            println!("  {tool} {version}");
+        }
+    }
+    Ok(Exit::Success)
+}
+
+/// One line saying what the tools environment needs, and why.
+///
+/// A sentence per variant rather than the debug form: `SyncNeed` exists so `doctor` and the Health
+/// screen can *say* why, and a `PinsChanged` that does not name both hashes is no more useful than
+/// a bool.
+fn describe_need(need: &health::SyncNeed) -> String {
+    match need {
+        health::SyncNeed::Fresh => "up to date with the pins shipped in this build".to_owned(),
+        health::SyncNeed::NeverSynced => "not built yet".to_owned(),
+        health::SyncNeed::PinsChanged { from, to } => {
+            format!(
+                "pins changed: {} -> {}",
+                &from[..8.min(from.len())],
+                &to[..8.min(to.len())]
+            )
+        }
+        health::SyncNeed::InterpreterGone => "its interpreter is gone".to_owned(),
+        health::SyncNeed::ToolMissing { tool } => format!("{tool} is missing"),
+    }
 }
 
 /// `pipdock pip-upgrade`

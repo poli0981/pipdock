@@ -119,6 +119,7 @@ fn every_command_documents_itself() {
         "pip-upgrade",
         "engine",
         "index",
+        "tools",
         "schema",
         "self",
     ] {
@@ -141,6 +142,8 @@ fn subcommand_help_is_stable() {
         ("snapshot", "diff"),
         ("snapshot", "rollback"),
         ("index", "refresh"),
+        ("tools", "sync"),
+        ("tools", "status"),
         ("self", "report-bug"),
     ] {
         settings().bind(|| {

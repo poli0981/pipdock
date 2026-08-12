@@ -19,7 +19,10 @@ use crate::model::{
     StepResult, StepStatus,
 };
 use crate::plan::{PlanRequest, ResolutionReport};
-use tokio_util::sync::CancellationToken;
+/// Re-exported: [`ProgressSink::new`] demands one, so anything driving a step needs the type.
+/// Without this each head would take its own `tokio-util` dependency for one struct, and two
+/// versions of it would not be the same token.
+pub use tokio_util::sync::CancellationToken;
 
 /// Where live subprocess output goes.
 ///

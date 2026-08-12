@@ -224,6 +224,10 @@ enum Command {
     #[command(subcommand)]
     Index(IndexCommand),
 
+    /// The isolated environment Code Health runs deptry, vulture and ruff from.
+    #[command(subcommand)]
+    Tools(ToolsCommand),
+
     /// Print the JSON Schema for a core type so scripts can pin against it.
     Schema {
         /// Type name, e.g. `ResolutionReport`.
@@ -290,6 +294,21 @@ enum IndexCommand {
 }
 
 #[derive(Debug, Subcommand)]
+enum ToolsCommand {
+    /// Create or re-sync the tools environment from the pins shipped with this build.
+    Sync {
+        /// Re-install even when the pin set already matches.
+        #[arg(long)]
+        force: bool,
+        /// Build on this interpreter instead of the newest discovered one.
+        #[arg(long, value_name = "PATH")]
+        python: Option<PathBuf>,
+    },
+    /// Report where the tools environment is and whether it matches the shipped pins.
+    Status,
+}
+
+#[derive(Debug, Subcommand)]
 enum SelfCommand {
     /// Print a prefilled GitHub issue URL.
     ReportBug,
@@ -348,6 +367,10 @@ async fn main() -> ExitCode {
         Command::Search { query, limit } => run::search(&cli.global, query, *limit).await,
         Command::Info { pkg } => run::info(&cli.global, pkg).await,
         Command::Index(IndexCommand::Refresh) => run::index_refresh(&cli.global).await,
+        Command::Tools(ToolsCommand::Sync { force, python }) => {
+            run::tools_sync(&cli.global, *force, python.as_deref()).await
+        }
+        Command::Tools(ToolsCommand::Status) => run::tools_status(&cli.global).await,
         Command::Pin(PinCommand::List) => run::pin_list(&cli.global).await,
         Command::Pin(PinCommand::Add { pkg, reason }) => {
             run::pin_add(&cli.global, pkg, reason.as_deref()).await
