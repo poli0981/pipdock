@@ -403,6 +403,32 @@ cp314 wheel means an sdist build and PD-BLD-001 with no user action. That answer
 
 Tools venv, deptry/vulture/ruff runners + report UI + gated fix, pip upkeep, bug-report deep link, offline states, keyboard map, icon/branding pass. **Exit:** CODE-HEALTH flows pass on two real projects (one pyproject, one requirements-only).
 
+Decomposed **P1** pip upkeep · **P2** the tools venv · **P3** the runners + `HealthReport` · **P4** the Health screen · **P5** the gated `ruff --fix`. Three of the sentence's items are already spent: the bug-report deep link landed in S7, `PdOfflineBanner` in S4, and the keyboard map's `Ctrl+1..8` in S7 — what remains of "keyboard map" is `Enter` as primary action and folding the six `aria-live` regions. The icon/branding pass belongs with Phase 4's release slice; it churns binaries that must not sit inside a feature diff.
+
+### Phase 3 · P2 — the tools venv — **done 2026-08-12**
+
+Six commits. Code Health has an environment to run in, and `PD-HLT-001`'s shipped copy — *"Re-sync the tools environment"* — now refers to something the user can actually do.
+
+| | What landed |
+|---|---|
+| **Core** | `health::pins`/`pins_hash`/`requirements_body` over `tools/tools-requirements.txt`, which had existed since the first scaffold commit and which nothing read. `sync_tools_venv(tools_dir, base_python, sink)` replaces the module's `todo!()`: create, install, verify. `ToolsManifest` + `SyncNeed` + `needs_sync`, `choose_tools_python`. |
+| **Errors** | `PD-HLT-004` (`HltVenvCreateFailed`), the eight-place checklist in one commit. `Code::ALL` 32 → 33. |
+| **CLI** | `pipdock tools sync [--force] [--python]` and `tools status`; `doctor` reports whether Health can run at all, without folding it into its exit rule. |
+| **Wire format** | None. No Tauri command, no `NOT_YET` edit, no `COMMANDS` entry, no new `SCHEMA_TYPES`. P2 ships the `health-progress` **producer**; P3 ships the channel, when `health_run` exists to emit on it. |
+| **Docs** | CODE-HEALTH-SPEC §2 amended on four points; CLI-SPEC §3 gains the commands and §6 gains a recorded, unclosed NDJSON gap. |
+
+**Five findings that were not in the plan.**
+
+1. **`TOOLS_PYTHON_MAX` should not exist, and the premise for it was wrong.** ROADMAP called it "the top unknown in all of M3" on the grounds that deptry ships compiled wheels with no cp314 build. deptry ships a Rust extension built against CPython's **stable ABI** — one `cp310-abi3` wheel, installed here on both 3.12.10 and 3.14.6. No ceiling was added; `--only-binary=:all:` makes a future gap a clean `PD-NET-011` instead of an sdist build.
+2. **`tools/tools-requirements.txt` already existed and was already Dependabot-wired.** P2 consumes it rather than creating it, which deleted about half a day of the estimate.
+3. **A re-sync could not repair the one state it exists to repair.** `pip install -r` over satisfied pins is a no-op, so replacing a deleted `ruff.exe` installed nothing and then failed verification with `PD-HLT-001` — and wedged, because the manifest had already been deleted. The venv is rebuilt now, not repaired. Found by deleting `ruff.exe`; invisible to a suite that only ever synced into an empty directory.
+4. **`SyncNeed::ToolMissing(String)` could not be serialized.** `#[serde(tag = "state")]` is internal tagging and serde cannot represent a tagged newtype. It passed every unit test that constructed it and panicked the first time `tools status --json` met a missing tool. Now a struct variant, with a test that serializes all five states.
+5. **The pin closure is not ABI-free, and the reason to exclude `pip-audit` is narrower than assumed.** deptry pulls `tomli`, which ships per-CPython wheels — but also a `py3-none-any` fallback, so a missing `cpXXX` build degrades to pure Python. `pip-audit`'s closure contains `msgpack`, which publishes **no** universal fallback and would hard-fail under `--only-binary=:all:`. That, not "exposure is zero", is why the ledger's fourth pin stays out of the venv.
+
+**Exit criteria, measured by running it** (debug build, i7-14700KF, Python 3.14.6): cold bootstrap **15.2 s**, warm re-run **31 ms**, repair-after-quarantine **13.3 s**. `PIP_NO_INDEX=1` gives `error[PD-NET-011]`, exit **6**, an empty venv and — the thing that matters — **no `manifest.json` left behind**, so the next online run does not believe it is fresh. A forced `--python` onto 3.12.10 installs the same abi3 wheel. A sync killed mid-download leaves **zero orphan `pip.exe`** and no manifest.
+
+**Deliberately not done:** deleting the dead `engine::uv::parse_dry_run` and flipping `clippy::todo` from `allow` to `warn`. After this slice that function holds the last `todo!()` in the workspace, so the flip is a clean two-line follow-up — but not inside a feature diff. `sync_tools_venv` also takes no `--break-system-packages` path and needs none: the tools venv is PipDock's own and is never PEP 668 managed.
+
 ## Phase 4 — RC → v1.0 (~1–2 weeks)
 
 Release pipeline live (bundling, checksums), manual charter executed, docs/README screenshots, legal files public, a clean install of the RC verified on a machine that has never run PipDock. **Exit:** RELEASE-CI §5 checklist fully checked; v1.0.0 published + notify fan-out.

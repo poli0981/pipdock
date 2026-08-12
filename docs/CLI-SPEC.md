@@ -41,6 +41,8 @@ pipdock health [--path <dir>] [--tool deptry|vulture|ruff] [--fix]   # --fix = r
 pipdock pip-upgrade                      # upgrade pip inside --env (pip engine paths only)
 pipdock engine [pip|uv]                  # show or set configured engine
 pipdock index refresh                    # re-pull PEP 691 name index
+pipdock tools sync [--force] [--python <path>]   # build/re-sync the Code Health tools venv
+pipdock tools status                     # where it is, and whether it matches the shipped pins
 pipdock self report-bug                  # prints prefilled GitHub issue URL (ERROR-CATALOG §4)
 ```
 
@@ -72,6 +74,8 @@ requests  held back at 2.30.0 (latest 2.32.3) — blocked by apiclient 1.4 (requ
 ## 6. JSON contracts
 
 `--json` payloads are the serde-serialized core types (`Dist`, `OutdatedDist`, `ResolutionReport`, `ExecutionSummary`, `CheckReport`, `GuardReport`) — schema documented by `pipdock schema <type>` which prints the JSON Schema generated from the Rust types, so scripts can pin against it. Streaming commands (`update`, `install`, `health`) with `--json` emit NDJSON events matching the GUI's `plan-progress` payloads, terminated by a final `summary` object.
+
+> **Not implemented, recorded 2026-08-12 (Phase 3 · P2).** No command in the binary emits NDJSON. `update`, `install`, `uninstall` and `tools sync` all stream engine output as plain lines to **stderr** and print a single final object to stdout; `health` is still the M3 stub. Either this paragraph or four commands are wrong, and closing it means changing the output shape of every streaming command at once — so it is its own slice, not a thing to half-do while adding a fifth. `tools sync` matches the existing behaviour deliberately rather than becoming the one command that is inconsistent with the other four.
 
 `GuardReport.breaks` maps each package being removed to the installed packages that would break, and each of those carries the specifier that says so: `{"numpy": [{"pkg": "pandas", "version": "2.1.4", "constraint": "<2,>=1.26.0"}]}`. `constraint` is the **bare specifier tail** — the distribution name is the map key, so a caller joins the two halves itself; `version` is omitted when the graph does not know it, and `constraint` is empty for an unconstrained dependency. DATA-FLOW §5's dialog needs the specifier to say *"Removing X breaks Y (requires X>=1)"*, and a bare list of names tells the user what will break but not whether they can live with it.
 
