@@ -228,10 +228,14 @@ impl Engine for UvEngine {
     }
 
     async fn upgrade_pip(&self, _env: &PyEnv) -> Result<StepResult> {
-        // Documented behaviour, not a gap: pip upkeep is a pip-engine concern (DATA-FLOW §7).
+        // Unreachable through either head as of P1: both call `PipEngine::upgrade_pip` directly,
+        // because upgrading pip is a pip operation by definition and the engine setting is a
+        // preference about the *user's* environments (DATA-FLOW §7, amended). The refusal stays
+        // rather than becoming an `unreachable!()`: the trait is public, `for_id` can still hand a
+        // caller this adapter, and a panic is a worse answer than a catalog code.
         Err(crate::errors::PdError::new(
             crate::errors::Code::EngNotFound,
-            "pip upkeep is not available while uv is the active engine",
+            "pip upkeep is not available through the uv adapter; call PipEngine::upgrade_pip",
         ))
     }
 }

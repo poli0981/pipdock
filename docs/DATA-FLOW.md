@@ -119,7 +119,11 @@ Rendered as: **"13 successful, 2 failed, 1 skipped"** with an expandable row per
 | Uninstall | `uninstall -y pkg` | `uv pip uninstall pkg` | |
 | Env check | `check` | `uv pip check` | normalize findings |
 | Freeze (snapshots) | `freeze --all` | `uv pip freeze` | pip's `--all` includes pip/setuptools; record engine in snapshot meta |
-| Upgrade pip | `install -U pip` | *(n/a — surface "pip upkeep" only when pip engine active or pip present in env)* | |
+| Upgrade pip | `install -U pip` | *(n/a — **always runs through the pip adapter**, whatever engine is configured)* | |
+
+**Pip upkeep does not dispatch on the configured engine** (amended by Phase 3 · P1). Upgrading pip is a pip operation by definition; there is no uv way to do it, and `UvEngine::upgrade_pip` exists only to refuse. Dispatching meant `--engine uv` failed at `PD-ENG-001` for a preference that has nothing to do with the operation, on the one command with no resolver between the user and the result — while the surrounding code was already reaching past the abstraction to read pip's version. Both heads now call `PipEngine::upgrade_pip` directly. Same reasoning as the Code Health tools venv (CODE-HEALTH-SPEC §2 as amended by P2): pip is present wherever Python is, and a feature must not go dark over an unrelated setting.
+
+The refusal it replaces is also why `PipEngine::upgrade_pip` carries its own PEP 668 guard: §2's preamble is "all mutating flows", and replacing pip in site-packages is one. `UpdateFlow` has refused since S1 and `UninstallFlow` since S5; this path had no guard at all while its only caller was a CLI command with no button behind it.
 
 **Neither head lists installed packages through the engine.** `pipdock list` and `pkg_list` both read `probe.py` instead, because the probe carries `Requires-Dist` — which `list --format=json` does not report, and which the reverse-dependency graph, the uninstall guard and blocker attribution are all built from. Reading the engine here would give the Installed screen a different package set than the guard that protects it. The `-I` trade-off this buys is documented in ARCHITECTURE §4 and surfaced as `hidden_user_site`.
 

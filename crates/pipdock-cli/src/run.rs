@@ -921,14 +921,20 @@ fn describe_need(need: &health::SyncNeed) -> String {
 
 /// `pipdock pip-upgrade`
 ///
+/// **`PipEngine`, not `engine_for(opts)`.** Upgrading pip is a pip operation by definition — there
+/// is no uv way to do it, which is why `UvEngine::upgrade_pip` refuses. Dispatching on the
+/// configured engine meant `--engine uv` failed at `PD-ENG-001` for a preference about the *user's*
+/// environments, on the one command that has nothing to do with resolving anything; the line below
+/// was already reaching past the abstraction to read the version. Same reasoning as the tools venv
+/// (CODE-HEALTH-SPEC §2 as amended by P2): pip is present wherever Python is.
+///
 /// # Errors
-/// `PD-ENG-001` when uv is the active engine, which cannot upgrade pip (DATA-FLOW §7).
+/// `PD-ENV-002` on a PEP 668 environment; whatever `classify_stderr` makes of a failed install.
 pub async fn pip_upgrade(opts: &GlobalOpts) -> Result<Exit> {
     let env = select_env(opts).await?;
-    let engine = engine_for(opts);
 
     let before = PipEngine.info(&env).await;
-    engine.upgrade_pip(&env).await?;
+    PipEngine.upgrade_pip(&env).await?;
     let after = PipEngine.info(&env).await;
 
     println!(
