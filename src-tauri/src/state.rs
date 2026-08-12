@@ -53,6 +53,21 @@ impl SessionKind {
     }
 }
 
+/// A finished Code Health run, parked so the fix path can be checked against it.
+///
+/// The report is held **server-side** on purpose. P5's `health_fix` must confirm that what it is
+/// about to rewrite is what the user was shown, and a count that arrives from the frontend proves
+/// nothing about what the frontend displayed. Same reasoning as `GuardReport`: the artefact is
+/// produced in one call and consumed in another, so the consuming call reads it from here.
+pub struct HealthSession {
+    /// The folder the tools ran in.
+    pub project: std::path::PathBuf,
+    /// The environment the report was produced against.
+    pub env: pipdock_core::PyEnv,
+    /// What they found.
+    pub report: pipdock_core::health::HealthReport,
+}
+
 /// The mutation flow the slot is holding between two IPC calls.
 ///
 /// All three variants exist from the moment the slot stops being `UpdateFlow`-shaped, rather than
@@ -398,6 +413,17 @@ pub struct AppState {
     pub index: std::sync::Mutex<IndexSlot>,
     /// The mutation being driven across several IPC calls.
     pub sessions: Sessions<Session>,
+    /// The Code Health run in flight, and the report it produced.
+    ///
+    /// **Not the mutation slot.** A health run touches no environment, so refusing it while an
+    /// install streams would be a lock with no invariant behind it — and S5 bug 1 is the standing
+    /// warning about claims that wedge. It still needs a slot of its own, because two Run clicks
+    /// would put six subprocesses over one folder.
+    ///
+    /// `Sessions<HealthSession>` rather than `Sessions<()>` because P5's `health_fix` has to check
+    /// the user's consent against a report **the server** is holding — the same shape `ack_ok`
+    /// checks a `GuardAck` against the guard that produced it. Typed now so P5 does not redo it.
+    pub health: Sessions<HealthSession>,
     /// Engine output from the current plan, for the bug-report deep link.
     pub log: std::sync::Arc<LogRing>,
 }
@@ -415,6 +441,7 @@ impl AppState {
             store: tokio::sync::Mutex::new(store),
             index: std::sync::Mutex::new(IndexSlot::Cold),
             sessions: Sessions::default(),
+            health: Sessions::default(),
             log: std::sync::Arc::new(LogRing::default()),
         })
     }

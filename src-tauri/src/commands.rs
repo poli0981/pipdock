@@ -503,7 +503,7 @@ pub async fn plan_execute(
     };
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    forward_progress(&app, rx);
+    forward_progress(&app, "plan-progress", rx);
 
     let result = flow.execute(tx).await;
     state.release().await;
@@ -611,7 +611,7 @@ pub async fn uninstall_execute(
     };
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    forward_progress(&app, rx);
+    forward_progress(&app, "plan-progress", rx);
 
     let result = flow.execute(ack, tx).await;
     state.release().await;
@@ -745,7 +745,7 @@ pub async fn snapshot_rollback(
     };
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
-    forward_progress(&app, rx);
+    forward_progress(&app, "plan-progress", rx);
 
     let result = rollback.execute(tx).await;
     state.release().await;
@@ -756,13 +756,19 @@ pub async fn snapshot_rollback(
     })
 }
 
-/// Forward `plan-progress` to the webview, teeing every line into the log ring.
+/// Forward progress to the webview on `channel`, teeing every line into the log ring.
 ///
-/// One helper for all three executing commands. A UI that stopped listening is not a reason to
-/// abandon an install, so the emit result is dropped; the ring is fed regardless, because the
-/// report is most wanted precisely when nobody was watching.
+/// One helper for every streaming command. A UI that stopped listening is not a reason to abandon
+/// an install, so the emit result is dropped; the ring is fed regardless, because the report is
+/// most wanted precisely when nobody was watching.
+///
+/// `channel` is a `&'static str` rather than a `String` because the names are the closed set in
+/// `ui/src/ipc/index.ts`'s `EVENTS`. A literal typo is then a compile error instead of an event
+/// nobody is listening for — which is the failure mode that leaves a progress bar at zero while the
+/// work runs to completion behind it.
 fn forward_progress(
     app: &tauri::AppHandle,
+    channel: &'static str,
     mut rx: tokio::sync::mpsc::UnboundedReceiver<pipdock_core::engine::ProgressEvent>,
 ) {
     let emitter = app.clone();
@@ -773,9 +779,83 @@ fn forward_progress(
             if let Some(line) = event.line() {
                 log.push(line);
             }
-            let _ = emitter.emit("plan-progress", &event);
+            let _ = emitter.emit(channel, &event);
         }
     });
+}
+
+/// Run Code Health over `project`, streaming `health-progress` (PRD P0-11).
+///
+/// Syncs the tools venv first when one is owed — CODE-HEALTH-SPEC §2's "on first Health run (or
+/// pin-set change)" — on the same channel, so the first run on a fresh install shows the ~15 s
+/// bootstrap rather than an unexplained pause. The sink's total is decided before the first event
+/// because whether a sync is owed is exactly what changes it.
+///
+/// Claims the **health** slot, not the mutation slot: a run touches no environment, so refusing it
+/// while an install streams would be a lock with no invariant behind it. Two Run clicks would
+/// otherwise put six subprocesses over one folder.
+///
+/// # Errors
+/// `PD-ENV-003` when `project` cannot be read, `PD-HLT-004`/`PD-NET-011` from the implicit sync,
+/// `PD-RES-003` when a run is already going. **A single tool failing is not an error** — it lands
+/// in `HealthReport.problems` and the others still report.
+#[tauri::command]
+pub async fn health_run(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+    project: String,
+) -> Wire<pipdock_core::health::HealthReport> {
+    use pipdock_core::health;
+
+    state.health.claim().await?;
+
+    let project = std::path::PathBuf::from(&project);
+    let tools_dir = health::tools_dir(&state.app_data);
+    let opts = health::RunOptions::default();
+
+    let outcome = async {
+        let sync_needed = health::needs_sync(&tools_dir)?.is_needed();
+        let total = health::run_steps(&opts) + if sync_needed { health::SYNC_STEPS } else { 0 };
+
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        forward_progress(&app, "health-progress", rx);
+        let sink = engine::ProgressSink::new(tx, total, CancellationToken::new());
+
+        if sync_needed {
+            let (python, _) = health::choose_tools_python(&envs::scan().await).await?;
+            health::sync_tools_venv(&tools_dir, &python, &sink).await?;
+        }
+        health::run_tools(
+            &tools_dir,
+            &project,
+            &env,
+            &opts,
+            &sink.at(if sync_needed { health::SYNC_STEPS } else { 0 }),
+        )
+        .await
+    }
+    .await;
+
+    match outcome {
+        Ok(report) => {
+            // Parked rather than dropped: P5 checks its consent against this exact report, and the
+            // folder it ran in is what a fix would rewrite.
+            state
+                .health
+                .park(crate::state::HealthSession {
+                    project,
+                    env,
+                    report: report.clone(),
+                })
+                .await;
+            Ok(report)
+        }
+        Err(e) => {
+            state.health.release().await;
+            Err(e.into())
+        }
+    }
 }
 
 /// Upgrade pip inside `env` (PRD P0-10).
