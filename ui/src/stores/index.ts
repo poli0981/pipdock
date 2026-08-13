@@ -575,6 +575,7 @@ export const useUiStore = create<UiState>((set) => ({
 // event subscription. Re-exported so `@/stores` stays the single import site.
 export {
   CONSOLE_LIMIT,
+  PANEL_PHASES,
   apply,
   usePlanStore,
   type ConsoleLine,

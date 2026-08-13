@@ -17,7 +17,11 @@
         "height": 760,
         "minWidth": 900,
         "minHeight": 560,
+        "maxWidth": 1600,
+        "maxHeight": 1100,
         "resizable": true,
+        "maximizable": false,
+        "fullscreen": false,
         "theme": "Dark"
       }
     ],
