@@ -23,6 +23,7 @@
     "PD-NET-011": "Code Health could not download its tools, so it stays unavailable.",
     "PD-PRM-001": "PipDock is not allowed to write to this environment.",
     "PD-PRM-002": "A file is in use. Close anything running from this environment.",
+    "PD-PRM-003": "A file in your project cannot be written. Check that it is not read-only.",
     "PD-SNP-001": "The snapshot could not be written, so nothing was changed.",
     "PD-SNP-002": "That release is no longer available, so it cannot be restored.",
     "PD-SYS-001": "A path was too long for Windows. Enable long paths, or use a shorter folder.",

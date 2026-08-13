@@ -5,6 +5,7 @@
 //! confirm. PipDock never edits `pyproject.toml` or `requirements.txt` for the user.
 
 pub mod deptry;
+pub mod fix;
 pub mod project;
 pub mod report;
 pub mod ruff;

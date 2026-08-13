@@ -167,6 +167,11 @@ expression: out
           "type": "string"
         },
         {
+          "const": "PD-PRM-003",
+          "description": "A source file in the user's project cannot be written.\n\n**Not `PD-PRM-001`.** That one is scoped to site-packages and its catalogued action is\n\"use a venv\", which is nonsense advice for a read-only `util.py` — the same class of wrong\nanswer P3 removed when a corrupted `ruff.exe` reported `PD-ENG-001`, \"install the engine\".\n\nRaised by PipDock **before anything is written**, never classified from stderr: ruff can\nfail to write a file and still exit 1, which `is_findings_exit` accepts as a clean run, so\na stderr-matched code would arrive after a fix had already reported success.",
+          "type": "string"
+        },
+        {
           "const": "PD-SNP-001",
           "description": "Snapshot write failed before execution. **The plan is aborted; nothing runs.**",
           "type": "string"

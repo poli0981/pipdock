@@ -33,6 +33,7 @@
 | PD-NET-011 | tools venv bootstrap fetch failed | offline during Health setup | Health disabled until online |
 | PD-PRM-001 | `PermissionError` writing site-packages | admin-owned Python (Program Files) | v1 blocks: use a venv (elevation is P2-3) |
 | PD-PRM-002 | file lock (`WinError 32`) | package in use by a running process | Close Python processes using the env; retry |
+| PD-PRM-003 | a target source file is not writable | read-only attribute or ACL on a file `ruff --fix` would rewrite | Clear the read-only flag (or fix the permissions) and run the fix again. **Raised by PipDock before anything is written**, not classified from stderr: ruff can fail to write and still exit 1, which the findings-exit rule accepts as a clean run, so a stderr-matched code would arrive after the fix had reported success. Nothing is changed — the fix refuses as a whole rather than half-rewriting a source tree nothing can restore |
 | PD-SNP-001 | snapshot write failed pre-execution | disk/permission issue on app data | **Plan aborted, nothing executed**; free space / check AV |
 | PD-SNP-002 | rollback target release unavailable on PyPI | deleted/yanked upstream | Partial rollback offered; affected pins listed |
 | PD-SYS-001 | `path too long` patterns | MAX_PATH without long-path opt-in | Enable Windows long paths (help link) |

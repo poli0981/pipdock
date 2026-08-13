@@ -167,6 +167,17 @@ pub enum Code {
     /// File locked by a running process (`WinError 32`).
     #[serde(rename = "PD-PRM-002")]
     PrmFileLocked,
+    /// A source file in the user's project cannot be written.
+    ///
+    /// **Not `PD-PRM-001`.** That one is scoped to site-packages and its catalogued action is
+    /// "use a venv", which is nonsense advice for a read-only `util.py` — the same class of wrong
+    /// answer P3 removed when a corrupted `ruff.exe` reported `PD-ENG-001`, "install the engine".
+    ///
+    /// Raised by PipDock **before anything is written**, never classified from stderr: ruff can
+    /// fail to write a file and still exit 1, which `is_findings_exit` accepts as a clean run, so
+    /// a stderr-matched code would arrive after a fix had already reported success.
+    #[serde(rename = "PD-PRM-003")]
+    PrmSourceReadOnly,
 
     // -- PD-SNP: snapshot ---------------------------------------------------
     /// Snapshot write failed before execution. **The plan is aborted; nothing runs.**
@@ -240,6 +251,7 @@ impl Code {
             Self::NetToolsBootstrapFailed => "PD-NET-011",
             Self::PrmSitePackagesReadOnly => "PD-PRM-001",
             Self::PrmFileLocked => "PD-PRM-002",
+            Self::PrmSourceReadOnly => "PD-PRM-003",
             Self::SnpWriteFailed => "PD-SNP-001",
             Self::SnpTargetUnavailable => "PD-SNP-002",
             Self::SysPathTooLong => "PD-SYS-001",
@@ -276,7 +288,9 @@ impl Code {
             | Self::NetTlsFailure
             | Self::NetIndexRefreshFailed
             | Self::NetToolsBootstrapFailed => Area::Net,
-            Self::PrmSitePackagesReadOnly | Self::PrmFileLocked => Area::Prm,
+            Self::PrmSitePackagesReadOnly | Self::PrmFileLocked | Self::PrmSourceReadOnly => {
+                Area::Prm
+            }
             Self::SnpWriteFailed | Self::SnpTargetUnavailable => Area::Snp,
             Self::SysPathTooLong | Self::SysDiskFull => Area::Sys,
             Self::HltToolMissing
@@ -313,6 +327,7 @@ impl Code {
         Self::NetToolsBootstrapFailed,
         Self::PrmSitePackagesReadOnly,
         Self::PrmFileLocked,
+        Self::PrmSourceReadOnly,
         Self::SnpWriteFailed,
         Self::SnpTargetUnavailable,
         Self::SysPathTooLong,
@@ -577,7 +592,7 @@ mod tests {
     fn every_variant_is_listed_in_all() {
         // `ALL` drives the fixture-coverage gate, so a variant missing from it would silently
         // escape that gate. There is no derive for "enumerate variants", hence this count check.
-        assert_eq!(Code::ALL.len(), 33, "add the new variant to Code::ALL");
+        assert_eq!(Code::ALL.len(), 34, "add the new variant to Code::ALL");
     }
 
     #[test]
@@ -726,7 +741,7 @@ mod tests {
     fn every_documented_code_has_exactly_one_variant() {
         // Rust has 33; docs/ERROR-CATALOG.md tabulates 30, because it folds PD-HLT-001..004 into
         // one row. Pin the number so the next person adding a code has to notice the docs exist.
-        assert_eq!(Code::ALL.len(), 33);
+        assert_eq!(Code::ALL.len(), 34);
         let wire: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(
             wire.len(),
