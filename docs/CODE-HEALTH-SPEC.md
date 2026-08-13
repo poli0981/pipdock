@@ -76,7 +76,7 @@ UI (Health tab): run header (folder picker · env chip · Run) → three result 
 
 - deptry `DEP001` (missing) often means a dep used but undeclared — the fix is declaring it, which PipDock does **not** automate; copy suggests the exact line to add.
 - vulture confidence < 100 can be a false positive (dynamic dispatch, exported API); copy says "review before deleting" and links vulture's whitelist mechanism.
-- ruff findings link to the rule's docs anchor (`https://docs.astral.sh/ruff/rules/<code>`).
+- ruff findings link to the rule's docs anchor. **Corrected 2026-08-13 (P4):** the page is keyed by rule *name*, not code — `I001` lives at `.../rules/unsorted-imports`, and constructing the URL from the code 404s. `RuffFinding.url` carries ruff's own link and is used verbatim; it is null for a syntax error, which has no rule page. `capabilities/external-links.json` had to be widened to `https://docs.astral.sh/*` or every link failed silently.
 
 ## 7. Non-goals
 

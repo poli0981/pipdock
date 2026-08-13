@@ -113,9 +113,9 @@ This table is the surface. A command that is not listed here does not exist; add
 | Command | Returns | Purpose |
 |---|---|---|
 | `app_info` | `AppInfo` | PipDock's version, and the hash of the legal documents this build ships against. |
-| `env_scan` | `EnvRow[]` | Discover environments, streaming `scan-progress`. A probe failure is reported on its own row, never fatal to the scan. |
+| `env_scan` | `EnvRow[]` | Discover environments, streaming `scan-progress`. A probe failure is reported on its own row, never fatal to the scan. Carries `pipVersion` and `healthProject`, both read before the probe loop so the store guard is never held across a probe. |
 | `env_add_manual` | `EnvRow` | Persist an interpreter chosen through *Browse…*. |
-| `env_probe` | `EnvRow` | Probe one interpreter without persisting it. |
+| `env_probe` | `EnvRow` | Probe one interpreter without persisting it. Takes an optional `source`: absent means *Browse…*, and a **refresh must pass the row's own**, or the row comes back relabelled `manual`. Fills every field `env_scan` does, because `upgradePip` replaces the row wholesale. |
 | `pkg_list` | `Dist[]` | Installed distributions, read from `probe.py` rather than the engine — see §4 and DATA-FLOW §7. |
 | `pkg_outdated` | `OutdatedDist[]` | Outdated distributions, via the configured engine. |
 | `index_search` | `Hit[]` | Fuzzy search over the in-memory name index. |
@@ -136,7 +136,8 @@ This table is the surface. A command that is not listed here does not exist; add
 | `snapshot_rollback_preview` | `RollbackPreview` | What restoring a snapshot would do, parking the flow that would do it. Split from the execute for the reason `plan_resolve` is: what the user confirms must be the plan they were shown. |
 | `snapshot_rollback` | `ExecutionOutcome` | Restore the parked snapshot — itself snapshotted first, per DATA-FLOW §8, which is why the outcome always carries one. |
 | `health_run` | `HealthReport` | Run the Code Health tools against a project folder. **Not `CheckReport`** — that name is taken by `engine.check()` and is already a published `pipdock schema` contract, so two unrelated shapes would have shared one name on the wire. |
-| `health_fix` | `ExecutionSummary` | Apply the gated `ruff` fix. |
+| `health_fix` | `FixReport` | Apply the gated `ruff` fix (P5). **Not `ExecutionSummary`** — there is no plan, no phase and no per-package counts in a fix, and inventing them would be four lies for one operation. Same correction §7 needed for `pip_upgrade`. |
+| `health_save_report` | `string[]` | Write a finished report as Markdown **and** JSON beside a user-chosen path, returning both. Rust-side rather than a filesystem capability: `dialog:allow-save` lets the webview ask for a path and nothing more. |
 | `engine_info` | `EngineInfo[]` | Detected version and availability per engine. Settings shows both, so this returns both. |
 | `pip_upgrade` | `StepResult` | Upgrade pip itself in the selected environment. **Not `ExecutionSummary`** — there is no plan, no phase and no per-package counts, and inventing them would be four lies for one step. Carries no versions either (`from`/`to` are always absent): the caller re-probes, which it must do anyway to refresh the row. |
 | `settings_get` | `Settings` | Read stored settings. |
