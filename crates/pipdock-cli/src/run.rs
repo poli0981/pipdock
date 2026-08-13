@@ -886,15 +886,11 @@ pub async fn health(
     tools: &[ToolArg],
     fix: bool,
 ) -> Result<Exit> {
-    if fix {
-        // Refused rather than half-shipped. The write path is P5's, and it needs a confirm, a
-        // dirty-tree check and a named waiver — none of which exist yet, and all of which the user
-        // would reasonably assume were there if this silently ran ruff --fix.
-        eprintln!(
-            "error[PD-INT-001]: `--fix` arrives with the gated write path. \
-             See docs/CODE-HEALTH-SPEC.md §1."
-        );
-        return Ok(Exit::Internal);
+    if fix && !tools.is_empty() && !tools.iter().any(|t| matches!(t, ToolArg::Ruff)) {
+        // ruff is the only tool with a write path (CODE-HEALTH-SPEC §1). Asking to fix while
+        // excluding it is a mistake worth naming rather than a no-op worth performing.
+        eprintln!("error[PD-PKG-002]: `--fix` needs ruff; it is the only tool that writes");
+        return Ok(Exit::PlanAborted);
     }
 
     let env = select_env(opts).await?;
@@ -969,8 +965,133 @@ pub async fn health(
         &jiff::Timestamp::now().to_string(),
     )?;
 
-    print_health(opts, &report);
+    // With `--fix`, `--json` emits the **`FixReport` alone**: the pre-fix report describes a state
+    // that no longer exists by the time the command returns, and printing both put two documents
+    // on stdout for a contract CLI-SPEC §6 states as one. The human form still prints both,
+    // because there the report is what makes the fix summary legible.
+    if !(opts.json && fix) {
+        print_health(opts, &report);
+    }
+    if fix {
+        return apply_fix(opts, &tools_dir, &project, &report).await;
+    }
     Ok(if health::has_findings(&report) {
+        Exit::PartialFailure
+    } else {
+        Exit::Success
+    })
+}
+
+/// The CLI half of the write path — CLI-SPEC §3's `pipdock health --fix`.
+///
+/// Prompts the way the dialog does and refuses in the same places, because CLI-SPEC §1.1 says the
+/// two heads share behaviour and this is the one operation neither of them can undo.
+///
+/// # The `--yes` decision, which is the sharpest one in the slice
+///
+/// `--yes` means "assume defaults", and **the default over uncommitted work is don't**. A clean
+/// tree proceeds: one `git checkout .` puts it back, so an unattended fix there is recoverable,
+/// and refusing would make `--fix` useless in the pre-commit hook the exit-code rule was written
+/// for. A dirty tree — or no repository at all — refuses with exit 2, because those are the cases
+/// where a script could destroy work with no way back.
+///
+/// The escape hatch is deliberately **not a flag**. It is `git commit` or `git stash`, which is the
+/// actual remedy and leaves the user something to return to; a `--force-fix` would exist only to be
+/// pasted into a CI file once and never reconsidered. CLI-SPEC §4 sketches a "second `-y`" idiom
+/// for the resolve countdown, but `--yes` is a bool here, and inventing flag machinery inside the
+/// slice that introduces source-tree writes is the wrong trade.
+///
+/// # Errors
+/// Whatever the fix raises. `PD-PRM-003` arrives **before anything is written**.
+async fn apply_fix(
+    opts: &GlobalOpts,
+    tools_dir: &Path,
+    project: &Path,
+    report: &health::HealthReport,
+) -> Result<Exit> {
+    use pipdock_core::health::fix;
+
+    if report.ruff.fixable == 0 {
+        if !opts.json {
+            println!("\nnothing to fix: no finding carries a safe fix");
+        }
+        return Ok(if health::has_findings(report) {
+            Exit::PartialFailure
+        } else {
+            Exit::Success
+        });
+    }
+
+    let dirty = fix::dirty(project).await;
+    let interactive = std::io::IsTerminal::is_terminal(&std::io::stdin());
+
+    let approved = if opts.yes {
+        if let Some(tree) = dirty {
+            eprintln!(
+                "error[PD-RES-002]: {} uncommitted change(s) here; --yes will not rewrite files \
+                 you have not committed. Commit or stash first.",
+                tree.entries
+            );
+            return Ok(Exit::PlanAborted);
+        }
+        true
+    } else if interactive {
+        if let Some(tree) = dirty {
+            println!(
+                "\n{} uncommitted change(s) in this repository. PipDock cannot undo a fix, and \
+                 `git checkout .` would take your own edits with it.",
+                tree.entries
+            );
+        }
+        confirm_text(&format!(
+            "Fix {} issue(s) in {} file(s)? This rewrites your source files",
+            report.ruff.fixable, report.ruff.fixable_files
+        ))
+    } else {
+        // A prompt with no terminal is not a prompt. Said here as well as in `confirm_text` so
+        // this path names `--fix`'s own rule rather than the generic one.
+        eprintln!("error[PD-RES-002]: not a terminal; pass --yes to fix a committed tree");
+        return Ok(Exit::PlanAborted);
+    };
+
+    if !approved {
+        if !opts.json {
+            println!("nothing was changed");
+        }
+        return Ok(Exit::PlanAborted);
+    }
+
+    // No re-read here, unlike the GUI: the counts the prompt named came from the report this same
+    // process produced seconds ago, so there is no window between confirming and fixing for the
+    // tree to drift in. The consent is still built from what was actually observed.
+    let consent = fix::consent_ok(report.ruff.fixable_files, dirty.is_some(), dirty)?;
+    let fixed = fix::apply(tools_dir, project, &report.ruff, consent).await?;
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&fixed).unwrap_or_default()
+        );
+    } else {
+        println!(
+            "\nfixed       : {} file(s); {} finding(s) remain",
+            fixed.files_changed,
+            fixed.remaining.findings.len()
+        );
+        if fixed.not_applied > 0 {
+            println!(
+                "warning     : {} safe fix(es) were not applied — check file permissions",
+                fixed.not_applied
+            );
+        }
+    }
+
+    // Exit 0 only when the whole report is clean afterwards, so `pipdock health --fix && …` means
+    // something. deptry and vulture are untouched by a ruff fix, so their findings still count.
+    let anything_left = !report.deptry.is_empty()
+        || !report.vulture.is_empty()
+        || !fixed.remaining.findings.is_empty();
+    Ok(if anything_left {
         Exit::PartialFailure
     } else {
         Exit::Success
