@@ -151,7 +151,7 @@ pub struct RuffFindings {
 pub struct RuffFinding {
     /// The rule code, e.g. `F401`.
     ///
-    /// Optional because the field is not ours. ruff 0.16.0 always sets it — a syntax error comes
+    /// Optional because the field is not ours. ruff 0.16.2 always sets it — a syntax error comes
     /// through as `invalid-syntax` rather than null, which is **not** what CODE-HEALTH-SPEC §6
     /// assumed — but tolerating null costs one `??` in the UI and stops a format change from
     /// failing every run.

@@ -89,7 +89,8 @@ pub const MIN_TOOLS_PYTHON: (u32, u32) = crate::envs::MIN_PROBE_PYTHON;
 ///
 /// * **deptry 0.25.1** — `0` clean, `1` findings
 /// * **vulture 2.16** — `0` none, `1` invalid input, `2` bad arguments, `3` dead code
-/// * **ruff 0.16.0** — `0` clean, `1` violations, `2` error
+/// * **ruff 0.16.2** — `0` clean, `1` violations, `2` error (re-checked at 0.16.2 on 2026-08-13;
+///   0.16.0 and 0.16.2 produced identical finding sets over two real packages)
 ///
 /// A pin bump has to re-check this, and its real gate is the fixture corpus plus the integration
 /// job — not this comment.

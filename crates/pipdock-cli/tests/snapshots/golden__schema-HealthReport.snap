@@ -280,7 +280,7 @@ expression: out
       "description": "One ruff finding.",
       "properties": {
         "code": {
-          "description": "The rule code, e.g. `F401`.\n\nOptional because the field is not ours. ruff 0.16.0 always sets it — a syntax error comes\nthrough as `invalid-syntax` rather than null, which is **not** what CODE-HEALTH-SPEC §6\nassumed — but tolerating null costs one `??` in the UI and stops a format change from\nfailing every run.",
+          "description": "The rule code, e.g. `F401`.\n\nOptional because the field is not ours. ruff 0.16.2 always sets it — a syntax error comes\nthrough as `invalid-syntax` rather than null, which is **not** what CODE-HEALTH-SPEC §6\nassumed — but tolerating null costs one `??` in the UI and stops a format change from\nfailing every run.",
           "type": [
             "string",
             "null"
