@@ -383,30 +383,27 @@ against the slice that owes it.
 
 ### Where to pick up
 
-**Phase 3 is three-fifths done.** P1 (pip upkeep), P2 (the tools venv) and P3 (the runners and
-`HealthReport`) are merged, each with a stage table above. **Next is P4 — the Health screen** — then
-P5, the gated `ruff --fix`. `~/.claude/plans/b-n-c-th-b-t-snappy-rabin.md` decomposes both
-commit-by-commit.
+**Phase 3 is four-fifths done.** P1 (pip upkeep), P2 (the tools venv), P3 (the runners and
+`HealthReport`) and P4 (the Health screen) are merged, each with a stage table above. **Next is P5,
+the gated `ruff --fix`**, then the tail: `Enter` as primary action, folding the `aria-live` regions
+(there are ten now, not the six this file used to claim), the doc reconciliation, and the two dead-code
+follow-ups P2 deferred. `~/.claude/plans/b-n-b-t-u-ph-n-tranquil-anchor.md` decomposes all of it.
 
-`NOT_YET` is down to three, and **only `health_fix` is Phase 3's**: P4 needs no new Tauri command,
-because `health_run` already returns everything the screen renders and `EnvRow` is the established
-place to hang the per-environment project folder (P1 set that precedent with `pipVersion`).
+`NOT_YET` is down to three and **only `health_fix` is Phase 3's**. P4 did add two commands after
+all — `health_save_report` and, had it been taken, `health_cancel` — so the earlier claim that it
+needed none was wrong; both land implemented, so neither is owed.
 
-Four things P4 will otherwise rediscover, all verified rather than assumed:
+The four things P4 was warned it would otherwise rediscover all held: `@tauri-apps/plugin-dialog`
+really was absent from `package.json`, the opener really was scoped to GitHub only, UI-SPEC §6
+really said 14, and deptry really does name a module rather than a distribution. What the warnings
+did not cover were the four defects in P4's stage table above, every one of which came from running
+the thing.
 
-- `@tauri-apps/plugin-dialog` is registered in Rust and granted `dialog:allow-open`, but is **not in
-  `package.json`** — there is no JS binding installed. `dialog:allow-save` is not granted at all.
-- `capabilities/external-links.json` scopes `opener:allow-open-url` to `https://github.com/*`, so
-  every ruff rule link **fails silently** until `docs.astral.sh` is added. Invisible in dev.
-- UI-SPEC §6 says **14 of 16** components exist, not 15. `PdHealthReport` makes it 15;
-  `PdEnvSwitcher` is still absent.
-- deptry names a **module**, not a distribution — `yaml` is `PyYAML`. The "Review in Uninstall…"
-  handoff has to reconcile that or it hands the guard a name it will reject with `PD-PKG-002`.
-
-**One decision is open**, and it is the only one in three slices the owner did not make: deptry
-cannot be told which environment to compare against, so §2's isolation and §3's comparison conflict.
-P3 chose isolation and disclosed the cost — see CODE-HEALTH-SPEC §3's amendment block and
-[PR #32](https://github.com/poli0981/pipdock/pull/32). Revisit before Code Health ships.
+**The one open decision is now closed.** deptry cannot be told which environment to compare against;
+the owner chose on 2026-08-13 to keep all four DEP codes and disclose the limitation where findings
+are shown, rather than `--ignore DEP003` (which turns a mislabelled finding into a missing one) or
+dropping deptry from v1. The screen carries the note under the same condition the CLI does, and the
+saved Markdown carries it too.
 
 **All three Stage 1 deferrals are closed**, each in S3 as planned — the `plan-progress` lifecycle enum, the Windows Job Object, and the `ExecutionSummary.cancelled` copy. Deferring them to the slice that could verify them worked: each was finished against a running UI or a real process tree rather than against a guess.
 
@@ -415,6 +412,29 @@ P3 chose isolation and disclosed the cost — see CODE-HEALTH-SPEC §3's amendme
 Tools venv, deptry/vulture/ruff runners + report UI + gated fix, pip upkeep, bug-report deep link, offline states, keyboard map, icon/branding pass. **Exit:** CODE-HEALTH flows pass on two real projects (one pyproject, one requirements-only).
 
 Decomposed **P1** pip upkeep · **P2** the tools venv · **P3** the runners + `HealthReport` · **P4** the Health screen · **P5** the gated `ruff --fix`. Three of the sentence's items are already spent: the bug-report deep link landed in S7, `PdOfflineBanner` in S4, and the keyboard map's `Ctrl+1..8` in S7 — what remains of "keyboard map" is `Enter` as primary action and folding the six `aria-live` regions. The icon/branding pass belongs with Phase 4's release slice; it churns binaries that must not sit inside a feature diff.
+
+### Phase 3 · P4 — the Health screen — **done 2026-08-13**
+
+Ten commits, plus a Slice 0 that got the tool pins to their final version first. **Code Health is on screen**, `PdHealthReport` is UI-SPEC §6's fifteenth of sixteen, and both halves of Phase 3's exit criterion pass.
+
+| | What landed |
+|---|---|
+| **Core** | `health::markdown`; `reporting()`, which keeps deptry out of `ran` for a project that declares nothing; `fixtures::{health_report, health_partial}` |
+| **Bridge** | `EnvRow.healthProject` filled by `env_scan` **and** `env_probe`; `health_run` persists the folder; `health_save_report`; `env_probe` gains a `source` parameter |
+| **UI** | `useHealthStore` (a third reset key, and the first that is a pair), `PdHealthReport`, `screens/PdHealth`, `pickProjectFolder`/`pickSavePath`, `apply` generalized so two stores share one console reducer |
+| **Capabilities** | `docs.astral.sh` added to the opener allowlist, `dialog:allow-save` granted; both recorded in SECURITY §4 and the grant's own description |
+| **Copy** | a `health` block in both locales, ~30 keys |
+
+**Four defects found by running, none of them in the plan.**
+
+1. **The screen said "no issues found" before anything had run.** With a folder remembered and no report yet — the identical lie a tab keyed on `ran` alone tells about a failed tool, one level up, written by someone who had just spent a commit preventing it. Empty states are the easiest place in this app to claim a result nobody produced.
+2. **A project that declares nothing was reported as a deptry failure.** deptry raises `DependencySpecificationNotFoundError` and exits non-zero, which read as `PD-HLT-002`. PipDock had already detected the state and already told the user results would be limited — then ran a tool that cannot run in it and blamed the tool. Now skipped, and outside `ran`.
+3. **`env_probe` hardcoded `EnvSource::Manual`.** So *Upgrade pip* on a registry-discovered interpreter relabelled it *Added manually* in the chip, and handed that relabelled `PyEnv` to every later `pkg_list`. A P1-era defect in the function P4 had to touch anyway.
+4. **A test asserted a version Dependabot owns**, so merging the ruff bump broke `main`. Its CI had gone green on a base predating the health module.
+
+**Deliberately not done: health-run cancellation.** Measured rather than assumed, which is what the plan asked for: a warm three-tool run is **1.3 s** and a cold one is that plus the ~15 s tools-venv bootstrap, both far under the 30 s threshold set before the number was known. It is also more than the bridge one-liner it looks like — `run_one` never passes the sink's token to `Command`, so wiring `set_cancel` alone would cancel only the sync, and `watchdog()` maps a cancel to `PD-INT-001`, so a cancelled run would render three "PipDock hit an internal error" rows. Worst case remains watchdog-bound at 3 × 120 s; revisit if a real project hits it.
+
+**Exit criteria, release build, warm tools venv.** A requirements-only project reports 1 dependency, 3 dead-code and 3 lint findings (3 fixable in 1 file) in **1.4 s**; a project declaring nothing reports `ran: [vulture, ruff]` with an empty `problems` in **1.3 s**. In the running app against a stubbed bridge: `Ctrl+6` reaches Health, the `<h1>` takes focus, the remembered folder arrives on the row so the button reads *Change folder…*, `plugin:event|listen` crosses before `health_run`, the three tab counts are 4/3/6 against a fixture carrying 4/3/6, and on the partial report the ruff tab reads *did not finish* while vulture reads *not run* and the status line reads `⚠ 1`.
 
 ### Phase 3 · P3 — the runners and `HealthReport` — **done 2026-08-12**
 

@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 and M2 complete; Phase 3 P2 done, P1 and P3 next**.
+Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 and M2 complete; Phase 3 P1–P4 done, P5 and the tail next**.
 
 ## Read the docs before changing anything
 
@@ -73,9 +73,18 @@ summarises and installs over real commands. **"Update everything" is 4 clicks an
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-**Phase 3 P1, P2 and P3 are done.** P3 built the runners: `pipdock health` runs deptry, vulture and
-ruff out of the tools venv and `health_run` streams the same over `health-progress`. **Only
-`health_fix` (P5) is still Phase 3's in `NOT_YET`**; P4 (the Health screen) needs no new command.
+**Phase 3 P1–P4 are done.** P4 put Code Health on screen: `PdHealthReport` is UI-SPEC §6's
+fifteenth of sixteen, `EnvRow.healthProject` remembers the folder per environment, and
+`health_save_report` writes Markdown + JSON. **Only `health_fix` (P5) is still Phase 3's in
+`NOT_YET`.** P4 *did* need new commands, contrary to the earlier claim — one shipped, and
+cancellation was deferred on a measurement (a warm three-tool run is 1.3 s in release).
+
+Four P4 defects worth not repeating, all found by running: an empty state that said *no issues
+found* before anything had run; a project declaring no dependencies reported as a deptry failure
+rather than as deptry not being applicable; `env_probe` hardcoding `EnvSource::Manual`, so
+*Upgrade pip* relabelled a registry-discovered interpreter; and a test asserting a version
+Dependabot owns, which made merging a ruff bump break `main` after CI had gone green on a base
+predating the code that would have caught it.
 Three tool facts are pinned by tests because the specs had them wrong: all three exit **non-zero on
 findings** and **vulture uses 3**; deptry emits a flat list keyed by *module* to a **file path** and
 **cannot be told which environment to compare against**; ruff's docs URL is keyed by rule **name**.

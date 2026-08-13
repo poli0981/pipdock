@@ -54,6 +54,18 @@ front of them does not. Counting live rows means it returns to zero when the pro
 number and the screen always agree. `PdSummarySheet`'s per-package rows opt out — one failed run is
 one problem, not forty-seven. **This definition is an invention**; nothing specified it.
 
+**Code Health's failed tools count** (P4). A `HealthReport` carries at most three `problems`, one
+per tool, and each renders as a `PdErrorRow` above the tabs — so they are error rows currently on
+screen and the rule applies unchanged. This is not the `PdSummarySheet` case: three separable
+tools are three problems, where forty-seven failed packages are one run. They render above the
+tabs rather than inside them so the explanation is never reachable only from the tab it explains.
+
+**Health owns its own console drawer**, and that is a deviation worth naming. The drawer above is
+specified against `plan-progress`, and the status line's toggle is disabled unless a plan is
+running. Health claims a *separate* session slot by design — a health run and an install can be in
+flight at once — so one toggle cannot address two drawers. `PdHealth` renders its own instance
+with its own toggle rather than teaching the status line to choose.
+
 The log toggle opens the console drawer, and is disabled when no run is in progress. Until M3's
 logging subsystem exists the drawer is the only log surface there is, and a toggle that opened an
 empty panel would be the same empty gesture the plain-text version was. The **console drawer** slides up over the status line during execution, streaming `plan-progress` lines with per-package section markers; collapsible, never modal.
@@ -122,16 +134,16 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 | Uninstall one package | **3** | Installed → row ✕ → *Remove* (4 when the guard trips: → *Remove the dependents too* → *Remove*) |
 | Rollback last snapshot | **4** | Environments → *Open* → timeline entry → *Rollback…* → *Roll back* (2 from a run's summary, via *Roll back to this*) |
 | Switch engine | **3** | Settings → engine radio → (auto-saved) back |
-| Run Code Health | **3** | Health → Run (folder persisted) → view |
+| Run Code Health | **3** | Health → Run (folder persisted) → view (**4** the first time in a project: Health → *Choose folder…* → the OS dialog, which is not PipDock's click → Run → view. The folder is remembered per environment from then on.) |
 | Upgrade pip | **2** | *Upgrade pip* → *Upgrade* (Environments is the landing screen, so no tab click). The button appears only when pip is below the 22.2 planner floor — the case the ordinary Updates path cannot fix, because the planner it needs will not run. |
 
 ## 6. Component inventory (prefix `Pd`)
 
 `PdSidebar`, `PdStatusLine`, `PdEnvSwitcher`, `PdPackageTable` (virtualized), `PdPackageRow`, `PdBadge`, `PdPreviewDiff`, `PdConflictRow` (segmented 3-way), `PdDockBay` (queue), `PdConsoleDrawer`, `PdSummarySheet`, `PdSnapshotTimeline`, `PdHealthReport`, `PdLegalGate`, `PdEmptyState`, `PdOfflineBanner`.
 
-**14 of those 16 exist** as of S6, `PdSnapshotTimeline` having arrived with the env detail. Absent:
-`PdEnvSwitcher`, which nothing needs while the header shows the selected interpreter and the
-Environments tab switches it, and `PdHealthReport`, which arrives with Code Health in M3. (ROADMAP and
+**15 of those 16 exist** as of Phase 3 · P4, `PdHealthReport` having arrived with the Health screen. Absent:
+`PdEnvSwitcher` alone, which nothing needs while the header shows the selected interpreter and the
+Environments tab switches it. (ROADMAP and
 CLAUDE.md both claimed 16 of 16 after S4; the count had quietly folded in components that are not on
 this list.) Four components not on this list have
 turned out to be load-bearing and are listed here so the inventory stays honest: `PdErrorRow`
