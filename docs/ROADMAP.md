@@ -383,11 +383,17 @@ against the slice that owes it.
 
 ### Where to pick up
 
-**Phase 3's five slices are done.** P1 (pip upkeep), P2 (the tools venv), P3 (the runners and
-`HealthReport`), P4 (the Health screen) and P5 (the gated `ruff --fix`) are merged, each with a
-stage table above. **What remains is the tail:** `Enter` as primary action, folding the `aria-live` regions
-(there are ten now, not the six this file used to claim), the doc reconciliation, and the two dead-code
-follow-ups P2 deferred. `~/.claude/plans/b-n-b-t-u-ph-n-tranquil-anchor.md` decomposes all of it.
+**Phase 3 is complete.** P1 (pip upkeep), P2 (the tools venv), P3 (the runners and `HealthReport`),
+P4 (the Health screen), P5 (the gated `ruff --fix`) and P6 (the tail) are all merged, each with a
+stage table above, and the exit criteria are recorded with the numbers they were measured at.
+**Next is Phase 4** — the release pipeline, the manual charter, and a clean install of the RC on a
+machine that has never run PipDock.
+
+`NOT_YET` is down to **two**, both M3-general: `env_add_manual` (*Browse…* has no surface) and
+`logs_tail` (needs the logging subsystem). The M3 debt list is otherwise unchanged: dead
+`pins::hold_requirements`, unread `allow_externally_managed`, DATA-FLOW §8's dry-run resolve,
+snapshot retention, `PdEnvSwitcher`, CLI-SPEC §6's NDJSON gap, and `RunOptions`/the confidence floor
+reaching Settings.
 
 `NOT_YET` is down to three and **only `health_fix` is Phase 3's**. P4 did add two commands after
 all — `health_save_report` and, had it been taken, `health_cancel` — so the earlier claim that it
@@ -412,6 +418,36 @@ saved Markdown carries it too.
 Tools venv, deptry/vulture/ruff runners + report UI + gated fix, pip upkeep, bug-report deep link, offline states, keyboard map, icon/branding pass. **Exit:** CODE-HEALTH flows pass on two real projects (one pyproject, one requirements-only).
 
 Decomposed **P1** pip upkeep · **P2** the tools venv · **P3** the runners + `HealthReport` · **P4** the Health screen · **P5** the gated `ruff --fix`. Three of the sentence's items are already spent: the bug-report deep link landed in S7, `PdOfflineBanner` in S4, and the keyboard map's `Ctrl+1..8` in S7 — what remains of "keyboard map" is `Enter` as primary action and folding the six `aria-live` regions. The icon/branding pass belongs with Phase 4's release slice; it churns binaries that must not sit inside a feature diff.
+
+### Phase 3 · P6 — the tail — **done 2026-08-13**
+
+Three commits, and **Phase 3 is closed**. The keyboard item turned out to be hiding a WCAG failure; the rest was owed bookkeeping.
+
+| | What landed |
+|---|---|
+| **UI** | roving tabindex in `PdPackageRow` (`←`/`→`/`Esc`), `Enter` as the non-destructive primary, two live regions folded |
+| **Core** | `uv::parse_dry_run` deleted — the last `todo!()` in the workspace — and `clippy::todo` flipped `allow` → `warn` |
+| **Docs** | UI-SPEC §8's keyboard map and the two rules behind it; CLI-SPEC §6's stale "`health` is still the M3 stub" |
+
+**Pin and Remove were unreachable without a mouse.** Every control in a package row is `tabIndex={-1}`, which is a sound trade for the checkbox — `Space` does its job from the row — but applied to the two action buttons it removed the actions entirely. The row was the only tab stop and there was nowhere further to go. Found by tabbing to a row in the running app and pressing every key that should have done something; invisible to a suite that clicks.
+
+The audit's other finding is worth keeping: **`Enter` already worked everywhere else**, because every other primary action in the app is a real `<button>` and buttons handle it natively. "Zero `Enter` handlers" was true and misleading. The gap was one element that only looks like a control.
+
+**The live-region pair that mattered was not the one being counted.** ROADMAP had said "six regions" for two slices; there were ten. But the duplication that actually reached a user was `PdConsoleDrawer` and the panel that opens it announcing the same `done/total`, so a screen reader heard every step twice. Eight now, with both genuine conflicts removed rather than the number merely reduced.
+
+### Phase 3 exit criteria — **met 2026-08-13**
+
+*"CODE-HEALTH flows pass on two real projects (one pyproject, one requirements-only)."* Run in `--release` against a warm tools venv:
+
+| Project | Result | Time |
+|---|---|---|
+| requirements-only | 1 dependency, 3 dead-code, 3 lint (3 fixable in 1 file) | 1.4 s |
+| declares nothing | `ran: [vulture, ruff]`, `problems: []` — deptry correctly not run | 1.3 s |
+| seeded git repo | 6 fixable across 2 files; `--fix` changed **exactly** those two | — |
+
+The fix path's refusals were exercised on the same repository: non-TTY without `--yes`, `--yes` over a dirty tree, and `attrib +R` on one target — the last confirming the fix refuses **as a whole**, leaving the other, writable file untouched.
+
+**Still owed, and it needs the real Tauri runtime rather than the stubbed bridge:** the OS folder picker, a ruff rule link (to confirm the `docs.astral.sh` allowlist entry works), and the fix dialog end to end. All three are reachable only from `npm run tauri dev`.
 
 ### Phase 3 · P5 — the gated `ruff --fix` — **done 2026-08-13**
 

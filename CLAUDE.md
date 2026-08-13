@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 and M2 complete; Phase 3's five slices done, the tail next**.
+Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1, M2 and Phase 3 complete; Phase 4 (RC → v1.0) next**.
 
 ## Read the docs before changing anything
 
@@ -74,7 +74,7 @@ summarises and installs over real commands. **"Update everything" is 4 clicks an
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-**Phase 3's five slices are done.** P4 put Code Health on screen: `PdHealthReport` is UI-SPEC §6's
+**Phase 3 is complete** — six slices, exit criteria met and recorded. P4 put Code Health on screen: `PdHealthReport` is UI-SPEC §6's
 fifteenth of sixteen, `EnvRow.healthProject` remembers the folder per environment, and
 `health_save_report` writes Markdown + JSON. **`NOT_YET` is down to two**, both M3-general — P5 landed the
 gated `ruff --fix`, PipDock's first write outside site-packages and `%LOCALAPPDATA%`. P4 *did* need new commands, contrary to the earlier claim — one shipped, and
@@ -164,6 +164,12 @@ Things worth knowing before you change any of it:
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no
   `SCHEMA_TYPES` property may contain `_`. Both fail at `cargo test`.
+- **A control that is not a tab stop is a control a keyboard user does not have.** Making the
+  package row the only tab stop is right — 200 rows would otherwise be 600 — but every button
+  inside one was `tabIndex={-1}`, so *Pin* and *Remove* were mouse-only, which is a WCAG 2.1.1
+  failure. The ARIA grid answer is a roving tabindex (`←`/`→`, `Esc` back out), and P6 added it.
+  `Enter` on a row is the **non-destructive** primary — pin, never uninstall.
+
 - **Run it, don't just test it.** Every unplanned bug in Stage 1 *and* Stage 2 came from executing
   against a real environment, a real runner or a real browser — never from reading code or from a
   passing suite. Stage 1: the watchdog that never killed anything, `--json` that never parsed,
