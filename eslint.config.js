@@ -110,9 +110,13 @@ export default tseslint.config(
     rules: { 'pipdock/no-jsx-literals': 'off' },
   },
 
-  // Config files are plain Node modules, outside the type-aware program.
+  // Config files and build scripts are plain Node modules, outside the type-aware program.
+  // `scripts/**` is here because `recommendedTypeChecked` above is unscoped: without this,
+  // adding one `.mjs` build script makes `eslint .` fail outright rather than report a lint.
   {
-    files: ['*.js', '*.ts'],
+    files: ['*.js', '*.ts', 'scripts/**/*.{js,mjs}'],
     ...tseslint.configs.disableTypeChecked,
+    // Node globals: these run under node, not in the webview.
+    languageOptions: { globals: { console: 'readonly', process: 'readonly' } },
   },
 )
