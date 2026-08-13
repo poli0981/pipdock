@@ -12,6 +12,7 @@ use crate::errors::{Code, PdError, Result};
 use crate::exec::Command;
 use crate::model::{ExecMode, PkgName, PyEnv, StepStatus};
 
+use super::project::DeclaredSource;
 use super::report::{HealthReport, RuffFindings, ToolProblem};
 use super::{DEFAULT_EXCLUDES, DEFAULT_MIN_CONFIDENCE, HEALTH_TOOLS, TOOL_TIMEOUT};
 
@@ -54,6 +55,20 @@ impl RunOptions {
             .copied()
             .collect()
     }
+}
+
+/// Which of the selected tools will actually report, given what the project declares.
+///
+/// This is what `HealthReport.ran` is filled from, and it is **not** the same as the step list:
+/// deptry is still stepped through and marked skipped so the caller's progress total — computed by
+/// [`run_steps`] before any of this is known — still adds up.
+#[must_use]
+fn reporting(selected: &[&'static str], declared: &DeclaredSource) -> Vec<String> {
+    selected
+        .iter()
+        .filter(|tool| **tool != "deptry" || declared.is_declared())
+        .map(|tool| (*tool).to_owned())
+        .collect()
 }
 
 /// How many steps a run reports, given the tools selected.
@@ -103,7 +118,25 @@ pub async fn run(
     sink: &ProgressSink,
 ) -> Result<HealthReport> {
     let declared = super::declared_source(project)?;
+    // **deptry cannot answer its question about a project that declares nothing, and says so by
+    // failing.** `DependencySpecificationNotFoundError` exits non-zero and writes no report, which
+    // `collect` then reports as `PD-HLT-002` — "the tool exited non-zero" — for a project state
+    // PipDock had already detected, already described to the user as expected, and which
+    // CODE-HEALTH-SPEC §3 calls the "limited-mode notice".
+    //
+    // So it is left out of `ran` rather than run and mourned. That is exactly the distinction
+    // `ran` exists for: the tab reads *not run*, and the declared line above it already says why.
+    // Recording it as a *problem* would claim something went wrong with Code Health when nothing
+    // did.
+    //
+    // It stays in the step loop as a **skipped** step, because `run_steps` computes the caller's
+    // progress total before any of this is known — dropping it here would leave every such run
+    // ending at "2 of 3". Skipped is also what the console should show: the tool was considered.
+    //
+    // Found by running all three over a folder with no `pyproject.toml`, which is half of Phase
+    // 3's own exit criterion and invisible to a suite whose fixtures all declare something.
     let selected = opts.selected();
+    let skip_deptry = !declared.is_declared();
 
     let mut report = HealthReport {
         project: project.display().to_string(),
@@ -112,8 +145,8 @@ pub async fn run(
         tool_versions: super::read_manifest(tools_dir)
             .map(|m| m.tools)
             .unwrap_or_default(),
-        declared,
-        ran: selected.iter().map(|t| (*t).to_owned()).collect(),
+        declared: declared.clone(),
+        ran: reporting(&selected, &declared),
         deptry: Vec::new(),
         vulture: Vec::new(),
         ruff: RuffFindings::default(),
@@ -124,6 +157,11 @@ pub async fn run(
         let step = sink.at(sink.step + i);
         let name = PkgName::parse(tool)?;
         step.started(Some(name.clone()), ExecMode::Isolated);
+
+        if skip_deptry && *tool == "deptry" {
+            step.finished(Some(name), ExecMode::Isolated, StepStatus::Skipped);
+            continue;
+        }
 
         match run_one(tools_dir, project, opts, tool).await {
             Ok(out) => {
@@ -487,6 +525,47 @@ mod tests {
     fn a_watchdog_reads_as_the_health_code_not_an_internal_error() {
         let timed_out = PdError::new(Code::IntUnexpected, "timed out after 120s: ruff.exe");
         assert_eq!(watchdog(timed_out, "ruff").code, Code::HltTimeout);
+    }
+
+    #[test]
+    fn deptry_is_not_run_against_a_project_that_declares_nothing() {
+        // deptry raises `DependencySpecificationNotFoundError` and exits non-zero when there is no
+        // pyproject.toml or requirements*.txt — a state PipDock already detects and already tells
+        // the user to expect limited results from. Running it anyway turned that into
+        // `PD-HLT-002`, "the tool exited non-zero", for a project that is simply not declaring
+        // dependencies. Found by running all three over such a folder.
+        let all = ["deptry", "vulture", "ruff"];
+        assert_eq!(
+            reporting(&all, &DeclaredSource::None),
+            ["vulture", "ruff"],
+            "deptry cannot answer its question here, so it did not run"
+        );
+        assert_eq!(reporting(&all, &DeclaredSource::Pyproject), all);
+        assert_eq!(
+            reporting(
+                &all,
+                &DeclaredSource::Requirements {
+                    files: vec!["requirements.txt".to_owned()]
+                }
+            ),
+            all
+        );
+    }
+
+    /// The step count must not move with it.
+    ///
+    /// `run_steps` is called by both heads to size a progress bar *before* the project is read, so
+    /// a deptry that vanished from the loop rather than being skipped would leave every such run
+    /// ending at "2 of 3".
+    #[test]
+    fn skipping_deptry_does_not_change_the_step_count() {
+        let opts = RunOptions::default();
+        assert_eq!(run_steps(&opts), 3);
+        assert_eq!(
+            reporting(&opts.selected(), &DeclaredSource::None).len(),
+            2,
+            "two tools report, but three steps are still emitted"
+        );
     }
 
     #[test]
