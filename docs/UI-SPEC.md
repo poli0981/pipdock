@@ -138,6 +138,23 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 | Fix ruff findings | **3** | ruff tab → *Fix N…* → *Fix* (from a report already on screen; **5** from the landing screen with a folder remembered, which is the owner's ceiling). Cancel holds default focus, so `Enter` without `Tab` cancels. |
 | Upgrade pip | **2** | *Upgrade pip* → *Upgrade* (Environments is the landing screen, so no tab click). The button appears only when pip is below the 22.2 planner floor — the case the ordinary Updates path cannot fix, because the planner it needs will not run. |
 
+### Shell rules established by the first installed build (2026-08-13)
+
+**One window, always.** `tauri-plugin-single-instance` is registered before every other plugin; a
+second launch unminimizes and focuses the window that exists. Five launches used to give five
+windows, which is five `AppState`s over one machine — five `Sessions` slots each certain it owned
+the mutation in flight, and five `PD-RES-003` guards that cannot see each other. Verified: five
+launches, one process, one window.
+
+**The sidebar is disabled while `PANEL_PHASES` owns the content area.** Navigating away left the
+plan parked in Rust with nothing driving it, and the next Update answered `PD-RES-003` about a plan
+the user could no longer see. §8's `Ctrl+1..8` already refuses while the guard dialog is open; this
+is the same rule for the panel and for the mouse.
+
+**The window is bounded at 1600×1100 and cannot be maximized or go fullscreen.** The layout is a
+fixed sidebar plus one scrolling column; stretched across a 4K panel it is a column of text beside
+a metre of empty surface. Still resizable, and `minWidth`/`minHeight` are unchanged.
+
 ## 6. Component inventory (prefix `Pd`)
 
 `PdSidebar`, `PdStatusLine`, `PdEnvSwitcher`, `PdPackageTable` (virtualized), `PdPackageRow`, `PdBadge`, `PdPreviewDiff`, `PdConflictRow` (segmented 3-way), `PdDockBay` (queue), `PdConsoleDrawer`, `PdSummarySheet`, `PdSnapshotTimeline`, `PdHealthReport`, `PdLegalGate`, `PdEmptyState`, `PdOfflineBanner`.
