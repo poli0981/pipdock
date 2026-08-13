@@ -36,6 +36,21 @@ pub fn run() {
     use tauri::Manager as _;
 
     tauri::Builder::default()
+        // **First, before every other plugin.** The single-instance handler has to be registered
+        // before anything that could take a lock or open the store, because a second launch runs
+        // this far and then hands off — and the reason it must hand off at all is that two windows
+        // would be two `AppState`s over one machine: two `Sessions` slots, each certain it owned
+        // the mutation in flight, and two `PD-RES-003` guards that cannot see each other.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            // Focus the window that already exists. Restoring first matters: a minimized window
+            // that is only focused stays minimized, and the user sees their second launch do
+            // nothing at all.
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.unminimize();
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())

@@ -103,7 +103,13 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
               : {})}
           />
         )}
-        {outcome === null && error === null ? null : (
+        {/* **Only when `PdSummarySheet` is not on screen.** The sheet renders its own
+            `plan.done` from `onDone`, so a successful run showed the same button twice, one
+            under the other. Reported from the installed build — the summary is the one screen
+            no component test renders together with its panel. The button still has to exist
+            here, because a run that failed before producing an `ExecutionSummary` has an error
+            row and no sheet, and would otherwise be a dead end. */}
+        {outcome === null && error !== null ? (
           <button
             type="button"
             onClick={() => {
@@ -114,7 +120,7 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
           >
             {t('plan.done')}
           </button>
-        )}
+        ) : null}
       </section>
     )
   }
