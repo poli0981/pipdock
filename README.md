@@ -59,12 +59,12 @@ PipDock does not update itself — grab a new build from the same page when you 
 
 **GUI:** launch PipDock → accept the first-run legal gate → pick an environment (auto-discovered or *Browse…*) → the *Updates* tab shows what's outdated → *Select all* → *Update* → review the preview → *Confirm*. Four clicks.
 
-**CLI:** the installer puts `pipdock.exe` next to the GUI — `%LOCALAPPDATA%\Programs\PipDock\`
-for a per-user install, `C:\Program Files\PipDock\` for a machine-wide one. **PipDock does not
-edit your `PATH`**; add that folder yourself if you want to type `pipdock` from anywhere:
+**CLI:** the installer puts `pipdock.exe` next to the GUI, in `%LOCALAPPDATA%\PipDock\`.
+**PipDock does not edit your `PATH`**; add that folder yourself if you want to type `pipdock`
+from anywhere:
 
 ```powershell
-$dir = "$env:LOCALAPPDATA\Programs\PipDock"
+$dir = "$env:LOCALAPPDATA\PipDock"
 [Environment]::SetEnvironmentVariable('Path', "$([Environment]::GetEnvironmentVariable('Path','User'));$dir", 'User')
 ```
 
