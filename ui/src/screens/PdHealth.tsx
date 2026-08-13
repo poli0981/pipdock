@@ -11,14 +11,14 @@
  * between UI-SPEC §5's budget of 3 and the 4 a first run actually takes.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdConsoleDrawer } from '@/components/PdConsoleDrawer'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdHealthReport } from '@/components/PdHealthReport'
-import { pickProjectFolder } from '@/ipc'
+import { healthSaveReport, pickProjectFolder, pickSavePath } from '@/ipc'
 import type { PdError, ToolProblem } from '@/ipc'
 import { useEnvPackages } from '@/screens/useEnvPackages'
 import { freshReport, useEnvStore, useHealthStore, usePlanStore } from '@/stores'
@@ -88,6 +88,10 @@ export function PdHealth() {
   // environment's findings after the user switched to another.
   const shown = row === undefined ? null : freshReport({ report, reportFor, folder }, row.envHash)
 
+  // Where the last save went, so the confirmation names the files rather than just claiming
+  // success. Screen state, not store state: it describes an action, not a report.
+  const [saved, setSaved] = useState<string[] | null>(null)
+
   const choose = () => {
     void pickProjectFolder(t('health.pickerTitle'), folder ?? undefined).then((chosen) => {
       if (chosen !== null) setFolder(chosen)
@@ -133,6 +137,20 @@ export function PdHealth() {
             </button>
             <button
               type="button"
+              className="rounded-pd border border-border px-2 py-1 text-data hover:bg-surface-2 disabled:opacity-50"
+              disabled={shown === null}
+              onClick={() => {
+                if (shown === null) return
+                void pickSavePath(t('health.saveTitle'), 'code-health.md').then((target) => {
+                  if (target === null) return
+                  void healthSaveReport(shown, target).then(setSaved)
+                })
+              }}
+            >
+              {t('health.save')}
+            </button>
+            <button
+              type="button"
               className="rounded-pd border border-border px-2 py-1 text-data text-text-dim hover:bg-surface-2"
               onClick={() => {
                 setConsoleOpen(!consoleOpen)
@@ -142,9 +160,12 @@ export function PdHealth() {
             </button>
           </div>
 
-          {/* One live region for the screen, announcing the same `done/total` the drawer shows. */}
+          {/* One live region for the screen: progress while running, then where a save landed.
+              Two regions would serialize against each other unpredictably. */}
           <p aria-live="polite" className="mt-2 shrink-0 text-data text-text-dim">
-            {running && total > 0 ? t('plan.progress', { done, total }) : ''}
+            {running && total > 0 ? t('plan.progress', { done, total }) : null}
+            {/* Paths are data and are never localized (I18N §2). */}
+            {!running && saved !== null ? t('health.saved', { files: saved.join(', ') }) : null}
           </p>
 
           {/* A run that failed outright — distinct from a *tool* that failed, which is below. */}

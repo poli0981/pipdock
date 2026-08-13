@@ -940,6 +940,54 @@ pub async fn health_run(
     }
 }
 
+/// Write a finished report beside the path the user named, as Markdown **and** JSON.
+///
+/// CODE-HEALTH-SPEC §5's *Save report*. Two files from one prompt: the Markdown is for reading and
+/// the JSON is what §7 means by "the JSON export enables users to wire their own" CI annotations,
+/// and asking twice for what is conceptually one action would spend a click on nothing.
+///
+/// **Written in Rust rather than through `tauri-plugin-fs`.** A general `fs:allow-write-text-file`
+/// is a write-anywhere primitive granted to the webview of a tool that already runs subprocesses
+/// against the user's interpreters; this needs the webview to have no write permission at all.
+/// `dialog:allow-save` only lets it *ask* for a path.
+///
+/// Takes the report from the frontend rather than the parked session on purpose: what the user
+/// asked to save is what is on their screen. Nothing is executed from it, so the trust question
+/// that makes `health_fix` read server-side does not arise here.
+///
+/// # Errors
+/// `PD-SYS-002` when either file cannot be written; the path is the user's own choice, so a
+/// failure is a real filesystem answer rather than something to retry.
+#[tauri::command]
+pub async fn health_save_report(
+    report: pipdock_core::health::HealthReport,
+    path: String,
+) -> Wire<Vec<String>> {
+    let base = std::path::PathBuf::from(&path);
+    // The picker suggests `.md`, but the user may type anything or nothing; deriving both names
+    // from the stem means the pair always matches rather than depending on what was typed.
+    let md = base.with_extension("md");
+    let json = base.with_extension("json");
+
+    let body = pipdock_core::health::markdown(&report);
+    let document = serde_json::to_string_pretty(&report).map_err(|e| {
+        PdError::new(
+            pipdock_core::errors::Code::IntUnexpected,
+            format!("serialize report: {e}"),
+        )
+    })?;
+
+    for (target, contents) in [(&md, body), (&json, document)] {
+        std::fs::write(target, contents).map_err(|e| {
+            PdError::new(
+                pipdock_core::errors::Code::SysDiskFull,
+                format!("write {}: {e}", target.display()),
+            )
+        })?;
+    }
+    Ok(vec![md.display().to_string(), json.display().to_string()])
+}
+
 /// Upgrade pip inside `env` (PRD P0-10).
 ///
 /// **`PipEngine` unconditionally**, never `engine::for_id(settings.engine)`. Upgrading pip is a pip

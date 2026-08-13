@@ -71,6 +71,7 @@ pub fn run() {
             commands::engine_info,
             commands::pip_upgrade,
             commands::health_run,
+            commands::health_save_report,
             commands::index_search,
             commands::index_refresh,
             commands::pkg_metadata,

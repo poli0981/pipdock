@@ -1,10 +1,11 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
-  "description": "Minimal capability set for the Phase 0 shell. Permissions are added per feature, never broadened preemptively (docs/SECURITY.md §2).",
+  "description": "Minimal capability set for the shell. Permissions are added per feature, never broadened preemptively (docs/SECURITY.md §2). dialog:allow-open is Code Health's project-folder picker and the manual Browse… path; dialog:allow-save is Save report. BOTH ONLY ASK FOR A PATH — no fs permission is granted, so the webview cannot read or write a single file. Save report hands its path to a Rust command that writes the two files, because a general fs:allow-write-text-file would be a write-anywhere primitive in the webview of a tool that already runs subprocesses against the user's interpreters.",
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "dialog:allow-open"
+    "dialog:allow-open",
+    "dialog:allow-save"
   ]
 }

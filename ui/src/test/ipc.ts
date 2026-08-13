@@ -44,6 +44,8 @@ export interface IpcMock {
   healthRun: ReturnType<typeof vi.fn>
   onHealthProgress: ReturnType<typeof vi.fn>
   pickProjectFolder: ReturnType<typeof vi.fn>
+  pickSavePath: ReturnType<typeof vi.fn>
+  healthSaveReport: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
 
@@ -76,6 +78,8 @@ export function ipcMock(): IpcMock {
     // Cancelled by default. A picker that silently returned a folder would let a test assert a
     // run it never actually asked for.
     pickProjectFolder: vi.fn().mockResolvedValue(null),
+    pickSavePath: vi.fn().mockResolvedValue(null),
+    healthSaveReport: vi.fn().mockResolvedValue([]),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
     // and a stub that always answered one way would make every error test agree with itself.
     isPdError: (value: unknown): boolean =>
