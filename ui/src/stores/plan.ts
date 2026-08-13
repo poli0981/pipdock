@@ -307,8 +307,26 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 }))
 
-/** Fold one progress event into the store. Pure, so the lifecycle rules are testable. */
-export function apply(state: PlanState, event: ProgressEvent): Partial<PlanState> {
+/**
+ * The slice of a store that a `ProgressEvent` stream writes to.
+ *
+ * Named so `apply` can serve two stores rather than being copied into the second. Health streams
+ * `health-progress`, which carries the **identical** `ProgressEvent` payload — so the alternative
+ * was a second reducer with its own `CONSOLE_LIMIT`, its own drop-from-the-front rule and its own
+ * opportunity to get `done` wrong.
+ */
+export interface ConsoleState {
+  console: ConsoleLine[]
+  done: number
+  total: number
+  current: string | null
+}
+
+/**
+ * Fold one progress event into the console slice of a store. Pure, so the lifecycle rules are
+ * testable — and generic, so `usePlanStore` and `useHealthStore` cannot drift apart.
+ */
+export function apply<S extends ConsoleState>(state: S, event: ProgressEvent): Partial<ConsoleState> {
   switch (event.kind) {
     case 'stepStarted':
       return { total: event.total, current: event.pkg ?? null }
