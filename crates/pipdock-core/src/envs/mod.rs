@@ -477,6 +477,35 @@ mod tests {
         assert!(got.dists.iter().all(|d| d.size_bytes.is_none()));
     }
 
+    /// The join P4's remembered project folder rests on.
+    ///
+    /// `env_scan` keys the store lookup off the **discovered candidate path**, before any probe has
+    /// run; `health_run` keys the store *write* off `PyEnv.interpreter`, which comes back through
+    /// the frontend afterwards. If those two ever hash differently the folder is written under one
+    /// key and read under another, and the only symptom is a Health screen that keeps asking where
+    /// the project is — no error, nothing in a log.
+    ///
+    /// They agree because `parse_probe` carries the path it was given through untouched, and
+    /// `env_hash` canonicalizes whatever it is handed. Both halves are load-bearing, so both are
+    /// asserted here rather than reasoned about at the call site.
+    #[test]
+    fn a_probed_env_hashes_the_same_as_the_path_it_was_discovered_at() {
+        let doc = r#"{"python":"3.12.4","prefix":"C:\\proj\\.venv","externally_managed":false,
+            "hidden_user_site":null,"dists":[]}"#;
+        let discovered = Path::new(r"C:\Proj\.venv\Scripts\Python.exe");
+        let got = parse_probe(doc, discovered, EnvSource::VenvScan).expect("parse");
+
+        assert_eq!(
+            got.env.interpreter, discovered,
+            "the path is carried, not rewritten"
+        );
+        assert_eq!(
+            env_hash(discovered),
+            env_hash(&got.env.interpreter),
+            "the write key and the read key must be the same string"
+        );
+    }
+
     #[test]
     fn a_hidden_user_site_marks_the_listing_partial() {
         let doc = r#"{"python":"3.14.6","prefix":"C:\\Python314","externally_managed":false,
