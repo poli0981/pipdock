@@ -62,10 +62,44 @@ function Row({
         // Only when the row itself has focus. Without the target check, Space on a focused action
         // button toggles the row's selection *as well as* pressing the button — and the pin
         // button was a tab stop, so that was reachable rather than theoretical.
-        if (e.key === ' ' && !pinned && e.target === e.currentTarget) {
+        const onRow = e.target === e.currentTarget
+        if (e.key === ' ' && !pinned && onRow) {
           // Otherwise the scroll container pages down under the focused row.
           e.preventDefault()
           onToggle(row.name)
+        }
+        // UI-SPEC §8's `Enter` primary action. Pin, not uninstall: a row's two actions are one
+        // reversible annotation and one irreversible removal, and a destructive operation one
+        // keypress from a focused row is not a primary action, it is an accident waiting.
+        if (e.key === 'Enter' && onRow) {
+          e.preventDefault()
+          onPinToggle(row.name)
+        }
+        // **The ARIA grid pattern's roving tabindex, and the reason it is here at all.** Every
+        // control in this row is `tabIndex={-1}` so that 200 rows do not become 600 tab stops —
+        // but that left *pin* and *uninstall* reachable by mouse only, which is a WCAG 2.1.1
+        // failure and breaks §8's "full keyboard traversal". Found by tabbing to a row in the
+        // running app and discovering there was nowhere further to go. Arrow keys move within the
+        // row; `Escape` comes back out to it.
+        if (e.key === 'ArrowRight' || e.key === 'ArrowLeft') {
+          const controls = [
+            ...e.currentTarget.querySelectorAll<HTMLElement>('button, input'),
+          ].filter((el) => !(el as HTMLButtonElement).disabled)
+          if (controls.length === 0) return
+          e.preventDefault()
+          const at = controls.indexOf(document.activeElement as HTMLElement)
+          const step = e.key === 'ArrowRight' ? 1 : -1
+          // From the row itself, ArrowRight enters at the first control and ArrowLeft at the last.
+          const next = at === -1 ? (step === 1 ? 0 : controls.length - 1) : at + step
+          if (next < 0 || next >= controls.length) {
+            e.currentTarget.focus()
+            return
+          }
+          controls[next]?.focus()
+        }
+        if (e.key === 'Escape' && !onRow) {
+          e.preventDefault()
+          e.currentTarget.focus()
         }
       }}
       style={style}

@@ -64,8 +64,11 @@ export function PdConsoleDrawer({ lines, open, onClose, done, total }: PdConsole
     >
       <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-1">
         <span className="text-data text-text-dim">{t('plan.console')}</span>
-        {/* The live region UI-SPEC §8 asks for. Polite, so it does not interrupt. */}
-        <span aria-live="polite" className="font-mono text-data text-text-dim">
+        {/* **Not a live region.** It was one, and so is the screen that opens this drawer — both
+            announcing the same `done/total`, so a reader heard every step twice. §8 asks for one
+            announcement of execution progress, and the screen owns it because the drawer may be
+            closed while a run is going. Still rendered, still read on demand. */}
+        <span className="font-mono text-data text-text-dim">
           {total > 0 ? t('plan.progress', { done, total }) : ''}
         </span>
         <button
