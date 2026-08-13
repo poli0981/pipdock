@@ -13,6 +13,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
+import { open } from '@tauri-apps/plugin-dialog'
 
 import type {
   Decision,
@@ -412,6 +413,30 @@ export const settingsSet = (settings: Settings): Promise<Settings> =>
 export const legalConsentGet = (): Promise<ConsentState> => invoke('legal_consent_get')
 
 export const legalConsentSet = (): Promise<Consent> => invoke('legal_consent_set')
+
+/**
+ * Ask the OS for a project folder. `null` when the user cancelled.
+ *
+ * **Here rather than in the component**, even though `PdErrorRow` imports `plugin-opener`
+ * directly. The difference is the return value: `openUrl` is fire-and-forget and a test has
+ * nothing to assert about it, whereas *which folder was chosen* is the whole interaction — and
+ * TESTING §2 mocks at this layer. A component-level import would lint clean and be unmockable.
+ *
+ * `title` arrives already localized; `@/ipc` has no `t` and must not grow one.
+ */
+export const pickProjectFolder = async (
+  title: string,
+  defaultPath?: string,
+): Promise<string | null> => {
+  const chosen = await open({
+    directory: true,
+    multiple: false,
+    title,
+    ...(defaultPath === undefined ? {} : { defaultPath }),
+  })
+  // `open` widens to `string[] | string | null` for the multi-select case this never asks for.
+  return typeof chosen === 'string' ? chosen : null
+}
 
 /** Subscribe to discovery progress. Returns the unlisten function. */
 export const onScanProgress = (handler: (progress: ScanProgress) => void): Promise<UnlistenFn> =>
