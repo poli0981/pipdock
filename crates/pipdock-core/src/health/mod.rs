@@ -1017,7 +1017,18 @@ mod tests {
 
         let read = read_manifest(&dir).expect("written manifest is readable");
         assert_eq!(read.pins_hash, "abc");
-        assert_eq!(read.tools.get("ruff").map(String::as_str), Some("0.16.0"));
+        // Compared against the ledger rather than a literal. This assertion used to name
+        // `0.16.0`, which made a Dependabot bump of a pin Dependabot exists to bump fail a test
+        // about serialization — and it failed on `main`, because that PR's CI predates the health
+        // module. What is being pinned here is that the tools map survives the round trip, not
+        // which version is in it.
+        let pinned = pins()
+            .expect("ledger parses")
+            .into_iter()
+            .find(|p| p.name.to_string() == "ruff")
+            .map(|p| p.version.to_string())
+            .expect("the ledger pins ruff");
+        assert_eq!(read.tools.get("ruff"), Some(&pinned));
     }
 
     /// The camelCase spelling is the shape a future IPC surface would inherit, so pin it now —
