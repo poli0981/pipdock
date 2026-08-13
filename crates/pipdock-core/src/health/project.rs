@@ -3,7 +3,7 @@
 //! CODE-HEALTH-SPEC §3: the folder is persisted per environment, and the detection order for
 //! declared dependencies is `pyproject.toml` → `requirements*.txt` → none.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::errors::{Code, PdError, Result};
 
@@ -45,6 +45,45 @@ impl DeclaredSource {
 /// # Errors
 /// `PD-ENV-003` when the folder cannot be read at all — a path that is not a directory, or one the
 /// user cannot list. Health has nothing to run against in either case.
+/// Refuse a project folder Code Health must not run in.
+///
+/// SECURITY §2 validates package names, versions and interpreter paths; the project folder is the
+/// fourth user-supplied path that reaches a subprocess, and with `--fix` it is a **write target**.
+///
+/// The one refusal that is not merely hygiene: a folder inside the tools directory. ruff would
+/// happily rewrite PipDock's own venv, and the failure mode is Code Health breaking itself in a
+/// way that looks like a corrupted install.
+///
+/// # Errors
+/// `PD-ENV-003` when the path is not a readable directory, or is inside `tools_dir`.
+pub fn validate_project(project: &Path, tools_dir: &Path) -> Result<PathBuf> {
+    let canonical = project.canonicalize().map_err(|e| {
+        PdError::new(
+            Code::EnvProbeFailed,
+            format!("cannot read {}: {e}", project.display()),
+        )
+    })?;
+    if !canonical.is_dir() {
+        return Err(PdError::new(
+            Code::EnvProbeFailed,
+            format!("{} is not a folder", project.display()),
+        ));
+    }
+    // Compared against the canonical tools path, or `..` walks straight past this.
+    if let Ok(tools) = tools_dir.canonicalize()
+        && canonical.starts_with(&tools)
+    {
+        return Err(PdError::new(
+            Code::EnvProbeFailed,
+            format!(
+                "{} is inside PipDock's own tools environment; Code Health will not run there",
+                project.display()
+            ),
+        ));
+    }
+    Ok(canonical)
+}
+
 pub fn declared_source(project: &Path) -> Result<DeclaredSource> {
     let unreadable = |e: &dyn std::fmt::Display| {
         PdError::new(
@@ -92,6 +131,33 @@ fn is_requirements(name: &str) -> bool {
 mod tests {
     use super::*;
     use std::path::PathBuf;
+
+    #[test]
+    fn code_health_refuses_to_run_inside_its_own_tools_directory() {
+        // ruff would rewrite PipDock's own venv, and the failure looks like a corrupted install
+        // rather than like the fix that caused it.
+        let tools = std::env::temp_dir().join(format!("pd-tools-{}", std::process::id()));
+        let inside = tools.join(".venv").join("Lib");
+        std::fs::create_dir_all(&inside).expect("scratch");
+
+        let err = validate_project(&inside, &tools).expect_err("must refuse");
+        assert_eq!(err.code, Code::EnvProbeFailed);
+        assert!(err.message.contains("tools environment"), "{}", err.message);
+
+        // And the escape that a plain string comparison would miss.
+        let sneaky = inside.join("..").join("..").join(".venv");
+        assert!(
+            validate_project(&sneaky, &tools).is_err(),
+            "`..` must not walk out and back in"
+        );
+
+        let elsewhere = std::env::temp_dir().join(format!("pd-proj-{}", std::process::id()));
+        std::fs::create_dir_all(&elsewhere).expect("scratch");
+        assert!(validate_project(&elsewhere, &tools).is_ok());
+
+        let _ = std::fs::remove_dir_all(&tools);
+        let _ = std::fs::remove_dir_all(&elsewhere);
+    }
 
     #[test]
     fn pyproject_wins_over_requirements_beside_it() {

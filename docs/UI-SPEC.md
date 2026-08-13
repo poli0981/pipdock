@@ -135,6 +135,7 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 | Rollback last snapshot | **4** | Environments → *Open* → timeline entry → *Rollback…* → *Roll back* (2 from a run's summary, via *Roll back to this*) |
 | Switch engine | **3** | Settings → engine radio → (auto-saved) back |
 | Run Code Health | **3** | Health → Run (folder persisted) → view (**4** the first time in a project: Health → *Choose folder…* → the OS dialog, which is not PipDock's click → Run → view. The folder is remembered per environment from then on.) |
+| Fix ruff findings | **3** | ruff tab → *Fix N…* → *Fix* (from a report already on screen; **5** from the landing screen with a folder remembered, which is the owner's ceiling). Cancel holds default focus, so `Enter` without `Tab` cancels. |
 | Upgrade pip | **2** | *Upgrade pip* → *Upgrade* (Environments is the landing screen, so no tab click). The button appears only when pip is below the 22.2 planner floor — the case the ordinary Updates path cannot fix, because the planner it needs will not run. |
 
 ## 6. Component inventory (prefix `Pd`)
@@ -158,7 +159,7 @@ table and the Pins screen) and `PdRollbackPreview` (DATA-FLOW §8's preview, inc
 - Empty states: one mono glyph + one sentence + one action (e.g. Updates empty: `▸ all packages up to date`).
 - Offline: banner chip in top bar; search works (local index), metadata panel shows cached-at timestamp.
 - Errors: inline with catalog code, human message (localized), and *Details* expanding stderr tail. Toasts only for background completions.
-- Destructive confirms (`Force latest`, uninstall with breakage, PEP 668 override) use `--color-danger` primary buttons and require the dialog's default focus to be **Cancel**.
+- Destructive confirms (`Force latest`, uninstall with breakage, PEP 668 override, and — since P5 — `Fix with ruff`, the only one that writes outside an environment) use `--color-danger` primary buttons and require the dialog's default focus to be **Cancel**. Each also carries a `data-action` in `styles.css`'s forced-colors list, because high contrast drops every tint and a destructive primary that looks like Cancel is worse than no colour at all.
 
 ## 8. Keyboard & accessibility
 

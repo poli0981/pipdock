@@ -17,7 +17,7 @@ pub mod vulture;
 pub use run::run as run_tools;
 pub use run::{RunOptions, has_findings, run_steps};
 
-pub use project::{DeclaredSource, declared_source};
+pub use project::{DeclaredSource, declared_source, validate_project};
 pub use report::{
     DeptryIssue, FixApplicability, HealthReport, RuffFinding, RuffFindings, SourceLocation,
     ToolProblem, VultureFinding, markdown,

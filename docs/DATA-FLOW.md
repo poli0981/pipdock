@@ -172,3 +172,16 @@ M3 rather than bolted onto a preview. Until then the preview's promise is precis
 3. `plan_execute` refuses a report older than 10 minutes or if the env's probe hash changed (env drifted → re-resolve).
 4. Every failure surfaced to UI/CLI carries a catalog code.
 5. Pinned packages never appear in a `PlanRequest.upgrades` unless the user explicitly unpinned them this session.
+6. **A write *outside* an environment needs a `FixConsent` accepted this session and a re-verified count, and takes no snapshot** (added by P5). Invariants 1 and 2 are scoped to a mutating **engine** call and do not reach `ruff check --fix`, which rewrites the user's *source tree*. No snapshot in this application describes one — a snapshot is a freeze, and §8's rollback is *uninstall the added, install the removed at snapshot versions* — so one taken here would have no consumer that could use it. That is invariant 2's own argument for the pip-upkeep exemption, a second time, and like that one it is **made visible rather than silent**: the confirm states that PipDock cannot undo the change and that only the user's own version control can. The safety net is therefore git, which is why `git status --porcelain` is asked twice — once to decide what the dialog *renders*, once inside the command to decide what it *allows* — and why the dirty finding lives inside `FixConsent` rather than beside it.
+
+### 9.1 The fix flow
+
+```
+ReportReady ──Fix──► Confirm(clean | dirty) ──confirm──► Verifying ──► Fixing ──► FixSummary
+                            │                                │
+                            └──cancel──► ReportReady          └── PD-RES-002 / PD-PRM-003 ──► ReportReady
+```
+
+`Verifying` is not decoration and it is not one check. It re-reads the project read-only and refuses with **`PD-RES-002`** when the safely-fixable counts no longer match what the user confirmed — the source-tree analogue of §9's rule 3, for the one thing no snapshot describes — and it refuses with **`PD-PRM-003`** when any target cannot be written. Both happen **before the first byte**: a partial rewrite of a source tree is the worst outcome this flow can produce, because nothing here can undo half of one. ruff can fail to write a file and still exit 1, which the findings-exit rule accepts as a clean run, so the writability check cannot be a classification of the failure afterwards.
+
+`Fixing` is a single `ruff check --fix --output-format json`, which both applies the safe fixes and reports what remains — so `FixReport.remaining` cannot describe a different moment than the fix, and the tab refreshes without a second run. Only **safe** fixes are ever applied; `--unsafe-fixes` is never passed, and `ruff format` is not wired at all (CODE-HEALTH-SPEC §7's non-goals).

@@ -383,9 +383,9 @@ against the slice that owes it.
 
 ### Where to pick up
 
-**Phase 3 is four-fifths done.** P1 (pip upkeep), P2 (the tools venv), P3 (the runners and
-`HealthReport`) and P4 (the Health screen) are merged, each with a stage table above. **Next is P5,
-the gated `ruff --fix`**, then the tail: `Enter` as primary action, folding the `aria-live` regions
+**Phase 3's five slices are done.** P1 (pip upkeep), P2 (the tools venv), P3 (the runners and
+`HealthReport`), P4 (the Health screen) and P5 (the gated `ruff --fix`) are merged, each with a
+stage table above. **What remains is the tail:** `Enter` as primary action, folding the `aria-live` regions
 (there are ten now, not the six this file used to claim), the doc reconciliation, and the two dead-code
 follow-ups P2 deferred. `~/.claude/plans/b-n-b-t-u-ph-n-tranquil-anchor.md` decomposes all of it.
 
@@ -412,6 +412,31 @@ saved Markdown carries it too.
 Tools venv, deptry/vulture/ruff runners + report UI + gated fix, pip upkeep, bug-report deep link, offline states, keyboard map, icon/branding pass. **Exit:** CODE-HEALTH flows pass on two real projects (one pyproject, one requirements-only).
 
 Decomposed **P1** pip upkeep · **P2** the tools venv · **P3** the runners + `HealthReport` · **P4** the Health screen · **P5** the gated `ruff --fix`. Three of the sentence's items are already spent: the bug-report deep link landed in S7, `PdOfflineBanner` in S4, and the keyboard map's `Ctrl+1..8` in S7 — what remains of "keyboard map" is `Enter` as primary action and folding the six `aria-live` regions. The icon/branding pass belongs with Phase 4's release slice; it churns binaries that must not sit inside a feature diff.
+
+### Phase 3 · P5 — the gated `ruff --fix` — **done 2026-08-13**
+
+Five commits. **`NOT_YET` is down to two, both M3-general**, and PipDock has its first write outside site-packages and `%LOCALAPPDATA%`.
+
+| | What landed |
+|---|---|
+| **Core** | `health::fix` — `dirty`, `FixConsent`, `consent_ok`, `ensure_writable`, `recheck`, `apply`, `FixReport`; `project::validate_project`; `run::ruff_argv` extracted so the re-check cannot drift |
+| **Errors** | `PD-PRM-003`, internally raised. `Code::ALL` 33 → 34, and the checklist is **nine** places, not eight |
+| **Bridge** | `health_fix` (the last Phase-3 `NOT_YET` row) and `health_dirty` |
+| **CLI** | `pipdock health --fix`, with the `--yes` rule, the usage error, and a one-document `--json` |
+| **UI** | the Fix button, one dialog with two states, `data-action="fix"` in the forced-colors list |
+| **Docs** | DATA-FLOW gains **invariant 6** and §9.1's state machine; SECURITY §2 and §8; CODE-HEALTH-SPEC §5; CLI-SPEC §3; UI-SPEC §5 and §7 |
+
+**The invariant question, answered rather than dodged.** DATA-FLOW §9.1 and §9.2 are scoped to a mutating *engine* call, and a ruff fix rewrites a source tree, which no snapshot describes. A snapshot taken here would have no consumer that could use it — invariant 2's own argument for the pip-upkeep exemption, a second time. So: **no snapshot**, a fifth proof shape (`HealthReport` + a server-checked `FixConsent`), and the exemption made *visible* the way P1's is, in the confirm's own copy.
+
+**Three things found by running.**
+
+1. **`--json --fix` printed two documents** — the pre-fix report and the `FixReport`. The first describes a state that no longer exists by the time the command returns, and CLI-SPEC §6 states the contract as one document. Found by reading stdout rather than asserting on it.
+2. **A planted `git.exe` does not win.** This is the one place PipDock runs a PATH-resolved program with a user-controlled working directory. Windows' legacy search order would make a binary in a cloned repository run; Rust's `Command` does its own resolution and skips the current directory. Verified by planting one, not by reasoning about `CreateProcess`.
+3. **The SECURITY paragraph was ahead of the code.** Writing "the project folder is validated and a folder inside the tools directory is refused" made it true rather than aspirational: `validate_project` now refuses it, `..` included, and running Health against `%LOCALAPPDATA%\PipDock	ools` answers `PD-ENV-003`.
+
+**Verification, release build, against a seeded repository.** 6 fixable across 2 files with an unfixable `E722` in a third: after `--fix`, `git diff --stat` lists **exactly those two files** — the third untouched, which is what rules out a stray `ruff format` — and the run exits 1 with one finding remaining. Non-TTY without `--yes` refuses (exit 2). A dirty tree with `--yes` refuses naming the entry count (exit 2) and writes nothing. `attrib +R` on one target produces `PD-PRM-003` naming that file, and the **other**, perfectly writable, is not written either: the fix refuses as a whole rather than half-rewriting a tree nothing can restore.
+
+**Deliberately not done:** `ruff format`. §4's `--check` toggle stays read-only and default-off; formatting a whole project is a far larger blast radius than fixing seventeen lint findings, and §7's non-goals are contractual.
 
 ### Phase 3 · P4 — the Health screen — **done 2026-08-13**
 

@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 and M2 complete; Phase 3 P1–P4 done, P5 and the tail next**.
+Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1 and M2 complete; Phase 3's five slices done, the tail next**.
 
 ## Read the docs before changing anything
 
@@ -74,10 +74,10 @@ summarises and installs over real commands. **"Update everything" is 4 clicks an
 against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
 table per stage and says where to pick up; read it before starting a slice.
 
-**Phase 3 P1–P4 are done.** P4 put Code Health on screen: `PdHealthReport` is UI-SPEC §6's
+**Phase 3's five slices are done.** P4 put Code Health on screen: `PdHealthReport` is UI-SPEC §6's
 fifteenth of sixteen, `EnvRow.healthProject` remembers the folder per environment, and
-`health_save_report` writes Markdown + JSON. **Only `health_fix` (P5) is still Phase 3's in
-`NOT_YET`.** P4 *did* need new commands, contrary to the earlier claim — one shipped, and
+`health_save_report` writes Markdown + JSON. **`NOT_YET` is down to two**, both M3-general — P5 landed the
+gated `ruff --fix`, PipDock's first write outside site-packages and `%LOCALAPPDATA%`. P4 *did* need new commands, contrary to the earlier claim — one shipped, and
 cancellation was deferred on a measurement (a warm three-tool run is 1.3 s in release).
 
 Four P4 defects worth not repeating, all found by running: an empty state that said *no issues
@@ -137,9 +137,18 @@ Three rules from S2/S3 that bind everything after them:
 
 - **A dialog is not an enforcement point.** DATA-FLOW §5's three options are what the user *sees*;
   what stops a removal is `GuardAck` inside `UninstallFlow::execute`, beside `SnapshotProof`. The
-  same shape twice: the report and the proof are produced in one call and consumed in another, so
-  the only way "somebody forgot to look" cannot happen is a value the executing call demands. Any
-  future flow with a decision between two IPC messages needs its own.
+  same shape three times now — `SnapshotProof`, `GuardAck`, and P5's `FixConsent`: the report and
+  the proof are produced in one call and consumed in another, so the only way "somebody forgot to
+  look" cannot happen is a value the executing call demands. Any future flow with a decision
+  between two IPC messages needs its own.
+
+- **`ruff --fix` takes no snapshot, and that is the reasoned answer rather than an oversight.**
+  DATA-FLOW §9.1/§9.2 are scoped to a mutating *engine* call; a fix rewrites the user's source
+  tree, which no snapshot in this application describes, so one taken here would have no consumer
+  that could use it — invariant 2's own argument for the pip-upkeep exemption, a second time. The
+  safety net is the user's own git, asked about **twice** (once to decide what the dialog renders,
+  once inside `health_fix` to decide what it allows), and the exemption is stated in the confirm
+  rather than left silent. DATA-FLOW invariant 6 is where this lives.
 
 - **Measure in `--release`, and say which build a number came from.** A debug build measures bounds
   checks: the same index load is 572 ms in debug and 140 ms in release, and the same keystroke is

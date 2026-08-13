@@ -14,6 +14,8 @@ PipDock's job is to run package managers against local environments. The realist
 - `probe.py` is stdlib-only, written to a temp file with a random name, executed with `-I` (isolated mode: ignores `PYTHONPATH`, user site) so a poisoned env cannot inject code into the probe.
   - **Owner decision 2026-07-27 (spike SP-6): `-I` stays, and the cost is disclosed rather than hidden.** Isolated mode also disables user site-packages, so on a *non-venv* system Python the probe sees fewer distributions than `pip list` does — measured at 352 vs 375 on the reference machine. Virtual environments, the primary target, have no user site and are unaffected. The probe therefore reports `hidden_user_site`: the user-site path when it exists, is off `sys.path`, and is non-empty; `null` otherwise. Only when it is non-null does the Installed screen show a note naming the path (`env.partialListing`), so the disclosure is accurate rather than a permanent disclaimer. Dropping to `-E` was rejected: a package in user site is part of the untrusted surface the isolation exists to exclude.
 - Child processes run with inherited user privileges only; PipDock never elevates in v1 (PD-PRM-001 blocks instead — elevation broker is P2 with its own review).
+- The Code Health **project folder** is a user file-pick that becomes the working directory of three subprocesses and, with `--fix`, the target of a write. It is canonicalized and existence-checked like an interpreter path, and a folder resolving inside `%LOCALAPPDATA%\PipDock	ools` is refused — rewriting the tools venv would break Health itself.
+- `git` is the one PATH-resolved program PipDock runs with a **user-controlled** working directory (the dirty-tree check). Windows' legacy `CreateProcess` search order would make a `git.exe` planted in a cloned repository win; **verified by planting one** — Rust's `Command` does its own resolution and does not search the current directory. Re-check if the process layer changes.
 
 ## 3. PEP 668 policy (protecting the system Python)
 
@@ -56,7 +58,11 @@ pip-audit runs **from the tools venv** in freeze-file mode: snapshot-freeze the 
 
 ## 8. Data & privacy engineering
 
-All state is local under `%LOCALAPPDATA%\PipDock\`. Logs may contain package names and paths — the bug-report flow shows the user exactly what will be prefilled and requires manual submission (ERROR-CATALOG §4). No identifiers are generated or stored beyond the random consent record. Deleting the app data folder is a complete reset (documented in Settings → Legal & About).
+All state is local under `%LOCALAPPDATA%\PipDock\`.
+
+**One exception, and it is the only one.** `ruff check --fix` (CODE-HEALTH-SPEC §5, Phase 3 · P5) rewrites files in a project folder the user chose. It is PipDock's sole write outside site-packages and `%LOCALAPPDATA%`, it happens only behind an explicit confirm carrying a `FixConsent` the executing call demands, and it is refused entirely — before the first byte — if any target cannot be written. No snapshot is taken, because no snapshot in this application describes a source tree; the safety net is the user's own version control, which the confirm names and `git status` is consulted about twice. §1's threat model does not otherwise contemplate PipDock writing to user source, so this is the paragraph that says it does.
+
+Logs may contain package names and paths — the bug-report flow shows the user exactly what will be prefilled and requires manual submission (ERROR-CATALOG §4). No identifiers are generated or stored beyond the random consent record. Deleting the app data folder is a complete reset (documented in Settings → Legal & About).
 
 ## 9. Vulnerability reporting
 
