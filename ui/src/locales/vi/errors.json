@@ -23,6 +23,7 @@
     "PD-NET-011": "Sức khỏe mã không tải được công cụ, nên tạm thời chưa dùng được.",
     "PD-PRM-001": "PipDock không có quyền ghi vào môi trường này.",
     "PD-PRM-002": "Một tệp đang bị chiếm dụng. Hãy đóng thứ đang chạy từ môi trường này.",
+    "PD-PRM-003": "Không ghi được một tệp trong dự án. Hãy kiểm tra xem tệp có ở chế độ chỉ đọc không.",
     "PD-SNP-001": "Không ghi được ảnh chụp, nên không có gì bị thay đổi.",
     "PD-SNP-002": "Bản phát hành đó không còn nữa, nên không khôi phục được.",
     "PD-SYS-001": "Đường dẫn quá dài với Windows. Hãy bật long paths, hoặc dùng thư mục ngắn hơn.",

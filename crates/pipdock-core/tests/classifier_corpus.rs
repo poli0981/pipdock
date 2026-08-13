@@ -167,6 +167,10 @@ fn no_code_without_a_fixture() {
             "PD-SNP-002",
             "snapshot: rollback target unavailable upstream",
         ),
+        (
+            "PD-PRM-003",
+            "health: a target source file is not writable, refused before the fix runs",
+        ),
         ("PD-HLT-001", "health: tool missing from the tools venv"),
         ("PD-HLT-002", "health: tool exited non-zero"),
         ("PD-HLT-003", "health: tool exceeded its watchdog"),
