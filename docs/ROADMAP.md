@@ -624,6 +624,53 @@ three Code Health tools with the path intact. Scale, release build: `pipdock lis
 over a 145-package venv and **1.5 s** over a 352-package system Python. Still to do: the VI locale
 sweep of the mutation dialogs, corporate-proxy simulation, and cancel mid-Phase-B.
 
+### Shell polish from the first click-through — 2026-08-13
+
+The owner drove the **installed** build as a user. That cleared every item P4/P5 had left owed —
+folder picker, both locales, ruff over a real project, install/rollback/upgrade, bilingual error
+copy, and the bug-report deep link — and found two bugs and two improvements that only appear when
+someone actually uses the thing.
+
+| | Found |
+|---|---|
+| **Duplicate *Back to packages*** | `PdSummarySheet` renders `plan.done` from `onDone`; the panel rendered a second beneath it. The panel's now shows only when there is no sheet, because a run that fails before producing an `ExecutionSummary` would otherwise be a dead end |
+| **No single instance** | five launches, five windows — five `AppState`s over one machine, each certain it owned the mutation in flight |
+| **Sidebar navigable mid-plan** | left the plan parked in Rust with nothing driving it; the next Update answered `PD-RES-003` about a plan the user could no longer see |
+| **Window unbounded** | a fixed sidebar plus one scrolling column, stretched across a 4K panel |
+
+**The duplicate button is the interesting one.** `PdSummarySheet` had tests and `PdPlanPanel` had
+none, so the two had never been rendered together — the bug lived exactly in the seam between a
+tested component and its untested parent. The new `PdPlanPanel.test.tsx` was checked *against* the
+bug (revert the panel change, it fails `expected 2 to have length 1`), and adding it exposed a
+second gap: `ipcMock` had no `reportBugUrl`, which `PdErrorRow` requests on mount, so **any screen
+containing an error row was untestable**.
+
+Verified against the installed build rather than the config: five launches → one process and one
+window; the real `HWND` style carries no `WS_MAXIMIZEBOX` and still carries `WS_THICKFRAME`.
+
+### Phase 4 — where it stands
+
+**Done:** the release pipeline builds, checksums and drafts correctly (proven by running its own
+steps against real artifacts); the installer ships both binaries; program and data no longer share
+a directory; the shell bugs above are fixed; README carries the badges RELEASE-CI §5 asks for.
+
+**Still open, in rough order:**
+
+1. **A genuinely clean machine.** This one has run PipDock; isolating the app-data root
+   approximates the criterion rather than meeting it.
+2. **SmartScreen.** The installer has only ever been run scripted, and SmartScreen is an Explorer
+   behaviour — it needs a double-click on a freshly downloaded file.
+3. **The rest of the manual charter** (TESTING §4): the VI locale sweep of the mutation dialogs,
+   corporate-proxy simulation for `PD-NET-002`, and cancel mid-Phase-B. Fixtures for the scale and
+   non-ASCII cases are already recorded above.
+4. **The icon**, still the Tauri-era placeholder — a brand decision, deliberately not invented.
+5. **Version and tag.** Everything is `0.1.0`; the RC and the `v*` tag that fires `release.yml`
+   are the owner's call, and that tag is the first time the pipeline runs for real.
+6. **`docs/README` screenshots**, which want the finished icon first.
+
+**Repo scaffolding (RELEASE-CI §5)** still owes the two owner-only items: branch protection plus
+disabling CodeQL default setup, and the three Discord webhook secrets. Neither is committable.
+
 ## Post-1.0 (P1 wave)
 
 Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
