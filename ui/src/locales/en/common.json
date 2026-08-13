@@ -221,6 +221,8 @@
     "failed": "did not finish",
     "failedHint": "See the problem reported above.",
     "clean": "no issues found",
+    "notRunYet": "not checked yet",
+    "notRunYetHint": "Press Run to check this folder.",
     "notebooks": "Jupyter notebooks (.ipynb) are excluded from every report.",
     "tabLabel": {
       "deptry_one": "Dependencies, {{count}} finding",

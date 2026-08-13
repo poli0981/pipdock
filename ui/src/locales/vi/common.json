@@ -207,6 +207,8 @@
     "failed": "không hoàn tất",
     "failedHint": "Xem lỗi được báo ở trên.",
     "clean": "không phát hiện vấn đề nào",
+    "notRunYet": "chưa kiểm tra",
+    "notRunYetHint": "Nhấn Chạy để kiểm tra thư mục này.",
     "notebooks": "Jupyter notebook (.ipynb) được loại khỏi mọi báo cáo.",
     "tabLabel": {
       "deptry_other": "Phụ thuộc, {{count}} phát hiện",
