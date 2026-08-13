@@ -180,6 +180,141 @@ pub fn ensure_writable(files: &[String]) -> Result<()> {
     Ok(())
 }
 
+/// What a fix did.
+///
+/// The only type in this module on the wire, so the only one in `SCHEMA_TYPES`.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct FixReport {
+    /// How many files ruff was asked to rewrite.
+    ///
+    /// **Derived from the pre-fix findings' distinct filenames, never parsed out of ruff's
+    /// "Fixed N errors in M files".** A count that comes from data cannot drift with wording, and
+    /// that sentence is on stderr where a format change would silently take it away.
+    pub files_changed: usize,
+    /// What ruff still reports afterwards, from its own post-fix run.
+    ///
+    /// Lets the tab refresh without a second Run — and, because the fix and the re-report are one
+    /// invocation, without a window in which the two could disagree.
+    pub remaining: super::report::RuffFindings,
+    /// Safe fixes that survived, which means something was not written.
+    ///
+    /// Not an error: the tree has already changed, and failing here would discard the report that
+    /// says what happened. `ensure_writable` is what makes this rare; this is what makes it
+    /// visible when it happens anyway.
+    pub not_applied: usize,
+    /// Uncommitted entries the user waived, when they waived any.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dirty_before: Option<usize>,
+    /// RFC 3339.
+    pub fixed_at: String,
+}
+
+/// Re-read ruff's findings without writing anything.
+///
+/// The counts the user confirmed against are minutes old by the time they click, and the source
+/// tree is not PipDock's to assume is still. This is the source-tree analogue of DATA-FLOW §9.3's
+/// "the env drifted → re-resolve", and it has to be a **separate, read-only** invocation: the
+/// check must complete before the first byte is written, and `--fix` writes as it goes.
+///
+/// The argv matches `run`'s ruff arm by construction, because `RunOptions`' exclusions are
+/// constants today. **If `RunOptions` ever reaches the wire, this must re-check with the
+/// session's options**, or the comparison is between two different questions.
+///
+/// # Errors
+/// The same shapes as a ruff step in a normal run.
+pub async fn recheck(
+    tools_dir: &Path,
+    project: &Path,
+    opts: &super::RunOptions,
+) -> Result<super::report::RuffFindings> {
+    let exe = super::tool_exe(tools_dir, "ruff");
+    let out = Command::new(&exe)
+        .args(super::run::ruff_argv(opts))
+        .cwd(project)
+        .timeout(super::TOOL_TIMEOUT)
+        .run()
+        .await?;
+    if !super::is_findings_exit("ruff", out.code) {
+        return Err(PdError::new(
+            Code::HltToolFailed,
+            format!("ruff exited {}", out.code.unwrap_or(-1)),
+        )
+        .with_stderr(&out.stderr));
+    }
+    super::ruff::parse(&out.stdout)
+}
+
+/// Apply ruff's **safe** fixes, and report what is left.
+///
+/// One invocation does both jobs: `ruff check --fix` applies the safe fixes and prints the
+/// findings that remain, which is why `remaining` cannot describe a different moment than the fix.
+///
+/// Plain `--fix`, never `--unsafe-fixes`. CODE-HEALTH-SPEC §1 makes this the narrow write path,
+/// and `RuffFindings.fixable` counts only `Safe` for the same reason — the number in the dialog
+/// has to be the number the fix delivers.
+///
+/// **`ruff format` is deliberately not wired.** §4's `--check` toggle is read-only and stays
+/// default-off. Formatting a whole project is a far larger blast radius than fixing seventeen lint
+/// findings, and §7's non-goals are contractual per ROADMAP's standing risks.
+///
+/// # Errors
+/// `PD-HLT-001` when ruff is missing, `PD-HLT-003` on the watchdog, `PD-HLT-002` when it exits a
+/// way [`super::is_findings_exit`] does not recognize, and `PD-PRM-003` from the pre-flight — that
+/// last one **before anything is written**.
+pub async fn apply(
+    tools_dir: &Path,
+    project: &Path,
+    before: &super::report::RuffFindings,
+    consent: FixConsent,
+) -> Result<FixReport> {
+    use super::report::FixApplicability;
+
+    let targets: Vec<String> = before
+        .findings
+        .iter()
+        .filter(|f| f.fix == Some(FixApplicability::Safe))
+        .map(|f| f.filename.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect();
+    ensure_writable(&targets)?;
+
+    let exe = super::tool_exe(tools_dir, "ruff");
+    if !exe.is_file() {
+        return Err(PdError::new(
+            Code::HltToolMissing,
+            "ruff is not in the tools environment".to_owned(),
+        ));
+    }
+
+    let out = Command::new(&exe)
+        .args(["check", ".", "--fix", "--output-format", "json"])
+        .cwd(project)
+        .timeout(super::TOOL_TIMEOUT)
+        .run()
+        .await?;
+    if !super::is_findings_exit("ruff", out.code) {
+        return Err(PdError::new(
+            Code::HltToolFailed,
+            format!("ruff exited {}", out.code.unwrap_or(-1)),
+        )
+        .with_stderr(&out.stderr));
+    }
+
+    let remaining = super::ruff::parse(&out.stdout)?;
+    Ok(FixReport {
+        files_changed: targets.len(),
+        not_applied: remaining.fixable,
+        dirty_before: match consent {
+            FixConsent::ConfirmedOverDirtyTree { dirty_entries, .. } => Some(dirty_entries),
+            FixConsent::Confirmed { .. } => None,
+        },
+        remaining,
+        fixed_at: jiff::Timestamp::now().to_string(),
+    })
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

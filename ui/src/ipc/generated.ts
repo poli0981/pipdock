@@ -285,6 +285,41 @@ export type FixApplicability =
   | 'display';
 
 /**
+ * What a fix did.
+ *
+ * The only type in this module on the wire, so the only one in `SCHEMA_TYPES`.
+ */
+export interface FixReport {
+  /** Uncommitted entries the user waived, when they waived any. */
+  dirtyBefore?: number | null;
+  /**
+   * How many files ruff was asked to rewrite.
+   *
+   * **Derived from the pre-fix findings' distinct filenames, never parsed out of ruff's
+   * "Fixed N errors in M files".** A count that comes from data cannot drift with wording, and
+   * that sentence is on stderr where a format change would silently take it away.
+   */
+  filesChanged: number;
+  /** RFC 3339. */
+  fixedAt: string;
+  /**
+   * Safe fixes that survived, which means something was not written.
+   *
+   * Not an error: the tree has already changed, and failing here would discard the report that
+   * says what happened. `ensure_writable` is what makes this rare; this is what makes it
+   * visible when it happens anyway.
+   */
+  notApplied: number;
+  /**
+   * What ruff still reports afterwards, from its own post-fix run.
+   *
+   * Lets the tab refresh without a second Run — and, because the fix and the re-report are one
+   * invocation, without a window in which the two could disagree.
+   */
+  remaining: RuffFindings;
+}
+
+/**
  * What the flow needs next.
  *
  * Crosses IPC, so the GUI's two decision points are a round trip apart (see the module docs).

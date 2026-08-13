@@ -46,6 +46,7 @@ export interface IpcMock {
   pickProjectFolder: ReturnType<typeof vi.fn>
   pickSavePath: ReturnType<typeof vi.fn>
   healthSaveReport: ReturnType<typeof vi.fn>
+  healthFix: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
 
@@ -80,6 +81,7 @@ export function ipcMock(): IpcMock {
     pickProjectFolder: vi.fn().mockResolvedValue(null),
     pickSavePath: vi.fn().mockResolvedValue(null),
     healthSaveReport: vi.fn().mockResolvedValue([]),
+    healthFix: vi.fn(),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
     // and a stub that always answered one way would make every error test agree with itself.
     isPdError: (value: unknown): boolean =>

@@ -1,0 +1,161 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "FixApplicability": {
+      "description": "How safe ruff considers its own fix.\n\nOnly `Safe` is ever applied: P5 runs plain `ruff check --fix`, which is what `--unsafe-fixes`\nexists to opt out of, and CODE-HEALTH-SPEC §1 makes the write path the narrow one.",
+      "oneOf": [
+        {
+          "const": "safe",
+          "description": "Applied by `ruff check --fix`.",
+          "type": "string"
+        },
+        {
+          "const": "unsafe",
+          "description": "Needs `--unsafe-fixes`, which PipDock never passes.",
+          "type": "string"
+        },
+        {
+          "const": "display",
+          "description": "Shown but never applied.",
+          "type": "string"
+        }
+      ]
+    },
+    "RuffFinding": {
+      "description": "One ruff finding.",
+      "properties": {
+        "code": {
+          "description": "The rule code, e.g. `F401`.\n\nOptional because the field is not ours. ruff 0.16.2 always sets it — a syntax error comes\nthrough as `invalid-syntax` rather than null, which is **not** what CODE-HEALTH-SPEC §6\nassumed — but tolerating null costs one `??` in the UI and stops a format change from\nfailing every run.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "column": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "filename": {
+          "description": "Absolute, as ruff reports it.",
+          "type": "string"
+        },
+        "fix": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/FixApplicability"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Whether ruff offers a fix, and how confident it is in it."
+        },
+        "message": {
+          "description": "ruff's message, verbatim.",
+          "type": "string"
+        },
+        "name": {
+          "description": "The rule slug, e.g. `unused-import`.",
+          "type": "string"
+        },
+        "row": {
+          "description": "1-based.",
+          "format": "uint32",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "url": {
+          "description": "ruff's own documentation link.\n\n**Carried, never constructed.** The URL is keyed by rule *name*, so §6's\n`https://docs.astral.sh/ruff/rules/<code>` 404s — `I001` lives at `.../unsorted-imports`.\nNull for a syntax error, which has no rule page.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "name",
+        "message",
+        "filename",
+        "row",
+        "column"
+      ],
+      "type": "object"
+    },
+    "RuffFindings": {
+      "description": "ruff's findings and the two counts the fix path is built on.",
+      "properties": {
+        "findings": {
+          "description": "Every finding, in ruff's order.",
+          "items": {
+            "$ref": "#/$defs/RuffFinding"
+          },
+          "type": "array"
+        },
+        "fixable": {
+          "description": "How many carry a **safe** fix — what `ruff check --fix` would actually apply.\n\nCounted here rather than in the UI because P5's confirm dialog and the CLI's prompt have to\nname the same number, and two implementations of \"count the safe ones\" will not stay equal.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "fixableFiles": {
+          "description": "How many distinct files those touch. The number P5's dialog names.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        }
+      },
+      "required": [
+        "findings",
+        "fixable",
+        "fixableFiles"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a fix did.\n\nThe only type in this module on the wire, so the only one in `SCHEMA_TYPES`.",
+  "properties": {
+    "dirtyBefore": {
+      "description": "Uncommitted entries the user waived, when they waived any.",
+      "format": "uint",
+      "minimum": 0,
+      "type": [
+        "integer",
+        "null"
+      ]
+    },
+    "filesChanged": {
+      "description": "How many files ruff was asked to rewrite.\n\n**Derived from the pre-fix findings' distinct filenames, never parsed out of ruff's\n\"Fixed N errors in M files\".** A count that comes from data cannot drift with wording, and\nthat sentence is on stderr where a format change would silently take it away.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "fixedAt": {
+      "description": "RFC 3339.",
+      "type": "string"
+    },
+    "notApplied": {
+      "description": "Safe fixes that survived, which means something was not written.\n\nNot an error: the tree has already changed, and failing here would discard the report that\nsays what happened. `ensure_writable` is what makes this rare; this is what makes it\nvisible when it happens anyway.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "remaining": {
+      "$ref": "#/$defs/RuffFindings",
+      "description": "What ruff still reports afterwards, from its own post-fix run.\n\nLets the tab refresh without a second Run — and, because the fix and the re-report are one\ninvocation, without a window in which the two could disagree."
+    }
+  },
+  "required": [
+    "filesChanged",
+    "remaining",
+    "notApplied",
+    "fixedAt"
+  ],
+  "title": "FixReport",
+  "type": "object"
+}
