@@ -59,11 +59,14 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      - name: Build frontend
-        run: npm run build
-
+      # No separate frontend step: `tauri build` runs `beforeBuildCommand`, which is
+      # `npm run build`. Having both meant vite ran twice per release for no benefit.
       - name: Build and bundle
-        run: npx tauri build --locked --bundles nsis,msi
+        # `--locked` is **cargo's** flag, not `tauri build`'s: everything after `--` is passed
+        # to the runner. Written the other way round it fails with "unexpected argument
+        # '--locked' found" before a single crate is compiled — and since no `v*` tag has ever
+        # been pushed, this workflow had never run to find out.
+        run: npx tauri build --bundles nsis,msi -- --locked
 
       - name: Collect artifacts
         shell: pwsh

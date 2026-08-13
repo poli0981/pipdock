@@ -42,7 +42,7 @@ Dependency updates use **Dependabot** (`.github/dependabot.yml`) — the portfol
 
 ## 3. Release pipeline (tag `v*`)
 
-1. Windows runner: `npm ci && vite build` → `cargo tauri build --locked` producing NSIS `.exe` + `.msi`.
+1. Windows runner: `npm ci` → `npx tauri build --bundles nsis,msi -- --locked` producing NSIS `.exe` + `.msi`. **The `--` matters**: `--locked` is cargo's flag and `tauri build` rejects it as its own. The frontend is built by tauri's `beforeBuildCommand`, so the workflow does not run `vite build` itself.
 2. Compute and publish `SHA256SUMS.txt`.
 3. Draft GitHub Release with generated changelog; manual publish (owner review) → `announce-release.yml` fires the Discord announcement.
 4. Post-release checklist issue auto-opened: verify SmartScreen behavior, spot-check EN/VI in the shipped build.
