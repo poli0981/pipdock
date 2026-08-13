@@ -13,7 +13,7 @@
 
 import { invoke } from '@tauri-apps/api/core'
 import { listen, type UnlistenFn } from '@tauri-apps/api/event'
-import { open } from '@tauri-apps/plugin-dialog'
+import { open, save } from '@tauri-apps/plugin-dialog'
 
 import type {
   Decision,
@@ -69,6 +69,7 @@ export const COMMANDS = [
   'snapshot_rollback',
   'health_run',
   'health_fix',
+  'health_save_report',
   'engine_info',
   'pip_upgrade',
   'settings_get',
@@ -395,6 +396,16 @@ export const healthRun = (env: PyEnv, project: string): Promise<HealthReport> =>
   invoke('health_run', { env, project })
 
 /**
+ * Write the report beside `path`, as Markdown and JSON. Returns the two paths written.
+ *
+ * The webview has no filesystem permission at all: `dialog:allow-save` only lets it *ask* for a
+ * path, and Rust does the writing. A general write permission here would be a write-anywhere
+ * primitive in a tool that already runs subprocesses.
+ */
+export const healthSaveReport = (report: HealthReport, path: string): Promise<string[]> =>
+  invoke('health_save_report', { report, path })
+
+/**
  * Subscribe to execution progress. Returns the unlisten function.
  *
  * Every step emits one `stepStarted`, any number of `line`s, and one `stepFinished` — which is
@@ -437,6 +448,10 @@ export const pickProjectFolder = async (
   // `open` widens to `string[] | string | null` for the multi-select case this never asks for.
   return typeof chosen === 'string' ? chosen : null
 }
+
+/** Ask the OS where to save a report. `null` when the user cancelled. */
+export const pickSavePath = async (title: string, defaultName: string): Promise<string | null> =>
+  (await save({ title, defaultPath: defaultName })) ?? null
 
 /** Subscribe to discovery progress. Returns the unlisten function. */
 export const onScanProgress = (handler: (progress: ScanProgress) => void): Promise<UnlistenFn> =>

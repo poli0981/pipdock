@@ -229,7 +229,10 @@
     "unsafeBadge": "sửa không an toàn",
     "ruffFileCount_other": "{{count}} phát hiện",
     "showRemaining_other": "Hiện thêm {{count}} phát hiện",
-    "log": "Nhật ký"
+    "log": "Nhật ký",
+    "save": "Lưu báo cáo",
+    "saveTitle": "Lưu báo cáo Sức khỏe mã",
+    "saved": "Đã lưu {{files}}"
   },
   "uninstall": {
     "title": "Gỡ gói",

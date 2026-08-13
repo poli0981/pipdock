@@ -196,6 +196,149 @@ pub enum FixApplicability {
     Display,
 }
 
+/// Render a report as Markdown, for CODE-HEALTH-SPEC §5's *Save report*.
+///
+/// **In core rather than in the GUI**, so a future `pipdock health --format md` reuses it instead
+/// of growing a second renderer that drifts from this one. That flag is deliberately not built
+/// yet — one consumer is not a reason to design an interface for two.
+///
+/// Everything the tools said is reproduced verbatim, including deptry's module names and ruff's
+/// rule codes: the file is a record of what was found, and rewording it here would make it a
+/// record of what PipDock thought about what was found. The `DEP003` caveat is included for the
+/// reason the CLI and the screen both carry it — a saved report is read away from both.
+#[must_use]
+pub fn markdown(report: &HealthReport) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    // Infallible: writing to a String cannot fail. `let _` rather than `?`, so this function
+    // needs no Result for a failure mode it does not have.
+    let _ = writeln!(out, "# Code Health\n");
+    let _ = writeln!(out, "- Project: `{}`", report.project);
+    let _ = writeln!(out, "- Environment: `{}`", report.env);
+    let _ = writeln!(out, "- Checked: {}", report.ran_at);
+    let versions: Vec<String> = report
+        .tool_versions
+        .iter()
+        .map(|(tool, version)| format!("{tool} {version}"))
+        .collect();
+    let _ = writeln!(out, "- Tools: {}", versions.join(", "));
+    let _ = writeln!(out, "- Declared in: {}", declared_label(&report.declared));
+    let _ = writeln!(out, "- Ran: {}", report.ran.join(", "));
+
+    if !report.problems.is_empty() {
+        let _ = writeln!(out, "\n## Problems\n");
+        for problem in &report.problems {
+            let _ = writeln!(
+                out,
+                "- **{}** `{}` — {}",
+                problem.tool,
+                problem.code.as_str(),
+                problem.message
+            );
+        }
+        let _ = writeln!(
+            out,
+            "\nA tool that failed reports nothing; the others still report. Any section below \
+             whose tool is listed here is empty because it did not finish, not because it found \
+             nothing."
+        );
+    }
+
+    let _ = writeln!(out, "\n## Dependencies (deptry)\n");
+    if report.deptry.is_empty() {
+        let _ = writeln!(out, "{}", nothing_for("deptry", report));
+    } else {
+        for issue in &report.deptry {
+            let _ = writeln!(
+                out,
+                "- **{}** `{}` — {}",
+                issue.code, issue.dep, issue.message
+            );
+            for loc in &issue.locations {
+                let _ = match loc.line {
+                    Some(line) => writeln!(out, "  - `{}:{}`", loc.file, line),
+                    None => writeln!(out, "  - `{}`", loc.file),
+                };
+            }
+        }
+        let _ = writeln!(
+            out,
+            "\n> deptry compares imports against PipDock's own tools environment, not this one — \
+             DEP001 and DEP003 can be swapped for packages it happens to hold."
+        );
+    }
+
+    let _ = writeln!(out, "\n## Dead code (vulture)\n");
+    if report.vulture.is_empty() {
+        let _ = writeln!(out, "{}", nothing_for("vulture", report));
+    } else {
+        for finding in &report.vulture {
+            let _ = writeln!(
+                out,
+                "- `{}:{}` — {} ({}% confidence)",
+                finding.path, finding.line, finding.message, finding.confidence
+            );
+        }
+        let _ = writeln!(
+            out,
+            "\n> Confidence below 100% can be a false positive. Review before deleting."
+        );
+    }
+
+    let _ = writeln!(out, "\n## Lint (ruff)\n");
+    if report.ruff.findings.is_empty() {
+        let _ = writeln!(out, "{}", nothing_for("ruff", report));
+    } else {
+        for finding in &report.ruff.findings {
+            let code = finding.code.as_deref().unwrap_or(&finding.name);
+            let _ = writeln!(
+                out,
+                "- `{}:{}:{}` **{}** — {}",
+                finding.filename, finding.row, finding.column, code, finding.message
+            );
+        }
+        let _ = writeln!(
+            out,
+            "\n{} of {} carry a safe fix, across {} file(s).",
+            report.ruff.fixable,
+            report.ruff.findings.len(),
+            report.ruff.fixable_files
+        );
+    }
+
+    // CODE-HEALTH-SPEC §7's footer. A constant, so it is written here rather than carried on the
+    // wire — see `PdHealthReport` for the same decision on the screen.
+    let _ = writeln!(
+        out,
+        "\n---\n\nJupyter notebooks (`.ipynb`) are excluded from every report."
+    );
+    out
+}
+
+/// Why a section is empty: the tool found nothing, failed, or was never asked.
+///
+/// The same three-way distinction the tabs make, and for the same reason — an empty section that
+/// says "no findings" about a tool that never ran is the one sentence in the document that would
+/// be false.
+fn nothing_for(tool: &str, report: &HealthReport) -> &'static str {
+    if !report.ran.iter().any(|t| t == tool) {
+        "_Not run._"
+    } else if report.problems.iter().any(|p| p.tool == tool) {
+        "_Did not finish — see Problems above._"
+    } else {
+        "_No findings._"
+    }
+}
+
+fn declared_label(declared: &DeclaredSource) -> String {
+    match declared {
+        DeclaredSource::Pyproject => "pyproject.toml".to_owned(),
+        DeclaredSource::Requirements { files } => files.join(", "),
+        DeclaredSource::None => "nothing found".to_owned(),
+    }
+}
+
 impl RuffFindings {
     /// Recount `fixable` and `fixable_files` from `findings`.
     ///
@@ -216,5 +359,101 @@ impl RuffFindings {
             .collect::<std::collections::BTreeSet<_>>()
             .len();
         self
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn report() -> HealthReport {
+        HealthReport {
+            project: r"C:\proj".to_owned(),
+            env: r"c:\proj\.venv\scripts\python.exe".to_owned(),
+            ran_at: "2026-08-13T09:00:00Z".to_owned(),
+            tool_versions: BTreeMap::new(),
+            declared: DeclaredSource::Pyproject,
+            ran: vec!["deptry".to_owned(), "vulture".to_owned()],
+            deptry: Vec::new(),
+            vulture: Vec::new(),
+            ruff: RuffFindings::default(),
+            problems: Vec::new(),
+        }
+    }
+
+    /// The one sentence a saved report could get wrong, three ways.
+    ///
+    /// An empty section is not evidence of a clean project: the tool may have failed, or may
+    /// never have been asked. A document that said "no findings" for a ruff that could not be
+    /// spawned would be read months later as proof the code was fine.
+    #[test]
+    fn an_empty_section_says_which_kind_of_empty_it_is() {
+        let mut r = report();
+        // Never asked: ruff is not in `ran`.
+        assert!(markdown(&r).contains("_Not run._"));
+
+        // Asked and clean.
+        r.ran.push("ruff".to_owned());
+        assert!(markdown(&r).contains("_No findings._"));
+
+        // Asked and broken.
+        r.problems.push(ToolProblem {
+            tool: "ruff".to_owned(),
+            code: Code::HltToolMissing,
+            message: "could not be run".to_owned(),
+            stderr_tail: None,
+        });
+        let out = markdown(&r);
+        assert!(out.contains("_Did not finish"));
+        assert!(
+            !out.contains("_No findings._\n\n---"),
+            "ruff must not read as clean"
+        );
+    }
+
+    /// The caveat travels with the findings it qualifies.
+    ///
+    /// A saved report is read away from both the screen and the CLI, so it is the one place the
+    /// deptry limitation cannot be left implicit.
+    #[test]
+    fn the_deptry_caveat_is_saved_with_the_findings() {
+        let mut r = report();
+        assert!(
+            !markdown(&r).contains("DEP001 and DEP003"),
+            "no findings, no caveat"
+        );
+
+        r.deptry.push(DeptryIssue {
+            code: "DEP002".to_owned(),
+            dep: "httpx".to_owned(),
+            message: "unused".to_owned(),
+            locations: Vec::new(),
+        });
+        assert!(markdown(&r).contains("DEP001 and DEP003 can be swapped"));
+    }
+
+    #[test]
+    fn a_whole_file_finding_is_rendered_without_a_dangling_colon() {
+        let mut r = report();
+        r.deptry.push(DeptryIssue {
+            code: "DEP002".to_owned(),
+            dep: "httpx".to_owned(),
+            message: "unused".to_owned(),
+            locations: vec![
+                SourceLocation {
+                    file: "pyproject.toml".to_owned(),
+                    line: None,
+                    column: None,
+                },
+                SourceLocation {
+                    file: "a.py".to_owned(),
+                    line: Some(4),
+                    column: Some(1),
+                },
+            ],
+        });
+        let out = markdown(&r);
+        assert!(out.contains("- `pyproject.toml`"));
+        assert!(out.contains("- `a.py:4`"));
     }
 }

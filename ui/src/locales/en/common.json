@@ -248,7 +248,10 @@
     "ruffFileCount_other": "{{count}} findings",
     "showRemaining_one": "Show {{count}} more finding",
     "showRemaining_other": "Show {{count}} more findings",
-    "log": "Log"
+    "log": "Log",
+    "save": "Save report",
+    "saveTitle": "Save the Code Health report",
+    "saved": "Saved {{files}}"
   },
   "uninstall": {
     "title": "Remove packages",
