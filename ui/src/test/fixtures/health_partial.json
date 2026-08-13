@@ -1,0 +1,81 @@
+{
+  "project": "C:\\proj\\bot",
+  "env": "c:\\proj\\.venv\\scripts\\python.exe",
+  "ranAt": "2026-08-13T09:00:00Z",
+  "toolVersions": {
+    "deptry": "0.25.1",
+    "ruff": "0.16.2",
+    "vulture": "2.16"
+  },
+  "declared": {
+    "kind": "requirements",
+    "files": [
+      "requirements-dev.txt",
+      "requirements.txt"
+    ]
+  },
+  "ran": [
+    "deptry",
+    "ruff"
+  ],
+  "deptry": [
+    {
+      "code": "DEP002",
+      "dep": "requests",
+      "message": "'requests' defined as a dependency but not used in the codebase",
+      "locations": [
+        {
+          "file": "requirements.txt"
+        }
+      ]
+    },
+    {
+      "code": "DEP002",
+      "dep": "httpx",
+      "message": "'httpx' defined as a dependency but not used in the codebase"
+    },
+    {
+      "code": "DEP001",
+      "dep": "yaml",
+      "message": "'yaml' imported but missing from the dependency definitions",
+      "locations": [
+        {
+          "file": "bot\\config.py",
+          "line": 4,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "code": "DEP003",
+      "dep": "numpy",
+      "message": "'numpy' imported but it is a transitive dependency",
+      "locations": [
+        {
+          "file": "bot\\stats.py",
+          "line": 2,
+          "column": 1
+        },
+        {
+          "file": "bot\\plot.py",
+          "line": 9,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "vulture": [],
+  "ruff": {
+    "findings": [],
+    "fixable": 0,
+    "fixableFiles": 0
+  },
+  "problems": [
+    {
+      "tool": "ruff",
+      "code": "PD-HLT-001",
+      "message": "ruff is in the tools environment but could not be run",
+      "stderrTail": "%1 is not a valid Win32 application. (os error 193)"
+    }
+  ]
+}
