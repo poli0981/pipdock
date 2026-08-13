@@ -49,6 +49,8 @@ interface PdHealthReportProps {
   installed: readonly string[]
   /** Hand a distribution to the uninstall guard. Absent means the handoff is not wired yet. */
   onUninstall?: ((distribution: string) => void) | undefined
+  /** Open the fix confirm. Absent means the write path is not available to this caller. */
+  onFix?: (() => void) | undefined
   /** How many ruff findings to show; overridable so a test does not have to build 500 rows. */
   rowsShown?: number
 }
@@ -171,6 +173,7 @@ export function PdHealthReport({
   onTab,
   installed,
   onUninstall,
+  onFix,
   rowsShown = RUFF_ROWS_SHOWN,
 }: PdHealthReportProps) {
   const { t } = useTranslation()
@@ -281,6 +284,18 @@ export function PdHealthReport({
 
         {state === 'findings' && tab === 'ruff' ? (
           <>
+            {/* The count is `fixable` off the report, never the badges rendered below: the button,
+                the CLI prompt and the server's own check all have to name one number. */}
+            {onFix !== undefined && report.ruff.fixable > 0 ? (
+              <button
+                type="button"
+                data-action="fix"
+                className="mb-3 rounded-pd bg-danger px-3 py-1 text-data text-bg"
+                onClick={onFix}
+              >
+                {t('health.fix', { count: report.ruff.fixable })}
+              </button>
+            ) : null}
             {capped.map((group) => (
               // Sectioned groups, as `PdPreviewDiff` groups its changes: a flat list of a
               // thousand lint findings answers no question anyone actually has.

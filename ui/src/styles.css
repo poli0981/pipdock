@@ -156,7 +156,8 @@
     button[data-action='force'],
     button[data-action='uninstall'],
     button[data-action='rollback'],
-    button[data-action='upgrade-pip'] {
+    button[data-action='upgrade-pip'],
+    button[data-action='fix'] {
       border: 2px solid CanvasText;
     }
   }

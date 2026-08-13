@@ -232,7 +232,14 @@
     "log": "Nhật ký",
     "save": "Lưu báo cáo",
     "saveTitle": "Lưu báo cáo Sức khỏe mã",
-    "saved": "Đã lưu {{files}}"
+    "saved": "Đã lưu {{files}}",
+    "fix_other": "Sửa {{count}} vấn đề sửa được an toàn",
+    "fixTitle": "Ghi đè lên mã nguồn của bạn?",
+    "fixBody_other": "ruff sẽ áp dụng các bản sửa an toàn cho {{count}} tệp.",
+    "fixCannotUndo": "PipDock không hoàn tác được việc này. Chỉ hệ quản lý phiên bản của bạn mới làm được.",
+    "fixDirty_other": "Kho này có {{count}} thay đổi chưa commit. `git checkout .` sẽ xoá cả các sửa đổi của bạn lẫn bản sửa này.",
+    "fixConfirm": "Sửa",
+    "fixConfirmDirty": "Vẫn sửa"
   },
   "uninstall": {
     "title": "Gỡ gói",

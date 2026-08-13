@@ -8,6 +8,8 @@
 import { create } from 'zustand'
 
 import {
+  healthDirty,
+  healthFix,
   healthRun,
   isPdError,
   onHealthProgress,
@@ -15,6 +17,7 @@ import {
   type PdError,
   type ProgressEvent,
   type PyEnv,
+  type FixReport,
   type RuffFinding,
 } from '@/ipc'
 import { apply, type ConsoleLine } from '@/stores/plan'
@@ -122,6 +125,21 @@ interface HealthState {
   current: string | null
   consoleOpen: boolean
 
+  /**
+   * The fix confirm: `null` closed, otherwise what it is asking about.
+   *
+   * `dirty` is `null` when we cannot say — no repository, no git — which is deliberately **not** a
+   * warning; the danger state is reserved for a tree that really has uncommitted work.
+   */
+  fix: { files: number; dirty: number | null } | null
+  fixBusy: boolean
+  fixError: PdError | null
+  /** Ask the server about the tree, then open the confirm. */
+  openFix: () => Promise<void>
+  closeFix: () => void
+  /** Apply the fix and fold the result back into the report on screen. */
+  confirmFix: () => Promise<void>
+
   setFolder: (folder: string) => void
   setTab: (tab: HealthTab) => void
   setConsoleOpen: (open: boolean) => void
@@ -141,6 +159,11 @@ interface HealthState {
  * open is a preference about the screen, not a property of a report.
  */
 const NO_HEALTH = {
+  // In the reset because a second Run replaces the report the dialog is asking about — leaving it
+  // open would let the user confirm a count the server has already thrown away.
+  fix: null,
+  fixBusy: false,
+  fixError: null,
   reportFor: null,
   report: null,
   ruffByFile: [] as RuffFileGroup[],
@@ -165,6 +188,49 @@ export const useHealthStore = create<HealthState>((set, get) => ({
   folder: null,
   consoleOpen: false,
   ...NO_HEALTH,
+
+  openFix: async () => {
+    const { report, fixBusy } = get()
+    if (report === null || report.ruff.fixable === 0 || fixBusy) return
+    set({ fixError: null })
+    // The count comes off the report, never recounted here: the dialog, the CLI prompt and the
+    // server's own check all have to name one number, and `recount` exists so they do.
+    const files = report.ruff.fixableFiles
+    try {
+      set({ fix: { files, dirty: await healthDirty() } })
+    } catch {
+      // A dirty check that failed is the `null` case by definition, and refusing to open the
+      // dialog over it would block the fix for a reason the user cannot act on.
+      set({ fix: { files, dirty: null } })
+    }
+  },
+
+  closeFix: () => set({ fix: null, fixBusy: false }),
+
+  confirmFix: async () => {
+    const { fix, report, reportFor, folder } = get()
+    if (fix === null || report === null) return
+
+    set({ fixBusy: true, fixError: null })
+    try {
+      const fixed: FixReport = await healthFix(fix.files, fix.dirty !== null)
+      // The tab count drops to what remains with no second Run — which is why the server re-parks
+      // its session with the same findings rather than releasing it.
+      const next = { ...report, ruff: fixed.remaining }
+      set({
+        report: next,
+        ruffByFile: groupRuff(fixed.remaining.findings),
+        reportFor,
+        folder,
+        fix: null,
+        fixBusy: false,
+      })
+    } catch (e) {
+      // The dialog closes: every failure here is one the user has to do something about
+      // elsewhere — commit, clear a read-only flag, or re-run — and none is retryable in place.
+      set({ fix: null, fixBusy: false, fixError: asPdError(e) })
+    }
+  },
 
   setFolder: (folder) =>
     set((state) => (state.folder === folder ? {} : { folder, ...NO_HEALTH })),
