@@ -204,6 +204,50 @@
       "manual": "taken by you"
     }
   },
+  "health": {
+    "title": "Code Health",
+    "chooseFolder": "Choose folder…",
+    "changeFolder": "Change folder…",
+    "pickerTitle": "Choose the project folder to check",
+    "run": "Run",
+    "running": "Running…",
+    "noEnvironment": "no environment selected",
+    "noEnvironmentHint": "A report records which environment it was produced against. Choose one on the Environments tab.",
+    "noFolder": "no project folder chosen",
+    "noFolderHint": "Code Health reads a project folder, not an environment. Choose the folder holding your Python sources.",
+    "checkedAt": "Checked {{when}}",
+    "notRun": "not run",
+    "notRunHint": "This tool was not part of the last run.",
+    "failed": "did not finish",
+    "failedHint": "See the problem reported above.",
+    "clean": "no issues found",
+    "notebooks": "Jupyter notebooks (.ipynb) are excluded from every report.",
+    "tabLabel": {
+      "deptry_one": "Dependencies, {{count}} finding",
+      "deptry_other": "Dependencies, {{count}} findings",
+      "vulture_one": "Dead code, {{count}} finding",
+      "vulture_other": "Dead code, {{count}} findings",
+      "ruff_one": "Lint, {{count}} finding",
+      "ruff_other": "Lint, {{count}} findings"
+    },
+    "declared": {
+      "pyproject": "Dependencies declared in pyproject.toml",
+      "requirements": "Dependencies declared in {{files}}",
+      "none": "No dependency declarations found, so deptry's results are limited"
+    },
+    "deptryNote": "deptry compares imports against PipDock's own tools environment, not this one — DEP001 and DEP003 can be swapped for packages it happens to hold.",
+    "reviewInUninstall": "Review in Uninstall…",
+    "notInstalled": "not installed here",
+    "vultureHint": "Confidence below 100% can be a false positive — review before deleting.",
+    "vultureWhitelist": "vulture's whitelist",
+    "fixableBadge": "fixable",
+    "unsafeBadge": "unsafe fix",
+    "ruffFileCount_one": "{{count}} finding",
+    "ruffFileCount_other": "{{count}} findings",
+    "showRemaining_one": "Show {{count}} more finding",
+    "showRemaining_other": "Show {{count}} more findings",
+    "log": "Log"
+  },
   "uninstall": {
     "title": "Remove packages",
     "titleBreaks": "This removal breaks other packages",
