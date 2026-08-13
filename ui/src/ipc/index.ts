@@ -69,6 +69,7 @@ export const COMMANDS = [
   'snapshot_rollback_preview',
   'snapshot_rollback',
   'health_run',
+  'health_dirty',
   'health_fix',
   'health_save_report',
   'engine_info',
@@ -414,6 +415,14 @@ export const healthRun = (env: PyEnv, project: string): Promise<HealthReport> =>
  * Rejects with `PD-RES-002` when the project changed since the confirm, and `PD-PRM-003` when a
  * target cannot be written — the latter before anything is.
  */
+/**
+ * Uncommitted entries in the parked report's project, or `null` when we cannot say.
+ *
+ * Asked when the fix dialog opens, so the confirm can name a number. `healthFix` asks again
+ * server-side before writing: this answer decides what to *render*, that one decides what to allow.
+ */
+export const healthDirty = (): Promise<number | null> => invoke('health_dirty')
+
 export const healthFix = (files: number, acknowledgedDirty: boolean): Promise<FixReport> =>
   invoke('health_fix', { files, acknowledgedDirty })
 

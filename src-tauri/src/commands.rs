@@ -940,6 +940,26 @@ pub async fn health_run(
     }
 }
 
+/// Whether the parked report's project has uncommitted work, so the confirm can say so.
+///
+/// A command of its own rather than a field on `HealthReport`, because the answer expires: the
+/// user may commit, or start editing, between the run and the Fix button. Asked when the dialog
+/// opens; `health_fix` asks **again** before writing, because this one decides what to *render*
+/// and that one decides what to allow.
+///
+/// `null` means no repository, no git, or git failed — CODE-HEALTH-SPEC §5's check is a courtesy,
+/// not a precondition, and a folder outside version control is a choice rather than a warning.
+///
+/// # Errors
+/// `PD-INT-001` when no run is parked.
+#[tauri::command]
+pub async fn health_dirty(state: tauri::State<'_, AppState>) -> Wire<Option<usize>> {
+    let session = state.health.claim_one().await?;
+    let found = pipdock_core::health::fix::dirty(&session.project).await;
+    state.health.park(session).await;
+    Ok(found.map(|tree| tree.entries))
+}
+
 /// Apply ruff's safe fixes to the project the parked report was produced from.
 ///
 /// **Takes no `project`, no `env`, no file list and no findings.** The project and environment

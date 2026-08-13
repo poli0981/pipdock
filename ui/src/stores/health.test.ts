@@ -204,6 +204,85 @@ describe('useHealthStore', () => {
     expect(ipc.healthRun).not.toHaveBeenCalled()
   })
 
+  it('names the file count off the report, and asks the server about the tree', async () => {
+    vi.mocked(ipc.healthDirty).mockResolvedValue(4)
+    useHealthStore.setState({ report: REPORT })
+    await useHealthStore.getState().openFix()
+
+    // `fixableFiles`, not a count the UI derived: the dialog, the CLI prompt and the server's own
+    // check all have to name one number, which is what `recount` exists for.
+    expect(useHealthStore.getState().fix).toEqual({ files: REPORT.ruff.fixableFiles, dirty: 4 })
+  })
+
+  it('opens the confirm anyway when the dirty check fails', async () => {
+    // A failed check is the `null` case by definition. Refusing to open would block the fix for a
+    // reason the user cannot act on.
+    vi.mocked(ipc.healthDirty).mockRejectedValue(new Error('no git'))
+    useHealthStore.setState({ report: REPORT })
+    await useHealthStore.getState().openFix()
+    expect(useHealthStore.getState().fix?.dirty).toBeNull()
+  })
+
+  it('tells the server the tree was acknowledged only when it is dirty', async () => {
+    vi.mocked(ipc.healthDirty).mockResolvedValue(2)
+    vi.mocked(ipc.healthFix).mockResolvedValue({
+      filesChanged: 2,
+      remaining: { findings: [], fixable: 0, fixableFiles: 0 },
+      notApplied: 0,
+      fixedAt: '2026-08-13T10:00:00Z',
+    })
+    useHealthStore.setState({ report: REPORT })
+    await useHealthStore.getState().openFix()
+    await useHealthStore.getState().confirmFix()
+
+    expect(ipc.healthFix).toHaveBeenCalledWith(REPORT.ruff.fixableFiles, true)
+  })
+
+  it('drops the tab to what remains, with no second run', async () => {
+    const remaining = { findings: [REPORT.ruff.findings[2]!], fixable: 0, fixableFiles: 0 }
+    vi.mocked(ipc.healthDirty).mockResolvedValue(null)
+    vi.mocked(ipc.healthFix).mockResolvedValue({
+      filesChanged: 2,
+      remaining,
+      notApplied: 0,
+      fixedAt: '2026-08-13T10:00:00Z',
+    })
+    useHealthStore.setState({ report: REPORT })
+    await useHealthStore.getState().openFix()
+    await useHealthStore.getState().confirmFix()
+
+    const after = useHealthStore.getState()
+    expect(after.report?.ruff.findings).toHaveLength(1)
+    expect(after.ruffByFile).toHaveLength(1)
+    expect(after.fix).toBeNull()
+    expect(ipc.healthRun).not.toHaveBeenCalled()
+  })
+
+  it('closes the confirm and keeps the report when a fix is refused', async () => {
+    vi.mocked(ipc.healthDirty).mockResolvedValue(null)
+    vi.mocked(ipc.healthFix).mockRejectedValue({ code: 'PD-PRM-003', message: 'read-only' })
+    useHealthStore.setState({ report: REPORT })
+    await useHealthStore.getState().openFix()
+    await useHealthStore.getState().confirmFix()
+
+    const after = useHealthStore.getState()
+    expect(after.fix).toBeNull()
+    expect(after.fixError?.code).toBe('PD-PRM-003')
+    // The report is still true — nothing was written — so it stays on screen.
+    expect(after.report).toBe(REPORT)
+  })
+
+  it('closes an open confirm when a second run starts', async () => {
+    // The server replaces the parked report on a new run, so a dialog left open would let the
+    // user confirm a count that no longer exists on either side.
+    vi.mocked(ipc.onHealthProgress).mockResolvedValue(() => undefined)
+    vi.mocked(ipc.healthRun).mockResolvedValue(REPORT)
+    useHealthStore.getState().setFolder('C:\\proj')
+    useHealthStore.setState({ fix: { files: 2, dirty: null } })
+    await useHealthStore.getState().run(ENV, 'aaa')
+    expect(useHealthStore.getState().fix).toBeNull()
+  })
+
   it('does nothing without a folder', async () => {
     await useHealthStore.getState().run(ENV, 'aaa')
     expect(ipc.healthRun).not.toHaveBeenCalled()

@@ -15,6 +15,7 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdConsoleDrawer } from '@/components/PdConsoleDrawer'
+import { PdDialog } from '@/components/PdDialog'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdHealthReport } from '@/components/PdHealthReport'
@@ -64,6 +65,12 @@ export function PdHealth() {
   const setTab = useHealthStore((s) => s.setTab)
   const setConsoleOpen = useHealthStore((s) => s.setConsoleOpen)
   const run = useHealthStore((s) => s.run)
+  const fix = useHealthStore((s) => s.fix)
+  const fixBusy = useHealthStore((s) => s.fixBusy)
+  const fixError = useHealthStore((s) => s.fixError)
+  const openFix = useHealthStore((s) => s.openFix)
+  const closeFix = useHealthStore((s) => s.closeFix)
+  const confirmFix = useHealthStore((s) => s.confirmFix)
 
   const row = rows.find((r) => r.interpreter === selected)
   // Hoisted, for `PdPackages`' reason: a narrowing that has to be re-derived inside a closure is
@@ -175,6 +182,14 @@ export function PdHealth() {
             </div>
           ) : null}
 
+          {/* A refused or failed fix. Separate from `error`, which is a run that failed: this one
+              leaves the report on screen, because it is still true. */}
+          {fixError !== null ? (
+            <div className="mt-2 shrink-0">
+              <PdErrorRow error={fixError} />
+            </div>
+          ) : null}
+
           {/* Above the tabs, and counted into `⚠ n`. A failed tool is a problem currently on
               screen, and there are at most three of them — this is not `PdSummarySheet`'s
               one-row-per-package case. Above rather than inside a tab, because the explanation
@@ -205,6 +220,9 @@ export function PdHealth() {
                 tab={tab}
                 onTab={setTab}
                 installed={dists.map((d) => d.name)}
+                onFix={() => {
+                  void openFix()
+                }}
                 onUninstall={
                   env === undefined
                     ? undefined
@@ -220,6 +238,42 @@ export function PdHealth() {
           )}
         </>
       )}
+
+      {/* One dialog with two states, not two dialogs: two confirms would break the click budget
+          and the second is the one nobody reads. Cancel is rendered first and focused by
+          `PdDialog`, so Enter without Tab cancels — UI-SPEC §7's rule for a destructive confirm. */}
+      {fix !== null ? (
+        <PdDialog
+          label={t('health.fixTitle')}
+          title={t('health.fixTitle')}
+          cancelLabel={t('actions.cancel')}
+          busy={fixBusy}
+          onCancel={closeFix}
+          actions={
+            <button
+              type="button"
+              data-action="fix"
+              className="rounded-pd bg-danger px-3 py-1 text-data text-bg disabled:opacity-50"
+              disabled={fixBusy}
+              onClick={() => {
+                void confirmFix()
+              }}
+            >
+              {fix.dirty === null ? t('health.fixConfirm') : t('health.fixConfirmDirty')}
+            </button>
+          }
+        >
+          <p className="text-data">{t('health.fixBody', { count: fix.files })}</p>
+          {/* Unconditional, and true in every case — including no repository at all, which is
+              deliberately not treated as a warning of its own. */}
+          <p className="mt-2 text-data text-text-dim">{t('health.fixCannotUndo')}</p>
+          {fix.dirty === null ? null : (
+            <p className="mt-2 border-l-2 border-danger pl-2 text-data text-danger">
+              {t('health.fixDirty', { count: fix.dirty })}
+            </p>
+          )}
+        </PdDialog>
+      ) : null}
 
       <PdConsoleDrawer
         lines={consoleLines}

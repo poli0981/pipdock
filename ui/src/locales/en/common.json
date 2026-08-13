@@ -251,7 +251,17 @@
     "log": "Log",
     "save": "Save report",
     "saveTitle": "Save the Code Health report",
-    "saved": "Saved {{files}}"
+    "saved": "Saved {{files}}",
+    "fix_one": "Fix {{count}} safely fixable issue",
+    "fix_other": "Fix {{count}} safely fixable issues",
+    "fixTitle": "Rewrite your source files?",
+    "fixBody_one": "ruff will apply its safe fixes to {{count}} file.",
+    "fixBody_other": "ruff will apply its safe fixes to {{count}} files.",
+    "fixCannotUndo": "PipDock cannot undo this. Only your own version control can.",
+    "fixDirty_one": "This repository has {{count}} uncommitted change. `git checkout .` would take your own edits with it as well as the fix.",
+    "fixDirty_other": "This repository has {{count}} uncommitted changes. `git checkout .` would take your own edits with them as well as the fix.",
+    "fixConfirm": "Fix",
+    "fixConfirmDirty": "Fix anyway"
   },
   "uninstall": {
     "title": "Remove packages",
