@@ -9,7 +9,8 @@
  * *shell* state, not a domain. It lives here rather than in component state because the sidebar,
  * the content area and the keyboard map all read it.
  *
- * `usePlanStore`, `useIndexStore` and `useHealthStore` land with their screens.
+ * `usePlanStore`, `useIndexStore` and `useHealthStore` each live in their own file beside the
+ * screen they serve.
  */
 
 import { create } from 'zustand'
@@ -580,6 +581,19 @@ export {
   type ConsoleState,
   type PlanPhase,
 } from '@/stores/plan'
+
+// Code Health, in its own file for the same reason as the plan store.
+export {
+  HEALTH_TABS,
+  freshReport,
+  groupRuff,
+  tabState,
+  useHealthStore,
+  type HealthPhase,
+  type HealthTab,
+  type RuffFileGroup,
+  type TabState,
+} from '@/stores/health'
 
 // Search and the dock bay, in their own file for the same reason as the plan store.
 export {
