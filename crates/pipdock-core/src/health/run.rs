@@ -117,6 +117,8 @@ pub async fn run(
     opts: &RunOptions,
     sink: &ProgressSink,
 ) -> Result<HealthReport> {
+    // Refused before any subprocess is spawned in it, and before `--fix` could write to it.
+    let project = &super::project::validate_project(project, tools_dir)?;
     let declared = super::declared_source(project)?;
     // **deptry cannot answer its question about a project that declares nothing, and says so by
     // failing.** `DependencySpecificationNotFoundError` exits non-zero and writes no report, which

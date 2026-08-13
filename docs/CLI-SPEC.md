@@ -38,6 +38,8 @@ pipdock pin add|remove <pkg> [--reason "…"] | pin list
 pipdock snapshot list | create | diff <id> | rollback <id|latest>
 pipdock doctor                           # engine check + env sanity + (P1) audit summary
 pipdock health [--path <dir>] [--tool deptry|vulture|ruff] [--fix]   # --fix = ruff only, prompts
+                                                                    # --yes: proceeds on a clean tree,
+                                                                    # REFUSES on a dirty one (exit 2)
 pipdock pip-upgrade                      # upgrade pip inside --env (pip engine paths only)
 pipdock engine [pip|uv]                  # show or set configured engine
 pipdock index refresh                    # re-pull PEP 691 name index
