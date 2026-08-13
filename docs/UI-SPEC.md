@@ -163,6 +163,10 @@ table and the Pins screen) and `PdRollbackPreview` (DATA-FLOW §8's preview, inc
 
 ## 8. Keyboard & accessibility
 
-Full keyboard traversal: `Ctrl+1..8` sidebar tabs, `/` focuses search, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers.
+Full keyboard traversal: `Ctrl+1..8` sidebar tabs, `/` focuses search, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6).
+
+**The arrow keys are not decoration, and the gap they close was real.** Making the row the only tab stop is what keeps 200 rows from becoming 600 — but every control inside one is `tabIndex={-1}`, and that left *Pin* and *Remove* reachable by mouse only: a WCAG 2.1.1 failure, found by tabbing to a row in the running app and discovering there was nowhere further to go. `←`/`→` are the ARIA grid pattern's roving tabindex, `Esc` returns focus to the row, and no tab stops are added.
+
+**`Enter` on a row is the *non-destructive* primary.** On a package row that is pin, never uninstall: a row has one reversible annotation and one irreversible removal, and a destructive operation one keypress from a focused row is an accident waiting rather than a primary action. Everywhere else in the app `Enter` needs no binding at all, because every other primary action is a real `<button>`.
 
 **"Select-all-visible" means the current filtered set, not the rendered window.** Resolved in S2: the package table is virtualized, so only ~25 of a 200-package environment are in the DOM at any moment and "visible" would otherwise mean whatever the scroll position happens to be. `Ctrl+A` selects every *selectable* row in the set the screen is showing — so on Updates that is the outdated rows, and pinned rows are excluded there as they are from the *Select all* button. The row, not its checkbox, is the tab stop and the target of `Space`; tabbing through two controls per row is not traversal at 200 rows. Contrast: all text tokens meet WCAG AA on their surfaces (verified in the design-token test); focus ring 2 px accent, never removed. Screen-reader labels on all icon buttons; live region announces execution progress summaries ("13 of 15 complete"). Windows high-contrast mode: tokens fall back to system colors.
