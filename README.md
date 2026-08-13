@@ -1,8 +1,14 @@
 # PipDock
 
+[![CI · Rust](https://github.com/poli0981/pipdock/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/poli0981/pipdock/actions/workflows/ci-rust.yml)
+[![CI · Node](https://github.com/poli0981/pipdock/actions/workflows/ci-node.yml/badge.svg)](https://github.com/poli0981/pipdock/actions/workflows/ci-node.yml)
+[![CodeQL](https://github.com/poli0981/pipdock/actions/workflows/codeql.yml/badge.svg)](https://github.com/poli0981/pipdock/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/poli0981/pipdock?display_name=tag&sort=semver)](https://github.com/poli0981/pipdock/releases)
+[![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
+
 **A friendly dock for your Python environments.** Inspect, install, update, and clean up Python packages in bulk — through a keyboard-first GUI or a scriptable CLI — without ever hand-typing another `pip install` incantation or guessing why an upgrade broke your project.
 
-> Repo: `poli0981/pipdock` · License: **GPL-3.0** · Platform: **Windows 10/11 (v1)** · Status: **design phase**
+> Repo: `poli0981/pipdock` · License: **GPL-3.0** · Platform: **Windows 10/11 (v1)** · Status: **pre-release** — every v1 feature is built; the release pipeline and the manual charter are what remain
 
 ---
 
@@ -33,7 +39,7 @@
 | pip upkeep | Check & update pip itself per environment |
 | CLI | `pipdock` — full parity for core operations, JSON output, CI-friendly exit codes |
 | i18n | English + Tiếng Việt |
-| Privacy | No telemetry. Network traffic goes only to PyPI (package data) and GitHub (app updates) |
+| Privacy | No telemetry. **PyPI is the only host PipDock connects to.** It does not check for updates, so it never calls home — GitHub and the ruff docs are only ever handed to your browser as a link you clicked |
 
 ## Install
 
@@ -41,7 +47,13 @@ Download the installer (NSIS `.exe` or `.msi`) from [GitHub Releases](https://gi
 
 PipDock does not update itself — grab a new build from the same page when you want one. That is deliberate: a self-updater is a standing remote-code-execution path into a tool that already runs subprocesses against your interpreters, and it is not worth the convenience (see [docs/SECURITY.md](docs/SECURITY.md) §5).
 
-> Windows SmartScreen may warn on first run because binaries are not EV-code-signed. Verify the SHA-256 checksum published with each release.
+> Windows SmartScreen may warn on first run because the binaries are not EV-code-signed. Every release publishes `SHA256SUMS.txt`; verify your download against it before running:
+>
+> ```powershell
+> (Get-FileHash .\PipDock_1.0.0_x64-setup.exe -Algorithm SHA256).Hash.ToLower()
+> ```
+>
+> Compare that against the matching line in `SHA256SUMS.txt`. If they differ, do not run the file.
 
 ## Quick start
 

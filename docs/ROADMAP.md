@@ -570,6 +570,35 @@ Six commits. Code Health has an environment to run in, and `PD-HLT-001`'s shippe
 
 Release pipeline live (bundling, checksums), manual charter executed, docs/README screenshots, legal files public, a clean install of the RC verified on a machine that has never run PipDock. **Exit:** RELEASE-CI §5 checklist fully checked; v1.0.0 published + notify fan-out.
 
+### First bundle built locally — 2026-08-13
+
+`npx tauri build --bundles nsis,msi -- --locked` on the dev machine, 3m48s, producing
+`PipDock_0.1.0_x64-setup.exe` (5.7 MB) and `PipDock_0.1.0_x64_en-US.msi` (7.6 MB). The workflow's
+collect and checksum steps were then run verbatim against those artifacts and produce a correct
+`SHA256SUMS.txt`; the README's verification one-liner reproduces the published sum.
+
+**Two defects, both invisible until something was actually built.**
+
+1. **`release.yml` could not have worked.** `npx tauri build --locked --bundles nsis,msi` fails with
+   *"unexpected argument '--locked' found"* before a single crate compiles — `--locked` is cargo's
+   flag and everything after `--` is what reaches the runner. No `v*` tag has ever been pushed, so
+   the release job had never run. Fixed, along with a duplicated frontend build step (`tauri build`
+   already runs `beforeBuildCommand`).
+2. **The installers ship the GUI only.** `tauri.conf.json` declares no `externalBin` and no
+   `resources`, so the NSIS payload is exactly `pipdock-app.exe` and the MSI's `app.cab` holds one
+   file. **`pipdock.exe` is not installed at all** — while PRD P0-12 is "CLI core parity", CLI-SPEC
+   documents the whole surface, and the README's own Quick start tells the user to run
+   `pipdock env list`. A real install leaves none of that on the machine. **This is a v1 blocker**
+   and the fix needs an owner decision, because the options differ in how much they touch the
+   user's system: ship the CLI beside the GUI and leave `PATH` alone; ship it and have NSIS extend
+   `PATH`; or publish it as a separate archive on the release.
+
+**First-run behaviour was verified against a throwaway app-data root** (`LOCALAPPDATA` redirected):
+the app creates `PipDock\index.db` from nothing and spawns a WebView2 host, so the packaged
+frontend loads. Note the honest limit — **this machine has run PipDock before**, so isolating the
+app-data root approximates the "never run PipDock" criterion rather than meeting it. A genuinely
+clean machine is still owed, and so is running the installer itself: nothing here was installed.
+
 ## Post-1.0 (P1 wave)
 
 Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
