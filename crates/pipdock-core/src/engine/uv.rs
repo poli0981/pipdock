@@ -74,14 +74,6 @@ impl UvEngine {
             python.into(),
         ]
     }
-
-    /// Parse uv's text dry-run plan into the normalized report.
-    ///
-    /// # Errors
-    /// Returns `PD-ENG-003` when the output does not match any shape the adapter knows.
-    pub fn parse_dry_run(_stdout: &str) -> Result<ResolutionReport> {
-        todo!("SP-1: pin uv's text plan format against captured fixtures before parsing it")
-    }
 }
 
 #[async_trait]

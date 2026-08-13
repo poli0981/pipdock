@@ -16,7 +16,9 @@ unsafe_code = "forbid"
 [workspace.lints.clippy]
 # The five hard invariants in CLAUDE.md are about *not* taking shortcuts around
 # the engine. These lints are the mechanical half of enforcing that.
-todo = "allow"           # scaffold phase; flip to "warn" once M1 lands
+# Flipped 2026-08-13, once the last `todo!()` went with the dead `uv::parse_dry_run`.
+# A `todo!()` is a panic with a promise attached, and the promise is the part that expires.
+todo = "warn"
 dbg_macro = "deny"
 print_stdout = "deny"    # core is a library: emit events, never println
 unwrap_used = "deny"
