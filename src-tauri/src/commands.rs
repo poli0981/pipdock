@@ -940,6 +940,89 @@ pub async fn health_run(
     }
 }
 
+/// Apply ruff's safe fixes to the project the parked report was produced from.
+///
+/// **Takes no `project`, no `env`, no file list and no findings.** The project and environment
+/// come from the parked `HealthSession`, which is the point: what is fixed must be what was
+/// reported on, the same reasoning that makes `plan_execute` take nothing. A file list would let
+/// the frontend choose a different blast radius than the one it named in the dialog, so `files`
+/// crosses as an **assertion to be checked**, never as an instruction.
+///
+/// # Errors
+/// `PD-INT-001` when nothing is parked, when `files` disagrees with the parked report, or when
+/// `acknowledged_dirty` is false against a tree the server just found dirty — all three are states
+/// only a broken or out-of-date frontend can produce. `PD-RES-002` when a re-read of the project
+/// no longer matches what the user confirmed. `PD-PRM-003` when a target cannot be written, raised
+/// **before anything is**.
+#[tauri::command]
+pub async fn health_fix(
+    state: tauri::State<'_, AppState>,
+    files: usize,
+    acknowledged_dirty: bool,
+) -> Wire<pipdock_core::health::fix::FixReport> {
+    use pipdock_core::health::{self, fix};
+
+    // `claim_one`, not `claim`: finding nothing must leave the slot **idle** rather than writing
+    // `Busy` and wedging every later command with `PD-RES-003` for a session that does not exist.
+    let session = state.health.claim_one().await?;
+
+    let outcome = async {
+        // What the dialog named must be what the server is holding. Only a frontend that is out
+        // of date with its own store can get here.
+        if files != session.report.ruff.fixable_files {
+            return Err(PdError::new(
+                pipdock_core::errors::Code::IntUnexpected,
+                format!(
+                    "the confirmation named {files} file(s); the report has {}",
+                    session.report.ruff.fixable_files
+                ),
+            ));
+        }
+
+        let tools_dir = health::tools_dir(&state.app_data);
+        let opts = health::RunOptions::default();
+
+        // Read the project again before writing to it. Minutes may have passed since the report,
+        // and a source tree is not PipDock's to assume is still — DATA-FLOW §9.3's staleness rule,
+        // applied to the one thing no snapshot describes.
+        let fresh = fix::recheck(&tools_dir, &session.project, &opts).await?;
+        if fresh.fixable != session.report.ruff.fixable
+            || fresh.fixable_files != session.report.ruff.fixable_files
+        {
+            return Err(PdError::new(
+                pipdock_core::errors::Code::ResPlanStale,
+                format!(
+                    "the project changed: {} fixable in {} file(s) now, {} in {} when confirmed",
+                    fresh.fixable,
+                    fresh.fixable_files,
+                    session.report.ruff.fixable,
+                    session.report.ruff.fixable_files
+                ),
+            ));
+        }
+
+        // Asked again rather than trusted: the dialog's answer decided what to *render*, this one
+        // decides what to allow.
+        let consent = fix::consent_ok(
+            files,
+            acknowledged_dirty,
+            fix::dirty(&session.project).await,
+        )?;
+        fix::apply(&tools_dir, &session.project, &fresh, consent).await
+    }
+    .await;
+
+    // Re-parked either way, with the post-fix ruff state on success. The screen drops its tab
+    // count to `remaining` without a second Run, so the server has to be holding the same thing
+    // the user is now looking at — otherwise the next fix is checked against a report nobody sees.
+    let mut session = session;
+    if let Ok(report) = &outcome {
+        session.report.ruff = report.remaining.clone();
+    }
+    state.health.park(session).await;
+    outcome.map_err(Into::into)
+}
+
 /// Write a finished report beside the path the user named, as Markdown **and** JSON.
 ///
 /// CODE-HEALTH-SPEC §5's *Save report*. Two files from one prompt: the Markdown is for reading and

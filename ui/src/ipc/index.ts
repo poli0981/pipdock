@@ -34,6 +34,7 @@ import type {
   ProgressEvent,
   PyEnv,
   HealthReport,
+  FixReport,
   RefreshReport,
   RollbackPreview,
   SnapshotMeta,
@@ -402,6 +403,20 @@ export const healthRun = (env: PyEnv, project: string): Promise<HealthReport> =>
  * path, and Rust does the writing. A general write permission here would be a write-anywhere
  * primitive in a tool that already runs subprocesses.
  */
+/**
+ * Apply ruff's safe fixes to the project the parked report was produced from.
+ *
+ * **Takes no project and no file list.** Both come from the session the server parked, because
+ * what is fixed must be what was reported on. `files` is an *assertion* the server checks against
+ * its own copy, not an instruction — a frontend cannot widen the blast radius past what its dialog
+ * named.
+ *
+ * Rejects with `PD-RES-002` when the project changed since the confirm, and `PD-PRM-003` when a
+ * target cannot be written — the latter before anything is.
+ */
+export const healthFix = (files: number, acknowledgedDirty: boolean): Promise<FixReport> =>
+  invoke('health_fix', { files, acknowledgedDirty })
+
 export const healthSaveReport = (report: HealthReport, path: string): Promise<string[]> =>
   invoke('health_save_report', { report, path })
 

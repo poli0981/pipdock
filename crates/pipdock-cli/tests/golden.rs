@@ -54,6 +54,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "Intent",
     "Code",
     "HealthReport",
+    "FixReport",
 ];
 
 fn pipdock() -> Command {

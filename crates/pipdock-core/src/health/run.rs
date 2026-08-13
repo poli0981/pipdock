@@ -301,20 +301,30 @@ fn argv(tool: &str, opts: &RunOptions, report_path: &Path) -> Vec<String> {
                 args.push(globs);
             }
         }
-        "ruff" => {
-            args.push("check".into());
-            args.push(".".into());
-            args.push("--output-format".into());
-            args.push("json".into());
-            // §7 again. ruff's excludes are globs and are *additive* to the project's own config.
-            args.push("--exclude".into());
-            args.push("*.ipynb".into());
-            for pattern in excludes(opts) {
-                args.push("--exclude".into());
-                args.push(pattern);
-            }
-        }
+        "ruff" => return ruff_argv(opts),
         _ => {}
+    }
+    args
+}
+
+/// ruff's read-only argv, shared with the fix path's pre-write re-check.
+///
+/// Extracted so the two cannot drift: a re-check that excluded different files than the run would
+/// compare two different questions and refuse a fix the user was correctly shown.
+#[must_use]
+pub(super) fn ruff_argv(opts: &RunOptions) -> Vec<String> {
+    let mut args = vec![
+        "check".to_owned(),
+        ".".to_owned(),
+        "--output-format".to_owned(),
+        "json".to_owned(),
+        // §7 again. ruff's excludes are globs and are *additive* to the project's own config.
+        "--exclude".to_owned(),
+        "*.ipynb".to_owned(),
+    ];
+    for pattern in excludes(opts) {
+        args.push("--exclude".to_owned());
+        args.push(pattern);
     }
     args
 }
