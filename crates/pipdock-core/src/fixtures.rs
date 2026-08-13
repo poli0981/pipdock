@@ -298,6 +298,226 @@ fn codes() -> Vec<crate::errors::Code> {
     crate::errors::Code::ALL.to_vec()
 }
 
+/// A finished Code Health run, with every tab in its populated state.
+///
+/// **Two documents, not one.** A populated ruff tab and a ruff `ToolProblem` are contradictory
+/// states of the same tool, so one fixture would leave either the ruff tab or the partial-report
+/// branch with no subject. [`health_partial`] is the other half.
+///
+/// The deptry rows are chosen against [`pkg_list`], because the *Review in Uninstall…* button has
+/// two gates and both need a case:
+///
+/// | Row | Exercises |
+/// |---|---|
+/// | `DEP002` `requests` | unused **and** an installed distribution — the one row that offers the button |
+/// | `DEP002` `httpx` | unused but not installed here — the same code, no button |
+/// | `DEP001` `yaml` | a module name that is not a distribution (`PyYAML`), **and** the wrong code for the button twice over |
+/// | `DEP003` `numpy` | two locations, so the location list is not always a singleton |
+fn health_report() -> crate::health::HealthReport {
+    use crate::health::{
+        DeptryIssue, FixApplicability, HealthReport, RuffFinding, RuffFindings, SourceLocation,
+        VultureFinding,
+    };
+
+    HealthReport {
+        project: r"C:\proj\bot".to_owned(),
+        env: r"c:\proj\.venv\scripts\python.exe".to_owned(),
+        ran_at: "2026-08-13T09:00:00Z".to_owned(),
+        tool_versions: [
+            ("deptry".to_owned(), "0.25.1".to_owned()),
+            ("ruff".to_owned(), "0.16.2".to_owned()),
+            ("vulture".to_owned(), "2.16".to_owned()),
+        ]
+        .into_iter()
+        .collect(),
+        // Two files, so the requirements case is not silently tested as if it were always one.
+        declared: crate::health::DeclaredSource::Requirements {
+            files: vec![
+                "requirements-dev.txt".to_owned(),
+                "requirements.txt".to_owned(),
+            ],
+        },
+        ran: crate::health::HEALTH_TOOLS
+            .iter()
+            .map(|t| (*t).to_owned())
+            .collect(),
+        deptry: vec![
+            DeptryIssue {
+                code: "DEP002".to_owned(),
+                dep: "requests".to_owned(),
+                message: "'requests' defined as a dependency but not used in the codebase"
+                    .to_owned(),
+                // deptry names no position for an unused declaration: the finding is about the
+                // manifest, not a line of code. The renderer must not assume `line` is present.
+                locations: vec![SourceLocation {
+                    file: "requirements.txt".to_owned(),
+                    line: None,
+                    column: None,
+                }],
+            },
+            DeptryIssue {
+                code: "DEP002".to_owned(),
+                dep: "httpx".to_owned(),
+                message: "'httpx' defined as a dependency but not used in the codebase".to_owned(),
+                locations: Vec::new(),
+            },
+            DeptryIssue {
+                code: "DEP001".to_owned(),
+                dep: "yaml".to_owned(),
+                message: "'yaml' imported but missing from the dependency definitions".to_owned(),
+                locations: vec![SourceLocation {
+                    file: r"bot\config.py".to_owned(),
+                    line: Some(4),
+                    column: Some(1),
+                }],
+            },
+            DeptryIssue {
+                code: "DEP003".to_owned(),
+                dep: "numpy".to_owned(),
+                message: "'numpy' imported but it is a transitive dependency".to_owned(),
+                locations: vec![
+                    SourceLocation {
+                        file: r"bot\stats.py".to_owned(),
+                        line: Some(2),
+                        column: Some(1),
+                    },
+                    SourceLocation {
+                        file: r"bot\plot.py".to_owned(),
+                        line: Some(9),
+                        column: Some(1),
+                    },
+                ],
+            },
+        ],
+        vulture: vec![
+            VultureFinding {
+                path: r"bot\util.py".to_owned(),
+                line: 88,
+                message: "unused function 'old_parse'".to_owned(),
+                name: Some("old_parse".to_owned()),
+                confidence: 60,
+            },
+            VultureFinding {
+                path: r"bot\util.py".to_owned(),
+                line: 91,
+                message: "unused import 'os'".to_owned(),
+                name: Some("os".to_owned()),
+                confidence: 90,
+            },
+            VultureFinding {
+                path: r"bot\worker.py".to_owned(),
+                line: 12,
+                // The eighth message shape, and the reason `name` is optional: it quotes the
+                // token the dead code follows, not an identifier there is anything to name.
+                message: "unreachable code after 'return'".to_owned(),
+                name: None,
+                confidence: 100,
+            },
+        ],
+        // Built then recounted, so `fixable` and `fixableFiles` cannot disagree with the list they
+        // describe — the same reason `recount` exists for the real runner. Two safe fixes in one
+        // file and one in another makes the two numbers differ (3 and 2), which is what stops a
+        // UI that confuses them from passing.
+        ruff: RuffFindings {
+            findings: vec![
+                RuffFinding {
+                    code: Some("F401".to_owned()),
+                    name: "unused-import".to_owned(),
+                    message: "`os` imported but unused".to_owned(),
+                    filename: r"C:\proj\bot\bot\util.py".to_owned(),
+                    row: 91,
+                    column: 8,
+                    url: Some("https://docs.astral.sh/ruff/rules/unused-import".to_owned()),
+                    fix: Some(FixApplicability::Safe),
+                },
+                RuffFinding {
+                    code: Some("I001".to_owned()),
+                    name: "unsorted-imports".to_owned(),
+                    message: "Import block is un-sorted or un-formatted".to_owned(),
+                    filename: r"C:\proj\bot\bot\util.py".to_owned(),
+                    row: 1,
+                    column: 1,
+                    url: Some("https://docs.astral.sh/ruff/rules/unsorted-imports".to_owned()),
+                    fix: Some(FixApplicability::Safe),
+                },
+                RuffFinding {
+                    code: Some("F841".to_owned()),
+                    name: "unused-variable".to_owned(),
+                    message: "Local variable `tmp` is assigned to but never used".to_owned(),
+                    filename: r"C:\proj\bot\bot\worker.py".to_owned(),
+                    row: 30,
+                    column: 5,
+                    url: Some("https://docs.astral.sh/ruff/rules/unused-variable".to_owned()),
+                    fix: Some(FixApplicability::Safe),
+                },
+                RuffFinding {
+                    code: Some("B006".to_owned()),
+                    name: "mutable-argument-default".to_owned(),
+                    message: "Do not use mutable data structures for argument defaults".to_owned(),
+                    filename: r"C:\proj\bot\bot\worker.py".to_owned(),
+                    row: 44,
+                    column: 18,
+                    url: Some(
+                        "https://docs.astral.sh/ruff/rules/mutable-argument-default".to_owned(),
+                    ),
+                    // Offered but never applied: P5 runs plain `ruff check --fix`. A badge that
+                    // implied otherwise would promise a fix the fix will not deliver.
+                    fix: Some(FixApplicability::Unsafe),
+                },
+                RuffFinding {
+                    code: Some("E722".to_owned()),
+                    name: "bare-except".to_owned(),
+                    message: "Do not use bare `except`".to_owned(),
+                    filename: r"C:\proj\bot\bot\worker.py".to_owned(),
+                    row: 52,
+                    column: 5,
+                    url: Some("https://docs.astral.sh/ruff/rules/bare-except".to_owned()),
+                    fix: None,
+                },
+                RuffFinding {
+                    // A syntax error carries `invalid-syntax` rather than a null code — the
+                    // opposite of what CODE-HEALTH-SPEC §6 assumed — and is the one shape with
+                    // **no rule page**, so it is the subject for the absent-link branch.
+                    code: Some("invalid-syntax".to_owned()),
+                    name: "invalid-syntax".to_owned(),
+                    message: "Expected `)`, found newline".to_owned(),
+                    filename: r"C:\proj\bot\bot\broken.py".to_owned(),
+                    row: 1,
+                    column: 11,
+                    url: None,
+                    fix: None,
+                },
+            ],
+            fixable: 0,
+            fixable_files: 0,
+        }
+        .recount(),
+        problems: Vec::new(),
+    }
+}
+
+/// The same run with ruff unrunnable — `PD-HLT-003`'s "partial report shown", as a shape.
+///
+/// One document covering all three states a tab can be in, which is the distinction `ran` exists
+/// for and the one a screen keyed on `ran` alone gets wrong: **`ran` is filled before the loop**,
+/// so a tool that failed is in it. Here deptry reported, ruff is in `ran` *and* in `problems`, and
+/// vulture was never asked. A tab that renders ruff as "no lint findings" is the bug.
+fn health_partial() -> crate::health::HealthReport {
+    let full = health_report();
+    crate::health::HealthReport {
+        ran: vec!["deptry".to_owned(), "ruff".to_owned()],
+        vulture: Vec::new(),
+        ruff: crate::health::RuffFindings::default(),
+        problems: vec![crate::health::ToolProblem {
+            tool: "ruff".to_owned(),
+            code: crate::errors::Code::HltToolMissing,
+            message: "ruff is in the tools environment but could not be run".to_owned(),
+            stderr_tail: Some("%1 is not a valid Win32 application. (os error 193)".to_owned()),
+        }],
+        ..full
+    }
+}
+
 /// Every fixture, as `(file name, contents)`.
 ///
 /// # Errors
@@ -313,6 +533,8 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("guard_report.json", render(&guard_report())?),
         ("snapshot_list.json", render(&snapshot_list())?),
         ("rollback_preview.json", render(&rollback_preview())?),
+        ("health_report.json", render(&health_report())?),
+        ("health_partial.json", render(&health_partial())?),
         ("codes.json", render(&codes())?),
     ])
 }
@@ -420,6 +642,109 @@ mod tests {
         assert!(
             broken.iter().all(|b| b.version.is_some()),
             "the dialog names `pandas 2.1.4`, not bare `pandas`"
+        );
+    }
+
+    #[test]
+    fn the_health_fixtures_still_cover_every_branch_the_tabs_implement() {
+        use crate::health::{DeptryIssue, FixApplicability};
+
+        let report = health_report();
+        let dists = pkg_list();
+        let installed: Vec<&str> = dists.iter().map(|d| d.name.as_str()).collect();
+
+        // -- deptry: the Uninstall button has two gates and each needs both answers ------------
+        let unused: Vec<&DeptryIssue> = report
+            .deptry
+            .iter()
+            .filter(|i| i.code == "DEP002")
+            .collect();
+        assert!(
+            unused.iter().any(|i| installed.contains(&i.dep.as_str())),
+            "no DEP002 naming an installed distribution, so nothing renders the button"
+        );
+        assert!(
+            unused.iter().any(|i| !installed.contains(&i.dep.as_str())),
+            "no DEP002 naming something absent, so nothing renders the *no* button case"
+        );
+        assert!(
+            report
+                .deptry
+                .iter()
+                .any(|i| i.code != "DEP002" && !installed.contains(&i.dep.as_str())),
+            "no non-DEP002 row, so the code gate is never exercised"
+        );
+        assert!(
+            report.deptry.iter().any(|i| i.locations.is_empty()),
+            "every deptry row has a location, so the no-location branch is untested"
+        );
+        assert!(
+            report.deptry.iter().any(|i| i.locations.len() > 1),
+            "no row with two locations, so the list is only ever a singleton"
+        );
+        assert!(
+            report
+                .deptry
+                .iter()
+                .flat_map(|i| &i.locations)
+                .any(|l| l.line.is_none()),
+            "no whole-file location, so `file:line` is never rendered as bare `file`"
+        );
+
+        // -- vulture: confidence tones, and the message that names nothing ---------------------
+        assert!(report.vulture.iter().any(|f| f.confidence == 100));
+        assert!(report.vulture.iter().any(|f| f.confidence < 100));
+        assert!(
+            report.vulture.iter().any(|f| f.name.is_none()),
+            "no unreachable-code finding, so the optional identifier is never absent"
+        );
+
+        // -- ruff: the fix badges, the absent link, and two counts that must differ ------------
+        let ruff = &report.ruff;
+        assert!(
+            ruff.findings
+                .iter()
+                .any(|f| f.fix == Some(FixApplicability::Safe))
+        );
+        assert!(
+            ruff.findings
+                .iter()
+                .any(|f| f.fix == Some(FixApplicability::Unsafe))
+        );
+        assert!(ruff.findings.iter().any(|f| f.fix.is_none()));
+        assert!(
+            ruff.findings.iter().any(|f| f.url.is_none()),
+            "every finding links somewhere, so the absent-link branch is untested"
+        );
+        assert_ne!(
+            ruff.fixable, ruff.fixable_files,
+            "equal counts let a UI confuse findings with files and still pass"
+        );
+        assert_eq!(
+            ruff.clone().recount().fixable,
+            ruff.fixable,
+            "the committed counts disagree with the findings they describe"
+        );
+
+        // -- the partial report: all three tab states in one document --------------------------
+        let partial = health_partial();
+        let failed = &partial.problems[0].tool;
+        assert!(
+            partial.ran.contains(failed),
+            "a failed tool must still be in `ran` — that is exactly why `ran` alone cannot \
+             distinguish 'clean' from 'did not finish', and why this fixture exists"
+        );
+        assert!(
+            partial.ruff.findings.is_empty(),
+            "the failed tool must report nothing, or the tab is not in the state being tested"
+        );
+        assert!(
+            !partial.ran.contains(&"vulture".to_owned()) && partial.vulture.is_empty(),
+            "no never-run tool, so 'not run' and 'clean' are not both on screen at once"
+        );
+        assert!(
+            !partial.deptry.is_empty(),
+            "nothing reported, so the partial report is indistinguishable from a failed run"
         );
     }
 }

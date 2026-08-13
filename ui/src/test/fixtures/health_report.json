@@ -1,0 +1,153 @@
+{
+  "project": "C:\\proj\\bot",
+  "env": "c:\\proj\\.venv\\scripts\\python.exe",
+  "ranAt": "2026-08-13T09:00:00Z",
+  "toolVersions": {
+    "deptry": "0.25.1",
+    "ruff": "0.16.2",
+    "vulture": "2.16"
+  },
+  "declared": {
+    "kind": "requirements",
+    "files": [
+      "requirements-dev.txt",
+      "requirements.txt"
+    ]
+  },
+  "ran": [
+    "deptry",
+    "vulture",
+    "ruff"
+  ],
+  "deptry": [
+    {
+      "code": "DEP002",
+      "dep": "requests",
+      "message": "'requests' defined as a dependency but not used in the codebase",
+      "locations": [
+        {
+          "file": "requirements.txt"
+        }
+      ]
+    },
+    {
+      "code": "DEP002",
+      "dep": "httpx",
+      "message": "'httpx' defined as a dependency but not used in the codebase"
+    },
+    {
+      "code": "DEP001",
+      "dep": "yaml",
+      "message": "'yaml' imported but missing from the dependency definitions",
+      "locations": [
+        {
+          "file": "bot\\config.py",
+          "line": 4,
+          "column": 1
+        }
+      ]
+    },
+    {
+      "code": "DEP003",
+      "dep": "numpy",
+      "message": "'numpy' imported but it is a transitive dependency",
+      "locations": [
+        {
+          "file": "bot\\stats.py",
+          "line": 2,
+          "column": 1
+        },
+        {
+          "file": "bot\\plot.py",
+          "line": 9,
+          "column": 1
+        }
+      ]
+    }
+  ],
+  "vulture": [
+    {
+      "path": "bot\\util.py",
+      "line": 88,
+      "message": "unused function 'old_parse'",
+      "name": "old_parse",
+      "confidence": 60
+    },
+    {
+      "path": "bot\\util.py",
+      "line": 91,
+      "message": "unused import 'os'",
+      "name": "os",
+      "confidence": 90
+    },
+    {
+      "path": "bot\\worker.py",
+      "line": 12,
+      "message": "unreachable code after 'return'",
+      "confidence": 100
+    }
+  ],
+  "ruff": {
+    "findings": [
+      {
+        "code": "F401",
+        "name": "unused-import",
+        "message": "`os` imported but unused",
+        "filename": "C:\\proj\\bot\\bot\\util.py",
+        "row": 91,
+        "column": 8,
+        "url": "https://docs.astral.sh/ruff/rules/unused-import",
+        "fix": "safe"
+      },
+      {
+        "code": "I001",
+        "name": "unsorted-imports",
+        "message": "Import block is un-sorted or un-formatted",
+        "filename": "C:\\proj\\bot\\bot\\util.py",
+        "row": 1,
+        "column": 1,
+        "url": "https://docs.astral.sh/ruff/rules/unsorted-imports",
+        "fix": "safe"
+      },
+      {
+        "code": "F841",
+        "name": "unused-variable",
+        "message": "Local variable `tmp` is assigned to but never used",
+        "filename": "C:\\proj\\bot\\bot\\worker.py",
+        "row": 30,
+        "column": 5,
+        "url": "https://docs.astral.sh/ruff/rules/unused-variable",
+        "fix": "safe"
+      },
+      {
+        "code": "B006",
+        "name": "mutable-argument-default",
+        "message": "Do not use mutable data structures for argument defaults",
+        "filename": "C:\\proj\\bot\\bot\\worker.py",
+        "row": 44,
+        "column": 18,
+        "url": "https://docs.astral.sh/ruff/rules/mutable-argument-default",
+        "fix": "unsafe"
+      },
+      {
+        "code": "E722",
+        "name": "bare-except",
+        "message": "Do not use bare `except`",
+        "filename": "C:\\proj\\bot\\bot\\worker.py",
+        "row": 52,
+        "column": 5,
+        "url": "https://docs.astral.sh/ruff/rules/bare-except"
+      },
+      {
+        "code": "invalid-syntax",
+        "name": "invalid-syntax",
+        "message": "Expected `)`, found newline",
+        "filename": "C:\\proj\\bot\\bot\\broken.py",
+        "row": 1,
+        "column": 11
+      }
+    ],
+    "fixable": 3,
+    "fixableFiles": 2
+  }
+}
