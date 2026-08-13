@@ -190,6 +190,45 @@
       "manual": "bạn tự chụp"
     }
   },
+  "health": {
+    "title": "Sức khỏe mã",
+    "chooseFolder": "Chọn thư mục…",
+    "changeFolder": "Đổi thư mục…",
+    "pickerTitle": "Chọn thư mục dự án cần kiểm tra",
+    "run": "Chạy",
+    "running": "Đang chạy…",
+    "noEnvironment": "chưa chọn môi trường",
+    "noEnvironmentHint": "Báo cáo ghi lại nó được tạo ra đối chiếu với môi trường nào. Hãy chọn một môi trường ở tab Môi trường.",
+    "noFolder": "chưa chọn thư mục dự án",
+    "noFolderHint": "Sức khỏe mã đọc một thư mục dự án, không phải một môi trường. Hãy chọn thư mục chứa mã nguồn Python của bạn.",
+    "checkedAt": "Đã kiểm tra {{when}}",
+    "notRun": "chưa chạy",
+    "notRunHint": "Công cụ này không nằm trong lần chạy vừa rồi.",
+    "failed": "không hoàn tất",
+    "failedHint": "Xem lỗi được báo ở trên.",
+    "clean": "không phát hiện vấn đề nào",
+    "notebooks": "Jupyter notebook (.ipynb) được loại khỏi mọi báo cáo.",
+    "tabLabel": {
+      "deptry_other": "Phụ thuộc, {{count}} phát hiện",
+      "vulture_other": "Mã chết, {{count}} phát hiện",
+      "ruff_other": "Lint, {{count}} phát hiện"
+    },
+    "declared": {
+      "pyproject": "Phụ thuộc được khai báo trong pyproject.toml",
+      "requirements": "Phụ thuộc được khai báo trong {{files}}",
+      "none": "Không tìm thấy khai báo phụ thuộc nào, nên kết quả của deptry bị hạn chế"
+    },
+    "deptryNote": "deptry đối chiếu các import với môi trường công cụ riêng của PipDock, không phải môi trường này — DEP001 và DEP003 có thể bị hoán đổi với những gói mà nó tình cờ có.",
+    "reviewInUninstall": "Xem trong Gỡ cài đặt…",
+    "notInstalled": "không cài ở đây",
+    "vultureHint": "Độ tin cậy dưới 100% có thể là dương tính giả — hãy xem lại trước khi xoá.",
+    "vultureWhitelist": "danh sách trắng của vulture",
+    "fixableBadge": "sửa được",
+    "unsafeBadge": "sửa không an toàn",
+    "ruffFileCount_other": "{{count}} phát hiện",
+    "showRemaining_other": "Hiện thêm {{count}} phát hiện",
+    "log": "Nhật ký"
+  },
   "uninstall": {
     "title": "Gỡ gói",
     "titleBreaks": "Thao tác gỡ này làm hỏng gói khác",
