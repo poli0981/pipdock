@@ -42,7 +42,12 @@ Dependency updates use **Dependabot** (`.github/dependabot.yml`) — the portfol
 
 ## 3. Release pipeline (tag `v*`)
 
-1. Windows runner: `npm ci` → `npx tauri build --bundles nsis,msi -- --locked` producing NSIS `.exe` + `.msi`. **The `--` matters**: `--locked` is cargo's flag and `tauri build` rejects it as its own. The frontend is built by tauri's `beforeBuildCommand`, so the workflow does not run `vite build` itself.
+1. Windows runner: `npm ci` → **`npm run bundle`**, producing NSIS `.exe` + `.msi`. That one script owns the whole recipe so the workflow cannot drift from what a developer runs locally, and it encodes two things that are easy to get wrong:
+
+   - **`--locked` goes after `--`.** It is cargo's flag; `tauri build` rejects it as its own with *"unexpected argument"* before a single crate compiles.
+   - **The CLI sidecar is declared in an overlay** (`src-tauri/tauri.bundle.conf.json`, merged with `--config`), not in `tauri.conf.json`. `tauri-build` validates `externalBin` at build-script time, so declaring it in the base config makes plain `cargo clippy` and `cargo test` fail in a fresh clone with *"resource path … doesn't exist"* — a bundling concern leaking into every compile.
+
+   The frontend is built by tauri's `beforeBuildCommand`, so the workflow does not run `vite build` itself.
 2. Compute and publish `SHA256SUMS.txt`.
 3. Draft GitHub Release with generated changelog; manual publish (owner review) → `announce-release.yml` fires the Discord announcement.
 4. Post-release checklist issue auto-opened: verify SmartScreen behavior, spot-check EN/VI in the shipped build.

@@ -157,7 +157,7 @@ jobs:
           # A re-sync must repair the state PD-HLT-001 tells the user to re-sync out of. This
           # shipped broken: `pip install -r` over satisfied pins is a no-op, so the sync installed
           # nothing and then failed its own verification.
-          Remove-Item "$env:LOCALAPPDATA\PipDock\tools\.venv\Scripts\ruff.exe"
+          Remove-Item "$env:LOCALAPPDATA\PipDock\data\tools\.venv\Scripts\ruff.exe"
           $need = (.\target\debug\pipdock.exe tools status --json | ConvertFrom-Json).need
           if ($need.state -ne 'toolMissing' -or $need.tool -ne 'ruff') {
             throw "a quarantined ruff.exe reported '$($need.state)', not toolMissing"
@@ -166,7 +166,7 @@ jobs:
           if ($LASTEXITCODE -ne 0) { throw "a re-sync could not repair a missing tool" }
 
           # Offline: PD-NET-011, exit 6, and no manifest left claiming the venv is good.
-          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\PipDock\tools"
+          Remove-Item -Recurse -Force "$env:LOCALAPPDATA\PipDock\data\tools"
           $env:PIP_NO_INDEX = '1'
           $out = .\target\debug\pipdock.exe tools sync 2>&1 | Out-String
           $code = $LASTEXITCODE
@@ -174,7 +174,7 @@ jobs:
           Write-Host $out
           if ($code -ne 6) { throw "an unreachable index exited $code, not 6" }
           if ($out -notmatch 'PD-NET-011') { throw "an unreachable index did not report PD-NET-011" }
-          if (Test-Path "$env:LOCALAPPDATA\PipDock\tools\manifest.json") {
+          if (Test-Path "$env:LOCALAPPDATA\PipDock\data\tools\manifest.json") {
             throw "a failed bootstrap left a manifest behind; the next run would think it was fresh"
           }
 
