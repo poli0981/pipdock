@@ -5,7 +5,7 @@
   "identifier": "com.skullmute.pipdock",
   "build": {
     "beforeDevCommand": "npm run dev",
-    "beforeBuildCommand": "npm run build",
+    "beforeBuildCommand": "npm run build && npm run bundle:cli",
     "devUrl": "http://localhost:1420",
     "frontendDist": "../dist"
   },
@@ -28,6 +28,7 @@
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],
+    "externalBin": ["binaries/pipdock"],
     "icon": ["icons/icon.ico"],
     "copyright": "Copyright (C) 2026 Kokone (poli0981). Licensed under GPL-3.0-only.",
     "category": "DeveloperTool",

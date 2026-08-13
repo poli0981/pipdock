@@ -55,3 +55,6 @@ tauri-signing-private.key*
 
 # Spike tooling venvs (SP-1 needs several uv versions side by side)
 /spikes/.venv*/
+
+# Staged by scripts/bundle-cli.mjs so the installer ships the CLI; rebuilt every bundle.
+src-tauri/binaries/

@@ -59,8 +59,10 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # No separate frontend step: `tauri build` runs `beforeBuildCommand`, which is
-      # `npm run build`. Having both meant vite ran twice per release for no benefit.
+      # No separate frontend or CLI step: `tauri build` runs `beforeBuildCommand`, which is
+      # `npm run build && npm run bundle:cli`. Keeping them there rather than here is what makes a
+      # locally built installer identical to a released one — a bundle that differs by who built
+      # it is how "works on my machine" reaches a release.
       - name: Build and bundle
         # `--locked` is **cargo's** flag, not `tauri build`'s: everything after `--` is passed
         # to the runner. Written the other way round it fails with "unexpected argument
