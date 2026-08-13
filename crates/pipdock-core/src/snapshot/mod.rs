@@ -8,7 +8,7 @@
 //! Layout, per ARCHITECTURE §6:
 //!
 //! ```text
-//! %LOCALAPPDATA%\PipDock\snapshots\<env_hash>\<id>.freeze.txt
+//! %LOCALAPPDATA%\PipDock\data\snapshots\<env_hash>\<id>.freeze.txt
 //!                                            \<id>.meta.json
 //! ```
 

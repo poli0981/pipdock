@@ -92,7 +92,7 @@ From `requires_dist` the core builds the **reverse-dependency graph** used by: h
 - **Metadata on demand:** `GET https://pypi.org/pypi/<name>/json` → summary, latest version, requires-python, license, project URLs. Cached in `meta_cache` with 24 h TTL. Strict HTTPS, no redirects off `pypi.org`.
 - Offline: search still works over the cached index; metadata panel shows a cached/offline badge.
 
-## 6. Storage (`%LOCALAPPDATA%\PipDock\`)
+## 6. Storage (`%LOCALAPPDATA%\PipDock\data\`)
 
 ```text
 config.json          # settings: engine, locale, thresholds, consent {docsHash, timestamp}

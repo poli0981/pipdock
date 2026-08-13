@@ -47,9 +47,26 @@ pub use errors::{Code, PdError, Result};
 pub use model::{Dist, EngineId, OutdatedDist, PkgName, PyEnv, Version};
 
 /// The application data directory under `%LOCALAPPDATA%` (ARCHITECTURE §6).
+///
+/// **`PipDock\data`, not `PipDock`, and the nesting is the point.** Tauri's NSIS per-user
+/// installer writes the program to `$LOCALAPPDATA\{productName}` — the same folder — so the flat
+/// layout put `pipdock-app.exe` and `uninstall.exe` beside `index.db`, `snapshots\` and
+/// `tools\`. SECURITY §8 tells users that deleting the app data folder is a complete reset;
+/// with the two collided, following that advice also uninstalled the application.
+///
+/// Found by installing the first bundle and reading the uninstall entry, and changed while it was
+/// still free to change: no release has ever been published, so there is no on-disk layout in the
+/// world to migrate and **no migration code belongs here**.
 pub const APP_DATA_DIR_NAME: &str = "PipDock";
 
-/// Log retention in `%LOCALAPPDATA%\PipDock\logs\` (ARCHITECTURE §6).
+/// The subdirectory holding everything PipDock writes. See [`APP_DATA_DIR_NAME`].
+///
+/// A separate constant rather than `"PipDock/data"` in one join: a path built from a literal
+/// containing a separator is a path that reads differently depending on the platform's idea of
+/// one, and every comparison against it inherits that.
+pub const APP_DATA_SUBDIR: &str = "data";
+
+/// Log retention in `%LOCALAPPDATA%\PipDock\data\logs\` (ARCHITECTURE §6).
 pub const LOG_RETENTION_DAYS: u32 = 14;
 
 /// Size of the per-plan engine output ring buffer that backs *Report bug*

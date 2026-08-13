@@ -19,7 +19,7 @@ Hard boundaries: **report-only** for deptry and vulture (no auto-removal of code
 The three tools are **never installed into the user's environment**. PipDock maintains its own hidden env:
 
 ```text
-%LOCALAPPDATA%\PipDock\tools\
+%LOCALAPPDATA%\PipDock\data\tools\
 ├─ .venv/                  # created with the newest discovered Python (≥3.10), no upper bound
 ├─ tools-requirements.txt  # the resolved three-tool subset actually installed, LF, no comments
 └─ manifest.json           # installed pin set + hash; mismatch with shipped pins ⇒ re-sync

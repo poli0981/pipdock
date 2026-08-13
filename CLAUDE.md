@@ -91,7 +91,7 @@ findings** and **vulture uses 3**; deptry emits a flat list keyed by *module* to
 **cannot be told which environment to compare against**; ruff's docs URL is keyed by rule **name**.
 
 P2 built the tools venv — `health::sync_tools_venv` fills
-`%LOCALAPPDATA%\PipDock\tools\.venv` from the shipped pins over `pipdock tools sync`, and there is
+`%LOCALAPPDATA%\PipDock\data\tools\.venv` from the shipped pins over `pipdock tools sync`, and there is
 no `TOOLS_PYTHON_MAX` because deptry ships an abi3 wheel (ROADMAP's premise for that const was
 wrong; the record says why). P1 closed **P0-10**: pip's version is on every Environments row and
 *Upgrade pip* is 2 clicks. **Next is P3** (the three runners + `HealthReport`), then P4 (the Health

@@ -401,7 +401,7 @@ impl LogRing {
 
 /// Everything a command may need that outlives one call.
 pub struct AppState {
-    /// `%LOCALAPPDATA%\PipDock`.
+    /// `%LOCALAPPDATA%\PipDock\data`.
     pub app_data: PathBuf,
     /// Settings, pins, recents and the package index.
     pub store: tokio::sync::Mutex<Store>,

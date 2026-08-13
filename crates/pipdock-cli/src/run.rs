@@ -389,7 +389,7 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
     })
 }
 
-/// The app data root, `%LOCALAPPDATA%\PipDock` (ARCHITECTURE §6).
+/// The app data root, `%LOCALAPPDATA%\PipDock\data` (ARCHITECTURE §6).
 ///
 /// Re-exported rather than computed here. The CLI carried a byte-for-byte copy of the core's
 /// version, which is the same failure `KEY_ENGINE` was: two functions deriving one path are one
