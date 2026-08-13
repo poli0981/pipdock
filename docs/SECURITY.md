@@ -28,6 +28,8 @@ Environments carrying an `EXTERNALLY-MANAGED` marker are **blocked by default** 
 
 `pypi.org` is the **only** host PipDock itself connects to. It does not update itself (§5), so it has no reason to reach `github.com` — the legal gate and the bug-report deep link hand a URL to the user's browser rather than fetching anything. The webview cannot reach either: `connect-src` in `tauri.conf.json` allows only `'self'` and the IPC origin, so all network access goes through Rust.
 
+**Two hosts may be handed to the browser, and the allowlist is the record of why.** `capabilities/external-links.json` scopes `opener:allow-open-url` to `https://github.com/*` and, since Phase 3 · P4, `https://docs.astral.sh/*` — every ruff finding carries its own rule page and CODE-HEALTH-SPEC §6 as amended requires using ruff's `url` rather than constructing one. Neither is a connection PipDock makes; both are URLs it asks the OS to open. The widening is recorded here rather than only in `capabilities/` because an allowlist entry is a change to this document's subject matter, not a config detail — and because the failure mode of *not* widening it is silent: the promise rejects, nothing opens, and nothing anywhere says so.
+
 No telemetry, no crash reporting endpoints, no analytics. TLS failures surface as PD-NET-002 and the app **never** offers to disable verification.
 
 ## 5. Update integrity (PipDock itself)

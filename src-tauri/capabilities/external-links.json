@@ -1,12 +1,12 @@
 {
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "external-links",
-  "description": "Hand a GitHub URL to the user's browser. The legal gate links to the five documents (UI-SPEC §4), the summary sheet's Report-bug deep link opens a prefilled issue (ERROR-CATALOG §4), and PD-SYS-001 links to the long-paths help. The webview cannot do this itself: connect-src in tauri.conf.json allows only 'self' and the IPC origin. SCOPED ON PURPOSE — an unscoped opener is a launch-anything primitive reachable from any injected string, which is the same reasoning SECURITY §2 applies to argv arrays.",
+  "description": "Hand a GitHub or ruff-docs URL to the user's browser. GitHub: the legal gate links to the five documents (UI-SPEC §4), the summary sheet's Report-bug deep link opens a prefilled issue (ERROR-CATALOG §4), PD-SYS-001 links to the long-paths help, and vulture's whitelist help lives there too. docs.astral.sh: every ruff finding carries its own rule page, which CODE-HEALTH-SPEC §6 as amended says is keyed by rule NAME and must be used rather than constructed. The webview cannot do this itself: connect-src in tauri.conf.json allows only 'self' and the IPC origin. STILL SCOPED ON PURPOSE — an unscoped opener is a launch-anything primitive reachable from any injected string, which is the same reasoning SECURITY §2 applies to argv arrays. Two hosts is not the same as any host, and the second was added because a feature failed silently without it, not to make room.",
   "windows": ["main"],
   "permissions": [
     {
       "identifier": "opener:allow-open-url",
-      "allow": [{ "url": "https://github.com/*" }]
+      "allow": [{ "url": "https://github.com/*" }, { "url": "https://docs.astral.sh/*" }]
     }
   ]
 }
