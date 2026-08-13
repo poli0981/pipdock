@@ -593,11 +593,36 @@ collect and checksum steps were then run verbatim against those artifacts and pr
    user's system: ship the CLI beside the GUI and leave `PATH` alone; ship it and have NSIS extend
    `PATH`; or publish it as a separate archive on the release.
 
-**First-run behaviour was verified against a throwaway app-data root** (`LOCALAPPDATA` redirected):
-the app creates `PipDock\index.db` from nothing and spawns a WebView2 host, so the packaged
-frontend loads. Note the honest limit — **this machine has run PipDock before**, so isolating the
-app-data root approximates the "never run PipDock" criterion rather than meeting it. A genuinely
-clean machine is still owed, and so is running the installer itself: nothing here was installed.
+**The installer was then run for real, and it found a third defect.** Tauri's NSIS per-user
+installer writes to `$LOCALAPPDATA\{productName}` — the same folder `store::default_app_data()`
+used — so `pipdock-app.exe`, `pipdock.exe` and `uninstall.exe` landed beside `index.db`,
+`snapshots\` and `tools\`. SECURITY §8 tells users that deleting the app data folder is a
+complete reset; collided, that advice uninstalled the application. The data root moved to
+`%LOCALAPPDATA%\PipDock\data\`, which was free to change because no release has ever been
+published — and therefore carries **no migration code**, which would have been dead from its first
+commit.
+
+**Uninstall was tested rather than assumed**, with a backup taken first that turned out not to be
+needed: it removes its own three binaries, the Start-menu shortcut and the registry entry, and
+leaves the data directory untouched.
+
+**Verified after reinstalling:** the install root holds `data\` plus three binaries; the installed
+`pipdock.exe --version` answers, `env list` works, and `tools status` resolves
+`…\PipDock\data\tools`. First-run behaviour had already been checked against a throwaway
+app-data root, where the app creates its store from nothing and spawns a WebView2 host.
+
+**Honest limits.** This machine has run PipDock before, so isolating the app-data root approximates
+the "never run PipDock" criterion rather than meeting it — a genuinely clean machine is still owed.
+SmartScreen was **not** exercised: the installer was run scripted, and SmartScreen is an Explorer
+behaviour. And the three click-through items P4/P5 left owed — the OS folder picker, a ruff rule
+link, the fix dialog — are **still owed**: the screenshot tooling resolves the installed app to a
+virtualized sandbox path and masks its window, so it could not be driven here. All four need a
+human at the keyboard.
+
+**Charter progress (TESTING §4).** Non-ASCII project path (`E:\sp5\dự án tiếng việt`) runs all
+three Code Health tools with the path intact. Scale, release build: `pipdock list` is **1.1 s**
+over a 145-package venv and **1.5 s** over a 352-package system Python. Still to do: the VI locale
+sweep of the mutation dialogs, corporate-proxy simulation, and cancel mid-Phase-B.
 
 ## Post-1.0 (P1 wave)
 
