@@ -59,16 +59,16 @@ jobs:
       - name: Install frontend dependencies
         run: npm ci
 
-      # No separate frontend or CLI step: `tauri build` runs `beforeBuildCommand`, which is
-      # `npm run build && npm run bundle:cli`. Keeping them there rather than here is what makes a
-      # locally built installer identical to a released one — a bundle that differs by who built
-      # it is how "works on my machine" reaches a release.
+      # One script owns the recipe (`package.json` → `bundle`), so the workflow cannot drift
+      # from what a developer runs locally. It stages the CLI sidecar, then bundles with the
+      # overlay config that declares it.
+      #
+      # **The overlay exists because `tauri-build` validates `externalBin` at build-script time.**
+      # Declaring the sidecar in `tauri.conf.json` made plain `cargo clippy` and `cargo test` fail
+      # in a fresh clone with "resource path ... doesn't exist" — a bundling concern leaking into
+      # every compile. `--config` merges it in only when bundling.
       - name: Build and bundle
-        # `--locked` is **cargo's** flag, not `tauri build`'s: everything after `--` is passed
-        # to the runner. Written the other way round it fails with "unexpected argument
-        # '--locked' found" before a single crate is compiled — and since no `v*` tag has ever
-        # been pushed, this workflow had never run to find out.
-        run: npx tauri build --bundles nsis,msi -- --locked
+        run: npm run bundle
 
       - name: Collect artifacts
         shell: pwsh

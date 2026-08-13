@@ -17,6 +17,7 @@
     "dev": "vite",
     "build": "vite build",
     "bundle:cli": "node scripts/bundle-cli.mjs",
+    "bundle": "npm run bundle:cli && tauri build --bundles nsis,msi --config src-tauri/tauri.bundle.conf.json -- --locked",
     "preview": "vite preview",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
