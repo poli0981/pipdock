@@ -84,11 +84,15 @@ export function PdEnvDetail() {
         </div>
       ) : null}
 
-      {snapshotsLoading === 'loading' ? (
-        <p aria-live="polite" className="mt-4 text-data text-text-dim">
-          {t('snapshots.loading')}
-        </p>
-      ) : null}
+      {/* **One live region for the screen**, not one per loading state. Two polite regions on the
+          same screen serialize in an order neither of them controls, so a reader can hear the
+          older message after the newer one. This one covers both waits; the snapshot list and a
+          diff are never loading at the same moment, because a diff needs a selection from the
+          list. */}
+      <p aria-live="polite" className="mt-4 text-data text-text-dim">
+        {snapshotsLoading === 'loading' ? t('snapshots.loading') : null}
+        {diffLoading === 'loading' ? t('snapshots.diffing') : null}
+      </p>
 
       {snapshotsLoading === 'ready' && snapshots.length === 0 ? (
         <PdEmptyState message={t('snapshots.empty')} hint={t('snapshots.emptyHint')} />
@@ -105,11 +109,7 @@ export function PdEnvDetail() {
 
       {selectedSnapshot !== null && usable ? (
         <div className="mt-6 border-t border-border pt-4">
-          {diffLoading === 'loading' ? (
-            <p aria-live="polite" className="text-data text-text-dim">
-              {t('snapshots.diffing')}
-            </p>
-          ) : null}
+
 
           {diff !== null ? (
             <>
