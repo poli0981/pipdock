@@ -100,12 +100,27 @@ pub struct EnvRow {
     /// `hidden_user_site`). It is not "unknown".
     #[serde(skip_serializing_if = "Option::is_none")]
     pub pip_version: Option<String>,
+    /// The project folder Code Health last ran in for this environment (CODE-HEALTH-SPEC §3).
+    ///
+    /// Carried on the row for `pip_version`'s reason — the alternative is a command whose entire
+    /// job is to return one string the caller is about to be handed anyway. `None` means Health
+    /// has never run here, which is what makes the first Run cost one extra click.
+    ///
+    /// Read out of the store **before** the probe loop and joined afterwards: `Store` is not
+    /// `Sync`, so holding the guard across `envs::probe` does not even compile at the command
+    /// boundary — the good kind of enforcement.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub health_project: Option<String>,
     /// Present when the probe failed; the row renders as unusable with this code.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<WireError>,
 }
 
-async fn probe_row(path: std::path::PathBuf, source: EnvSource) -> EnvRow {
+async fn probe_row(
+    path: std::path::PathBuf,
+    source: EnvSource,
+    health_project: Option<String>,
+) -> EnvRow {
     let env_hash = envs::env_hash(&path);
     let interpreter = path.display().to_string();
     match envs::probe(&path, source).await {
@@ -115,6 +130,7 @@ async fn probe_row(path: std::path::PathBuf, source: EnvSource) -> EnvRow {
             env_hash,
             packages: Some(probed.dists.len()),
             pip_version: pip_version_of(&probed.dists),
+            health_project,
             env: Some(probed.env),
             error: None,
         },
@@ -125,6 +141,9 @@ async fn probe_row(path: std::path::PathBuf, source: EnvSource) -> EnvRow {
             env: None,
             packages: None,
             pip_version: None,
+            // Kept on a failed row too. The probe failing says nothing about where Health ran,
+            // and dropping it would make a transiently broken interpreter forget the folder.
+            health_project,
             error: Some(e.into()),
         },
     }
@@ -146,7 +165,10 @@ fn pip_version_of(dists: &[pipdock_core::Dist]) -> Option<String> {
 /// # Errors
 /// Never fails as a whole — a probe failure is reported on its own row.
 #[tauri::command]
-pub async fn env_scan(app: tauri::AppHandle) -> Wire<Vec<EnvRow>> {
+pub async fn env_scan(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+) -> Wire<Vec<EnvRow>> {
     let emitter = app.clone();
     let candidates = envs::scan_reporting(&move |progress: ScanProgress| {
         // A UI that stopped listening is not a reason to abandon the scan.
@@ -154,9 +176,30 @@ pub async fn env_scan(app: tauri::AppHandle) -> Wire<Vec<EnvRow>> {
     })
     .await;
 
+    // Every remembered folder, read in one pass with the guard taken and dropped before the first
+    // probe. One query per row inside the loop would hold the store across N subprocess spawns.
+    let mut folders: std::collections::HashMap<String, String> = {
+        let store = state.store.lock().await;
+        candidates
+            .iter()
+            .filter_map(|c| {
+                let hash = envs::env_hash(&c.path);
+                // A store read failing is not a reason to fail discovery: the cost is a Health
+                // screen that asks for the folder again, and the alternative is no Environments
+                // screen at all.
+                store
+                    .health_project(&hash)
+                    .ok()
+                    .flatten()
+                    .map(|f| (hash, f))
+            })
+            .collect()
+    };
+
     let mut rows = Vec::with_capacity(candidates.len());
     for candidate in candidates {
-        rows.push(probe_row(candidate.path, candidate.source).await);
+        let folder = folders.remove(&envs::env_hash(&candidate.path));
+        rows.push(probe_row(candidate.path, candidate.source, folder).await);
     }
     Ok(rows)
 }
@@ -165,22 +208,46 @@ pub async fn env_scan(app: tauri::AppHandle) -> Wire<Vec<EnvRow>> {
 ///
 /// The second use is what P0-10 needs: after `pip_upgrade` the Environments row must show the new
 /// version without a full rescan, and one probe is the cheapest honest way to get it. That makes
-/// carrying `pip_version` here load-bearing rather than tidy — a row refreshed through a path that
-/// omitted it would blank the field it was refreshed to update.
+/// carrying **every** per-row field here load-bearing rather than tidy — a row refreshed through a
+/// path that omitted one would blank the field, and `upgradePip` replaces the row wholesale.
+///
+/// That warning was written about `pip_version` and then not applied twice over:
+///
+/// * `health_project` is read here for the same reason, or *Upgrade pip* makes the Health screen
+///   forget where it was pointed.
+/// * **`source` used to be hardcoded `Manual`**, so refreshing a registry-discovered interpreter
+///   relabelled it *Added manually* in the chip at `PdEnvironments.tsx:31` — and, because
+///   `PyEnv` carries the source too, handed that relabelled env to every later `pkg_list`. It is
+///   now a parameter: `None` is the *Browse…* path, which really is manual; a refresh passes the
+///   source the row already had.
 ///
 /// # Errors
 /// `PD-ENV-001` when there is no usable interpreter there, `PD-ENV-003` when the probe output
 /// cannot be read.
 #[tauri::command]
-pub async fn env_probe(interpreter: String) -> Wire<EnvRow> {
+pub async fn env_probe(
+    state: tauri::State<'_, AppState>,
+    interpreter: String,
+    source: Option<EnvSource>,
+) -> Wire<EnvRow> {
     let path = std::path::PathBuf::from(&interpreter);
-    let probed = envs::probe(&path, EnvSource::Manual).await?;
+    let env_hash = envs::env_hash(&path);
+    let source = source.unwrap_or(EnvSource::Manual);
+    let folder = {
+        let store = state.store.lock().await;
+        store.health_project(&env_hash).ok().flatten()
+    };
+    // Not `probe_row`, despite the shape: that one folds a probe failure onto the row because
+    // `env_scan` must not let one broken interpreter hide the rest. Here the caller asked about
+    // exactly this interpreter, so the failure is the answer and `?` is right.
+    let probed = envs::probe(&path, source).await?;
     Ok(EnvRow {
         interpreter,
-        source: EnvSource::Manual,
-        env_hash: envs::env_hash(&path),
+        source,
+        env_hash,
         packages: Some(probed.dists.len()),
         pip_version: pip_version_of(&probed.dists),
+        health_project: folder,
         env: Some(probed.env),
         error: None,
     })
@@ -839,6 +906,21 @@ pub async fn health_run(
 
     match outcome {
         Ok(report) => {
+            // Remembered here rather than through a command of its own, so `EnvRow.healthProject`
+            // has something to carry on the next scan and the second Run costs one click fewer.
+            // Mirrors the CLI, which writes at the same point (`run::health`).
+            //
+            // Deliberately not `?`. The report the user asked for is in hand and P5 depends on it
+            // being parked; failing the whole command over a bookkeeping write would throw away
+            // findings that already cost three subprocesses.
+            {
+                let store = state.store.lock().await;
+                let _ = store.set_health_project(
+                    &envs::env_hash(&env.interpreter),
+                    &project.display().to_string(),
+                    &jiff::Timestamp::now().to_string(),
+                );
+            }
             // Parked rather than dropped: P5 checks its consent against this exact report, and the
             // folder it ran in is what a fix would rewrite.
             state

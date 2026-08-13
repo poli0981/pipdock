@@ -133,6 +133,14 @@ export interface EnvRow {
    * user-site install), not "not yet known".
    */
   pipVersion?: string
+  /**
+   * The project folder Code Health last ran in for this environment.
+   *
+   * Absent means Health has never run here — which is a real state the screen renders as *choose a
+   * folder*, not "not yet known". Carried on the row rather than fetched: the same trade `pipVersion`
+   * makes, and the reason P4 needed no command of its own.
+   */
+  healthProject?: string
   error?: PdError
 }
 
@@ -170,8 +178,16 @@ export const appInfo = (): Promise<AppInfo> => invoke('app_info')
 
 export const envScan = (): Promise<EnvRow[]> => invoke('env_scan')
 
-export const envProbe = (interpreter: string): Promise<EnvRow> =>
-  invoke('env_probe', { interpreter })
+/**
+ * Re-probe one interpreter and rebuild its row.
+ *
+ * **Pass `source` when refreshing an existing row.** Omitting it means *Browse…*, and the row comes
+ * back labelled `manual` — which is what used to happen to every row `upgradePip` refreshed,
+ * silently relabelling a registry-discovered Python in the chip and in the `PyEnv` handed to every
+ * later `pkgList`.
+ */
+export const envProbe = (interpreter: string, source?: EnvSource): Promise<EnvRow> =>
+  invoke('env_probe', source === undefined ? { interpreter } : { interpreter, source })
 
 /**
  * Everything installed in `env` — the Installed table.

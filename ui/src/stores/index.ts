@@ -316,7 +316,11 @@ export const useEnvStore = create<EnvState>((set, get) => ({
       // A whole new array, not a mutated element: zustand compares references, so writing
       // `row.pipVersion = …` in place would leave the screen showing the old number until some
       // unrelated field happened to change.
-      const fresh = await envProbe(interpreter)
+      //
+      // The row replaces wholesale, so the probe has to reproduce *every* field the row carried.
+      // `row.source` is passed for that reason: without it the refreshed row came back `manual`,
+      // and a registry-discovered interpreter changed its chip because its pip was upgraded.
+      const fresh = await envProbe(interpreter, row.source)
       set((state) => ({
         rows: state.rows.map((r) => (r.interpreter === interpreter ? fresh : r)),
         upgradingPip: null,
