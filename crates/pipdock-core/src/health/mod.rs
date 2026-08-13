@@ -408,7 +408,7 @@ fn validated_version(raw: &str) -> Result<Version> {
 ///
 /// * `tools_dir` is passed, not derived from `store::default_app_data()` inside — the same rule
 ///   `index::metadata`/`refresh` follow. Without it there is no way to run a sync in a test or in
-///   CI without clobbering the developer's real `%LOCALAPPDATA%\PipDock\tools`.
+///   CI without clobbering the developer's real `%LOCALAPPDATA%\PipDock\data\tools`.
 /// * `base_python` is taken, not discovered. Discovery is [`choose_tools_python`] over
 ///   `envs::scan()`, which spawns four subprocesses; a sync is not the place to hide a
 ///   machine-wide sweep, and passing it lets `--python` force a specific interpreter.

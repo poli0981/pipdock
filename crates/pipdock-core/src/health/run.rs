@@ -80,7 +80,7 @@ pub fn run_steps(opts: &RunOptions) -> usize {
 /// Run Code Health over `project` for `env`.
 ///
 /// * `tools_dir` — passed, not derived, for the reason `sync_tools_venv` documents: a test or CI
-///   run must not clobber the developer's real `%LOCALAPPDATA%\PipDock\tools`.
+///   run must not clobber the developer's real `%LOCALAPPDATA%\PipDock\data\tools`.
 /// * `project` — each tool's CWD, via the `Command::cwd` added for exactly this.
 /// * `env` — recorded on the report so a stale one can be told from a current one. It is
 ///   deliberately **not** passed to any tool; see below.
@@ -253,7 +253,7 @@ async fn run_one(
         Err(e) => Err(e),
     };
 
-    // Cleaned on both paths: `%LOCALAPPDATA%\PipDock` is what SECURITY §8 promises a delete
+    // Cleaned on both paths: `%LOCALAPPDATA%\PipDock\data` is what SECURITY §8 promises a delete
     // resets, and leaving a report per run turns that into a slow leak.
     let _ = std::fs::remove_file(&report_path);
     stdout

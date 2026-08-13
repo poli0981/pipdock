@@ -1,4 +1,4 @@
-//! The local SQLite store, `%LOCALAPPDATA%\PipDock\index.db` (ARCHITECTURE §6).
+//! The local SQLite store, `%LOCALAPPDATA%\PipDock\data\index.db` (ARCHITECTURE §6).
 //!
 //! One database holds everything that outlives a session: the PyPI name index, the metadata
 //! cache, the recent-environments list and the pin store. They share a file because they share a
@@ -298,13 +298,16 @@ impl Store {
     }
 }
 
-/// Default app data root, `%LOCALAPPDATA%\PipDock` (ARCHITECTURE §6).
+/// Default app data root, `%LOCALAPPDATA%\PipDock\data` (ARCHITECTURE §6).
+///
+/// Nested under the install directory rather than beside the binaries — see `APP_DATA_DIR_NAME`.
 #[must_use]
 pub fn default_app_data() -> PathBuf {
     std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(std::env::temp_dir)
         .join(crate::APP_DATA_DIR_NAME)
+        .join(crate::APP_DATA_SUBDIR)
 }
 
 #[cfg(test)]
