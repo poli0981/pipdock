@@ -11,9 +11,10 @@ import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PdPlanPanel } from '@/screens/PdPlanPanel'
-import type { ExecutionSummary } from '@/ipc'
+import type { ExecutionOutcome, ExecutionSummary, SnapshotMeta } from '@/ipc'
 import { usePlanStore } from '@/stores/plan'
 import { resetStore } from '@/test/stores'
+import snapshotFixture from '@/test/fixtures/snapshot_list.json'
 import summaryFixture from '@/test/fixtures/execution_summary.json'
 
 vi.mock('@/ipc', async () => {
@@ -23,19 +24,14 @@ vi.mock('@/ipc', async () => {
 
 const SUMMARY = summaryFixture as ExecutionSummary
 
-const OUTCOME = {
+const OUTCOME: ExecutionOutcome = {
   summary: SUMMARY,
-  snapshot: {
-    id: '2026-08-13T10-00-00Z',
-    createdAt: '2026-08-13T10:00:00Z',
-    engine: 'pip' as const,
-    trigger: { plan: { planId: SUMMARY.planId } },
-    packageCount: 6,
-    envHash: 'aaa',
-    interpreter: 'C:\\venv\\Scripts\\python.exe',
-    pythonVersion: '3.12.4',
-  },
+  // From the committed fixture rather than hand-written. A literal here needs every field of
+  // `SnapshotMeta` and invents none — mine was missing `appVersion` and had three fields that do
+  // not exist, which `npm test` happily accepted and `tsc` caught in CI.
+  snapshot: (snapshotFixture as SnapshotMeta[])[0]!,
 }
+
 
 describe('the summary phase', () => {
   beforeEach(() => {

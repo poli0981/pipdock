@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1, M2 and Phase 3 complete; Phase 4 (RC → v1.0) next**.
+Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1, M2 and Phase 3 complete; Phase 4 in progress — the pipeline builds and installs, the RC tag is the owner's call**.
 
 ## Read the docs before changing anything
 
@@ -169,6 +169,18 @@ Things worth knowing before you change any of it:
   inside one was `tabIndex={-1}`, so *Pin* and *Remove* were mouse-only, which is a WCAG 2.1.1
   failure. The ARIA grid answer is a roving tabindex (`←`/`→`, `Esc` back out), and P6 added it.
   `Enter` on a row is the **non-destructive** primary — pin, never uninstall.
+
+- **The seam between a tested component and its untested parent is where bugs live.**
+  `PdSummarySheet` had tests; `PdPlanPanel` had none; both rendered `plan.done`, so a successful
+  run showed *Back to packages* twice and every suite stayed green. Found by a human using the
+  installed build. When adding a component test, ask what renders it.
+
+- **Building and installing are their own test tier, and nothing else substitutes.** The first
+  bundle ever produced exposed three defects in one afternoon: `release.yml` could not have run
+  (`--locked` is cargo's flag and goes after `--`), the installers shipped no `pipdock.exe` at all,
+  and the program installed *into* the data directory — making SECURITY §8's "delete the folder to
+  reset" advice uninstall the app. None was visible in a diff. See `docs/ROADMAP.md`'s Phase 4
+  section for the layout rules that came out of it.
 
 - **Run it, don't just test it.** Every unplanned bug in Stage 1 *and* Stage 2 came from executing
   against a real environment, a real runner or a real browser — never from reading code or from a
