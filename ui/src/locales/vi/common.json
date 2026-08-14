@@ -162,7 +162,13 @@
     "empty": "môi trường này chưa có gói nào được ghim",
     "emptyHint": "Ghim một gói từ bảng Đã cài để các lần cập nhật hàng loạt bỏ qua nó.",
     "reasonPlaceholder": "Vì sao ghim gói này?",
-    "reasonFor": "Lý do ghim {{pkg}}"
+    "reasonFor": "Lý do ghim {{pkg}}",
+    "suggestTitle": "Nên cân nhắc ghim",
+    "suggestIntro": "Rất nhiều gói bạn đang cài phụ thuộc vào những gói này, nên một lần cập nhật hàng loạt dễ làm xáo trộn thứ gì đó. Ghim sẽ giữ chúng ngoài Chọn tất cả — bạn vẫn có thể cập nhật từng gói một.",
+    "suggest_other": "{{pkg}} — {{count}} gói phụ thuộc vào nó.",
+    "suggestAccept": "Ghim",
+    "suggestAcceptFor": "Ghim {{pkg}}",
+    "suggestReason_other": "{{count}} gói đã phụ thuộc vào nó"
   },
   "snapshots": {
     "title": "Ảnh chụp",
@@ -289,6 +295,8 @@
     "engineDetail": "Bộ giải phụ thuộc mà PipDock điều khiển. Cả hai đều được hỗ trợ; uv nhanh hơn, pip thì luôn có sẵn.",
     "locale": "Ngôn ngữ",
     "localeSystem": "Theo hệ thống",
+    "pinThreshold": "Gợi ý ghim khi đạt",
+    "pinThresholdDetail": "Cần bao nhiêu gói khác phụ thuộc vào một gói thì màn hình Ghim mới gợi ý ghim nó. Đặt 0 để tắt gợi ý.",
     "override": "Cho phép môi trường do hệ thống quản lý",
     "overrideDetail": "PEP 668 đánh dấu một số bản Python là do hệ điều hành quản lý. Cài vào đó có thể làm hỏng công cụ hệ thống, và không có cách hoàn tác nào ngoài ảnh chụp. Hãy để tắt trừ khi bạn biết rõ vì sao cần bật.",
     "saved": "Đã lưu"

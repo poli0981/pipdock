@@ -169,7 +169,15 @@
     "empty": "no pins in this environment",
     "emptyHint": "Pin a package from the Installed table to keep bulk updates away from it.",
     "reasonPlaceholder": "Why is this pinned?",
-    "reasonFor": "Reason for pinning {{pkg}}"
+    "reasonFor": "Reason for pinning {{pkg}}",
+    "suggestTitle": "Worth pinning",
+    "suggestIntro": "These are depended on by a lot of what you have installed, so a bulk update is more likely to disturb something. Pinning keeps them out of Select all — you can still update them one at a time.",
+    "suggest_one": "{{pkg}} — {{count}} package depends on it.",
+    "suggest_other": "{{pkg}} — {{count}} packages depend on it.",
+    "suggestAccept": "Pin",
+    "suggestAcceptFor": "Pin {{pkg}}",
+    "suggestReason_one": "{{count}} package depended on it",
+    "suggestReason_other": "{{count}} packages depended on it"
   },
   "snapshots": {
     "title": "Snapshots",
@@ -317,6 +325,8 @@
     "engineDetail": "Which resolver PipDock drives. Both are supported; uv is faster, pip is always present.",
     "locale": "Language",
     "localeSystem": "Follow the system",
+    "pinThreshold": "Suggest pinning at",
+    "pinThresholdDetail": "How many other packages must depend on something before the Pins screen suggests pinning it. Zero turns the suggestions off.",
     "override": "Allow externally managed environments",
     "overrideDetail": "PEP 668 marks some Pythons as managed by the operating system. Installing into one can break system tools, and there is no undo beyond a snapshot. Leave this off unless you know why you need it.",
     "saved": "Saved"

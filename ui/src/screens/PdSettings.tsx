@@ -20,8 +20,17 @@ const ENGINES = ['pip', 'uv'] as const
 
 export function PdSettings() {
   const { t, i18n } = useTranslation()
-  const { engine, allowExternallyManaged, locale, loading, error, load, save, setLocale } =
-    useSettingsStore()
+  const {
+    engine,
+    allowExternallyManaged,
+    pinSuggestThreshold,
+    locale,
+    loading,
+    error,
+    load,
+    save,
+    setLocale,
+  } = useSettingsStore()
 
   useEffect(() => {
     void load()
@@ -81,6 +90,29 @@ export function PdSettings() {
             </label>
           ))}
         </div>
+      </fieldset>
+
+      <fieldset className="mt-6" disabled={loading}>
+        <legend className="text-text-dim">{t('settings.pinThreshold')}</legend>
+        <p className="mt-1 max-w-2xl text-data text-text-dim">{t('settings.pinThresholdDetail')}</p>
+        <input
+          type="number"
+          min={0}
+          max={999}
+          step={1}
+          value={pinSuggestThreshold}
+          aria-label={t('settings.pinThreshold')}
+          onChange={(e) => {
+            // The first number input in the app, so the rule is set here: **reject at the
+            // boundary, never store junk.** `<input type="number">` reports `''` for anything it
+            // cannot parse — including `abc` and a lone `-` — and coercing that would write 0,
+            // which is a meaningful setting ("off") the user did not ask for.
+            const next = Number.parseInt(e.target.value, 10)
+            if (!Number.isFinite(next) || next < 0 || next > 999) return
+            void save({ pinSuggestThreshold: next })
+          }}
+          className="mt-2 w-20 rounded-pd border border-border bg-bg px-2 py-0.5 font-mono text-data"
+        />
       </fieldset>
 
       <fieldset className="mt-6" disabled={loading}>

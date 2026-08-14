@@ -165,6 +165,8 @@ export interface Settings {
   locale: string | null
   /** SECURITY §3: off by default, never inferred. */
   allowExternallyManaged: boolean
+  /** How many dependents qualify a package for a pin suggestion (PRD P1-2). Zero is off. */
+  pinSuggestThreshold: number
 }
 
 /** A recorded acceptance of the legal documents. */
