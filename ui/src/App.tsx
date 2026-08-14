@@ -78,13 +78,23 @@ export function App() {
     heading.focus()
   }, [nav])
 
-  // UI-SPEC §8: Ctrl+1..8 select tabs, positionally over NAV_KEYS.
+  // UI-SPEC §8: Ctrl+1..9 select tabs, positionally over NAV_KEYS.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
+      // Nothing is navigable before the documents are accepted. This effect is registered *above*
+      // the `accepted` early return, so without the check the shortcuts stayed live behind the
+      // modal and the user could change tabs behind a document they were being asked to agree to.
+      if (accepted !== true) return
       // A native <dialog> makes the rest of the document inert to pointers and to focus, but a
       // window-level keydown listener is neither — so without this, Ctrl+3 changes the tab
       // underneath an open guard dialog and the user answers it about a screen they left.
-      if (guardOpen) return
+      //
+      // `PANEL_PHASES` is the same rule for the panel. UI-SPEC §8 has claimed since S3 that the
+      // shortcuts already refused there; they did not. `guardOpen` and `PANEL_PHASES` are
+      // *disjoint* — `plan.ts` excludes `guard` from the set on purpose — so guarding on one
+      // guarded neither. The sidebar was disabled and the panel kept rendering, so nothing looked
+      // wrong until the plan finished and dropped the user on a tab they never chose.
+      if (guardOpen || PANEL_PHASES.has(planPhase)) return
       // UI-SPEC §8: `/` focuses search. Guarded against text fields, or it would be impossible to
       // type a slash into a version specifier.
       const target = e.target as HTMLElement | null
@@ -108,7 +118,7 @@ export function App() {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [setNav, guardOpen])
+  }, [setNav, guardOpen, planPhase, accepted])
 
   // Nothing is usable before the documents are accepted, so the gate replaces the shell rather
   // than overlaying a working app (UI-SPEC §4).

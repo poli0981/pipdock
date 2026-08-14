@@ -12,11 +12,11 @@
  * against a tool this project does not control.
  */
 
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { useTranslation } from 'react-i18next'
 
 import { PdBadge } from '@/components/PdBadge'
 import { PdEmptyState } from '@/components/PdEmptyState'
+import { useOpenExternal } from '@/components/useOpenExternal'
 import { HEALTH_TABS, tabState, type HealthTab, type RuffFileGroup } from '@/stores'
 import type { DeptryIssue, HealthReport, RuffFinding, VultureFinding } from '@/ipc'
 
@@ -138,28 +138,41 @@ function VultureRow({ finding }: { finding: VultureFinding }) {
 
 function RuffRow({ finding }: { finding: RuffFinding }) {
   const { t } = useTranslation()
+  const { open, failed } = useOpenExternal()
   // `code` is optional because the field is not ours; a syntax error carries `invalid-syntax`
   // rather than null, so this fallback is format insurance, not a branch real input reaches.
   const code = finding.code ?? finding.name
+  // Hoisted so the narrowing survives into the click handler. `finding.url` is a mutable property,
+  // so TypeScript re-widens it inside the closure — which is what the old `?? ''` was papering
+  // over, handing the opener an empty string it could only ever reject.
+  const url = finding.url
   return (
     <li className="flex flex-wrap items-baseline gap-2 border-b border-border py-1.5">
       <code className="font-mono text-data text-text-dim">{`${finding.row}:${finding.column}`}</code>
-      {finding.url == null ? (
+      {url == null ? (
         <code className="font-mono text-data text-text">{code}</code>
       ) : (
         <button
           type="button"
           className="font-mono text-data text-accent-dim underline-offset-2 hover:underline"
           onClick={() => {
-            // Fire-and-forget, exactly as `PdErrorRow` opens its links. The URL is ruff's own —
-            // constructed ones 404, because the rule page is keyed by name and not by code.
-            void openUrl(finding.url ?? '')
+            // The URL is ruff's own — constructed ones 404, because the rule page is keyed by name
+            // and not by code. It is also the **only** URL in the application that comes out of a
+            // third-party tool's output, which is exactly what `https://docs.astral.sh/*` in the
+            // opener capability is scoped against. So the rejection is a real branch here, not
+            // defensive noise: report it on the row rather than dropping it.
+            open(url)
           }}
         >
           {code}
         </button>
       )}
       <span className="min-w-0 flex-1 text-data text-text">{finding.message}</span>
+      {failed ? (
+        <span className="text-data text-warn" role="alert">
+          {t('actions.openFailed')}
+        </span>
+      ) : null}
       {finding.fix === 'safe' ? <PdBadge tone="accent" label={t('health.fixableBadge')} /> : null}
       {finding.fix === 'unsafe' ? <PdBadge tone="dim" label={t('health.unsafeBadge')} /> : null}
     </li>
@@ -177,6 +190,7 @@ export function PdHealthReport({
   rowsShown = RUFF_ROWS_SHOWN,
 }: PdHealthReportProps) {
   const { t } = useTranslation()
+  const { open, failed: openFailed } = useOpenExternal()
   const found = counts(report)
   const state = tabState(report, tab, found[tab])
 
@@ -268,11 +282,16 @@ export function PdHealthReport({
                 type="button"
                 className="text-accent-dim underline-offset-2 hover:underline"
                 onClick={() => {
-                  void openUrl(VULTURE_WHITELIST)
+                  open(VULTURE_WHITELIST)
                 }}
               >
                 {t('health.vultureWhitelist')}
               </button>
+              {openFailed ? (
+                <span className="ml-2 text-warn" role="alert">
+                  {t('actions.openFailed')}
+                </span>
+              ) : null}
             </p>
             <ul>
               {report.vulture.map((finding) => (

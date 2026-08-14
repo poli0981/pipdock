@@ -40,7 +40,8 @@
     "open": "Open",
     "use": "Use",
     "retry": "Retry",
-    "openLogs": "Open logs folder"
+    "openLogs": "Open logs folder",
+    "openFailed": "Could not open that link in your browser."
   },
   "env": {
     "partialListing": "Packages installed for your user account are not shown here.",

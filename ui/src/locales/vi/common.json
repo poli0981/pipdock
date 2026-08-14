@@ -39,7 +39,8 @@
     "open": "Mở",
     "use": "Dùng",
     "retry": "Thử lại",
-    "openLogs": "Mở thư mục nhật ký"
+    "openLogs": "Mở thư mục nhật ký",
+    "openFailed": "Không mở được liên kết đó trong trình duyệt của bạn."
   },
   "env": {
     "partialListing": "Các gói cài riêng cho tài khoản của bạn không hiển thị ở đây.",
