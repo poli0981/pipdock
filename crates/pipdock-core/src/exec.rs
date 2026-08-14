@@ -506,6 +506,27 @@ mod tests {
     /// the mistake surfaced. Whether the grandchild is still alive is the only observable that
     /// distinguishes the two outcomes, so ask the OS.
     #[cfg(windows)]
+    /// Wait until `grandchildren_alive` satisfies `want`, or give up.
+    ///
+    /// **Replaces a fixed sleep, which is what made this flake.** The setup step asserted the
+    /// fixture had started after 700 ms and the teardown asserted the tree was gone after 800 ms;
+    /// both are fine on an idle developer machine and neither is a promise a loaded CI runner
+    /// keeps. It failed on `fmt · clippy · test` once, on the *setup* assertion — the fixture
+    /// simply had not spawned yet, so the test proved nothing and said so.
+    ///
+    /// Polling for the condition keeps the assertions exactly as strict while removing the
+    /// timing guess: a tree that never dies still fails, it just takes the timeout to say so.
+    async fn wait_for(marker: &str, want: impl Fn(usize) -> bool) -> usize {
+        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        loop {
+            let n = grandchildren_alive(marker);
+            if want(n) || std::time::Instant::now() >= deadline {
+                return n;
+            }
+            tokio::time::sleep(Duration::from_millis(100)).await;
+        }
+    }
+
     fn grandchildren_alive(marker: &str) -> usize {
         let out = std::process::Command::new("powershell")
             .args([
@@ -579,9 +600,8 @@ mod tests {
         let cmd = a_slow_grandchild(marker).cancel(token.clone());
 
         let handle = tokio::spawn(async move { cmd.run().await });
-        tokio::time::sleep(Duration::from_millis(700)).await;
         assert!(
-            grandchildren_alive(marker) > 0,
+            wait_for(marker, |n| n > 0).await > 0,
             "the fixture never started, so this test proves nothing"
         );
 
@@ -589,10 +609,9 @@ mod tests {
         let result = handle.await.expect("task joins");
         assert!(result.is_err(), "a cancelled run must not report success");
 
-        // Termination is asynchronous; give the job a moment to take the tree down.
-        tokio::time::sleep(Duration::from_millis(800)).await;
+        // Termination is asynchronous, so this polls rather than sleeping a guessed interval.
         assert_eq!(
-            grandchildren_alive(marker),
+            wait_for(marker, |n| n == 0).await,
             0,
             "a grandchild outlived cancellation — the job object did not take the tree with it"
         );
@@ -609,9 +628,10 @@ mod tests {
         let result = cmd.run().await;
         assert!(result.is_err(), "the watchdog must stop the run");
 
-        tokio::time::sleep(Duration::from_millis(800)).await;
+        // Polled rather than slept, for its sibling's reason: 800 ms is fine on an idle machine
+        // and is not a promise a loaded CI runner keeps.
         assert_eq!(
-            grandchildren_alive(marker),
+            wait_for(marker, |n| n == 0).await,
             0,
             "a grandchild outlived the watchdog"
         );
