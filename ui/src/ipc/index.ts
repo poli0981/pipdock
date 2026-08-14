@@ -31,6 +31,7 @@ import type {
   OutdatedDist,
   PackageMeta,
   Pin,
+  PinSuggestion,
   ProgressEvent,
   PyEnv,
   HealthReport,
@@ -63,6 +64,7 @@ export const COMMANDS = [
   'pin_list',
   'pin_add',
   'pin_remove',
+  'pin_suggestions',
   'snapshot_list',
   'snapshot_create',
   'snapshot_diff',
@@ -221,6 +223,19 @@ export const pinAdd = (envHash: string, pin: Pin): Promise<void> =>
 /** Remove a pin, resolving to whether one existed. */
 export const pinRemove = (envHash: string, pkg: string): Promise<boolean> =>
   invoke('pin_remove', { envHash, pkg })
+
+/**
+ * Packages worth pinning, most-depended-upon first (PRD P1-2).
+ *
+ * Takes the whole `PyEnv`, not an `envHash`: the command probes, and an env hash is a one-way
+ * digest of the interpreter path. The threshold and the current pin list are read server-side, so
+ * a caller never has to keep them in step.
+ *
+ * **Costs one probe.** UI-SPEC §4 puts this on the Pins screen for that reason — do not call it
+ * from anything that renders on every environment change.
+ */
+export const pinSuggestions = (env: PyEnv): Promise<PinSuggestion[]> =>
+  invoke('pin_suggestions', { env })
 
 /**
  * What `indexSearch` resolves to.

@@ -1,0 +1,32 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "A package worth pinning, and why — PRD P1-2, UI-SPEC §4.",
+  "properties": {
+    "dependents": {
+      "description": "How many installed packages depend on it.\n\nThe number is the whole argument, so it is carried rather than recomputed for display:\n\"12 packages depend on it\" is what makes the suggestion actionable, and a count the screen\nderived separately would eventually disagree with the one that qualified it.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "pkg": {
+      "$ref": "#/$defs/PkgName",
+      "description": "The package being suggested."
+    }
+  },
+  "required": [
+    "pkg",
+    "dependents"
+  ],
+  "title": "PinSuggestion",
+  "type": "object"
+}

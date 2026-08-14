@@ -70,6 +70,7 @@ pub fn run() {
             commands::pin_list,
             commands::pin_add,
             commands::pin_remove,
+            commands::pin_suggestions,
             commands::plan_resolve,
             commands::plan_decide,
             commands::plan_execute,
