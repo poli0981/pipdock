@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.0.0. M1, M2, Phase 3 and Phase 4 all complete — the release pipeline runs, `main` is protected, the manual charter is done, and the legal documents match the code.** Post-1.0 is the P1 wave in `docs/ROADMAP.md`.
+Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.0.0. M1, M2, Phase 3 and Phase 4 all complete — the release pipeline runs, `main` is protected, the manual charter is done, and the legal documents match the code.** Post-1.0 is the P1 wave in `docs/ROADMAP.md`, where **P1-A (pin auto-suggest) is done** and P1-B/C/D are decomposed against what already exists.
 
 ## Read the docs before changing anything
 
@@ -181,6 +181,18 @@ Things worth knowing before you change any of it:
   `PdSummarySheet` had tests; `PdPlanPanel` had none; both rendered `plan.done`, so a successful
   run showed *Back to packages* twice and every suite stayed green. Found by a human using the
   installed build. When adding a component test, ask what renders it.
+
+- **A test can assert a substring you did not think of.** `PdPins.test.tsx` proves the screen
+  offers no way to create a `Hold` pin with `queryByText(/hold/i)` — and **"threshold" matches
+  that.** P1-A's Settings label is "Suggest pinning at" for that reason alone. Before adding copy
+  to a screen, grep its test for regex assertions; a broad `/word/i` over a whole screen is a trap
+  laid for a feature that does not exist yet.
+
+- **A doc comment describing an intent nothing implements is worse than none.**
+  `ReverseDeps::build` said auto-suggest "may still count" extra-gated edges while
+  `dependent_count` had always filtered them. Whoever built the feature would have believed the
+  comment or the code, and had no way to know which. When you find one, settle it in the comment
+  rather than leaving both readings alive.
 
 - **A green badge is not a green `main`.** The README badge is per *workflow file* and shows that
   file's last run, which may be a schedule on a different commit. `main` was red for a day at

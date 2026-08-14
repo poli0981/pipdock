@@ -61,7 +61,7 @@ PipDock's thesis: **don't reimplement the resolver — explain it.** Wrap pip/uv
 | # | Feature | Notes |
 |---|---|---|
 | P1-1 | Security tab | pip-audit (freeze-file mode) listing known CVEs per installed package, severity-sorted. |
-| P1-2 | Pin auto-suggest | Reverse-dependency count ≥ threshold (default 5, configurable) ⇒ suggest pin with reason. |
+| P1-2 | Pin auto-suggest | **Shipped post-1.0 (P1-A).** Reverse-dependency count ≥ threshold (default 5, configurable in Settings; zero is off) ⇒ suggest pin with reason. Counts in-force edges only — extras and other-Python markers do not qualify a package. |
 | P1-3 | Export / import | `requirements.txt` and `constraints.txt` export; import-as-queue. |
 | P1-4 | Cache manager | Show / purge engine cache (`pip cache`, `uv cache`) and PipDock's index cache. |
 | P1-5 | Command palette | Ctrl+K fuzzy action launcher (terminal-tech signature feature). |
