@@ -85,9 +85,13 @@ git log --format=%b | grep -c 'Co-Authored-By'    # how many carry the trailer
 gh pr list --state merged                         # every change, and the review it went through
 ```
 
-At the 1.0.0 tag: **175 commits, 166 of them carrying the trailer.** The remainder are Dependabot
-bumps and a handful of hand-written mechanical commits. Re-run the commands rather than trusting
-these two numbers — they move with every release, and this page is only re-checked at one.
+At the `v1.0.0` tag: **177 commits, 168 of them carrying the trailer.** The nine without are
+Dependabot bumps and a handful of hand-written mechanical commits.
+
+Those two figures are stated as of a tag rather than as of `main` on purpose. A count written into
+a file changes the moment the file is committed — which caught this page out twice while it was
+being written — so it is pinned to something that does not move, and the commands above are the
+thing to trust.
 
 ## Questions
 
