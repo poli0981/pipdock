@@ -95,8 +95,20 @@ budget intact. Neither button is a tab stop — the row is (see §8). Multi-sele
 `pins::hold_requirements` has no caller and `engine::plan_requirements` restates every package at its
 *installed* version — a hold at any other version is a promise nothing keeps, and the CLI cannot
 create one either. With no environment selected the screen says so rather than "no pins": pins are
-keyed by `env_hash`, so that is not an empty list. (P1) auto-suggest section: "`urllib3` — 12
-packages depend on it. Pin?".
+keyed by `env_hash`, so that is not an empty list.
+
+**The auto-suggest section** — "`urllib3` — 12 packages depend on it. Pin?" — landed post-1.0 as
+P1-A. It sits *above* the pin list, because it is a prompt to act and the list is a record of
+having acted, and it is absent entirely when there is nothing to suggest. Accepting writes an
+ordinary `Exclude` pin with the count as its reason (PRD P1-2's "suggest pin with reason"), which
+the reason field below can then replace.
+
+It costs one `probe.py` run, and that is why it is here rather than on a sidebar badge: only
+someone who opened this tab pays for it. It is also **silent on failure** — this screen's job is
+listing pins and it does that either way, so an error row about an advisory would be the loudest
+thing on it. Counts come from `graph::dependent_count`, which counts in-force edges only: the same
+set the uninstall guard warns about, because a user pinning on one rule and being warned on another
+is the failure worth designing against.
 
 **Snapshots** (surfaced under Environments → env detail): timeline of snapshots with trigger label, diff viewer (added/removed/changed in mono), `Rollback…` with its own preview per DATA-FLOW §8.
 
@@ -121,7 +133,9 @@ the snapshot's side.
 
 **Health.** Project-folder picker (persisted per env) → run panel with three result tabs (deptry / vulture / ruff) per CODE-HEALTH-SPEC; `Fix with ruff` gated behind explicit confirm listing file count.
 
-**Settings.** Engine (pip/uv radio + detected versions), locale (EN/VI), thresholds (pin auto-suggest count, snapshot retention), index refresh, PEP 668 override (off by default, scary copy), *Open logs folder*.
+**Settings.** Engine (pip/uv radio + detected versions), locale (EN/VI), **pin auto-suggest count** (P1-A; zero turns suggestions off), snapshot retention, index refresh, PEP 668 override (off by default, scary copy), *Open logs folder*.
+
+The threshold is the app's **first numeric input**, and it sets the rule for the next one: reject at the boundary, never store junk. `<input type="number">` reports `''` for anything it cannot parse, so coercing the raw value writes `0` — which here is a meaningful setting, "off", that the user did not ask for. Its label avoids the word *threshold* on purpose; see `PdPins.test.tsx`'s Hold assertion, which matches `/hold/i`.
 
 **Legal & About left Settings** in Phase 4 and became the About tab below. Neither is a setting: they are read-only surfaces, and folding them into a screen of controls is what kept them unbuilt for four milestones while every control around them shipped.
 

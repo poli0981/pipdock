@@ -769,7 +769,55 @@ estimating; the interesting work is rarely where it looks.
 
 ---
 
-#### P1-A · Pin auto-suggest — PRD P1-2, UI-SPEC §4
+#### P1-A · Pin auto-suggest — PRD P1-2, UI-SPEC §4 — **done 2026-08-14**
+
+Five commits. The estimate below held: **most of it was already written and had never been
+called.**
+
+| | What landed |
+|---|---|
+| **Core** | `pins::suggest` — the first caller `graph::dependent_count` has ever had. `PinSuggestion { pkg, dependents }`. `Settings.pin_suggest_threshold`, defaulting to `graph::PIN_SUGGEST_THRESHOLD` rather than a second literal. |
+| **Bridge** | `pin_suggestions(env)` — store read, guard dropped, then probe. `NOT_YET` unchanged at two. |
+| **UI** | The suggestion section on Pins, above the list; `useEnvStore.suggestions` keyed on its own `suggestionsFor`; the app's first `type="number"` in Settings. |
+| **Docs** | UI-SPEC §4 (the section, and the Settings threshold), PRD P1-2 marked shipped. |
+
+**Three things the plan had wrong, all found by doing it.**
+
+1. **A six-place checklist, not five.** `crates/pipdock-cli/tests/golden.rs` keeps its *own* copy of
+   `SCHEMA_TYPES`, and `schema_lists_exactly_the_documented_types` reads the real list back out of
+   the binary to compare — so the copy cannot silently fall behind. It failed exactly as designed
+   and is now in the checklist below.
+2. **The `/hold/i` trap.** `PdPins.test.tsx` asserts `queryByText(/hold/i)` is absent, to prove the
+   screen offers no way to create a `Hold` pin — and **"threshold" matches that pattern.** Any
+   copy on this screen containing the substring "hold" breaks a test whose subject is something
+   else entirely. The Settings label is worded "Suggest pinning at" for that reason.
+3. **`ReverseDeps::build`'s doc contradicted `dependent_count`.** It said the guard ignores
+   extra-gated edges "while pin auto-suggest may still count them" — describing an intent nothing
+   implemented, since `dependent_count` delegates to `dependents_of` and always filtered. Settled
+   in favour of what shipped, and the comment now says why: two features disagreeing about one
+   edge rule is exactly the failure that argues for computing this in Rust rather than looping over
+   `requiresDist` in the frontend, which already holds it.
+
+**Exit criteria, driven in the browser against a stubbed bridge.** The section renders with
+UI-SPEC §4's sentence and pluralises at 1 and at 12 in both locales; accepting moves the package
+into the pin list with `12 packages depended on it` already in its reason field, and it does not
+reappear; `pin_suggestions` crosses the bridge **once** per visit, not twice. The threshold field
+refuses `abc`, `-1` and `9999` without a write and accepts `3` with exactly one.
+
+Two mutation checks rather than trusting green: swapping `build_for` for `build` fails the marker
+case, and `>=` for `>` fails the inclusive-threshold case.
+
+**Known rough edge, deliberately not fixed:** nothing records a *rejected* suggestion, so unpinning
+a package re-offers it. A dismissal needs persistence, and both the suggestion and the pin are on
+the same screen, so it is visible rather than mysterious.
+
+**Deliberately not done:** no `pipdock pin suggest`. `pins::suggest` is in core so the subcommand
+is trivial later, but adding one now means a new help golden plus a churned `golden__help-pin.snap`
+for an advisory feature nothing scripts against yet.
+
+---
+
+##### The original estimate, kept for comparison
 
 **Most of this was built in M2 and never called.** `graph::dependent_count(&pkg) -> usize`
 (`graph/mod.rs:242`) exists, is documented *"for pin auto-suggest (PRD P1-2)"*, and has no caller
@@ -909,10 +957,16 @@ first four and fail at `cargo test`:
 2. `src-tauri/src/commands.rs` — the `#[tauri::command]`, with a `# Errors` section naming its
    catalog codes. **Never hold the store guard across an `await`.**
 3. `src-tauri/src/lib.rs` — `generate_handler![…]`.
-4. `ui/src/ipc/index.ts` — the name in `COMMANDS` **and** a hand-written typed wrapper.
+4. `ui/src/ipc/index.ts` — the name in `COMMANDS` **and** a hand-written typed wrapper. A generated
+   type also needs adding to the `import type { … } from './generated'` list; `export type *` does
+   not bring it into scope for the wrapper's own signature.
 5. New wire type → `serde` + `schemars::JsonSchema` + `rename_all = "camelCase"`, register in
-   `SCHEMA_TYPES`, `cargo run -p xtask -- bindings`, and bless a new `golden__schema-<T>.snap`
-   plus every schema that embeds it.
+   **both** `schema_for!` and `SCHEMA_TYPES`, `cargo run -p xtask -- bindings`, and bless a new
+   `golden__schema-<T>.snap` plus every schema that embeds it.
+   **And `crates/pipdock-cli/tests/golden.rs`'s own copy of `SCHEMA_TYPES`** — a deliberate second
+   list, guarded by `schema_lists_exactly_the_documented_types`, which reads the real one back out
+   of the binary. Blessing `golden__schema-unknown-type.snap` is expected here: its error message
+   enumerates every known type, so one more schema is a real behaviour change.
 6. New error code → nine places; CLAUDE.md enumerates them.
 7. New event channel → `EVENTS` plus a `listen<T>` wrapper.
 8. `ui/src/test/ipc.ts` — the mock.
