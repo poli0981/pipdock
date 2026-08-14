@@ -436,6 +436,37 @@ pub async fn requirements_read(
     Ok(pipdock_core::requirements::parse(&text))
 }
 
+/// What PipDock has written to disk — PRD P1-4.
+///
+/// # Errors
+/// Never fails as a whole; an unreadable path reports zero bytes.
+#[tauri::command]
+pub async fn cache_usage(state: tauri::State<'_, AppState>) -> Wire<pipdock_core::cache::Usage> {
+    Ok(pipdock_core::cache::usage(&state.app_data)?)
+}
+
+/// Remove one cache target, resolving to the bytes freed.
+///
+/// Takes a `Target` enum, **never a path** — `cache::clear` is the only thing that turns one into
+/// a location, and it checks the result is inside the data root by canonicalized prefix before
+/// removing anything. This is the first delete-a-tree in the application, so the surface it is
+/// reachable through is deliberately as narrow as an enum.
+///
+/// `index.db` is not a target: it holds settings, pins and the consent record as well as the
+/// package index, and "clear the cache" must never take a user's pins.
+///
+/// # Errors
+/// `PD-PRM-002` when something holds the files open — a tools venv whose Python is still running
+/// is the ordinary way to hit this on Windows. `PD-INT-001` if the containment check ever fails,
+/// which would be a bug.
+#[tauri::command]
+pub async fn cache_clear(
+    state: tauri::State<'_, AppState>,
+    target: pipdock_core::cache::Target,
+) -> Wire<u64> {
+    Ok(pipdock_core::cache::clear(&state.app_data, target)?)
+}
+
 /// What `index_search` returns.
 ///
 /// A struct rather than a bare `Hit[]` because "no results" and "the index is not loaded yet" are

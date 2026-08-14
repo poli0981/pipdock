@@ -30,6 +30,8 @@ import type {
   Intent,
   OutdatedDist,
   PackageMeta,
+  CacheTarget,
+  CacheUsage,
   ParsedRequirements,
   Pin,
   PinSuggestion,
@@ -68,6 +70,8 @@ export const COMMANDS = [
   'pin_suggestions',
   'env_export',
   'requirements_read',
+  'cache_usage',
+  'cache_clear',
   'snapshot_list',
   'snapshot_create',
   'snapshot_diff',
@@ -255,6 +259,19 @@ export const envExport = (env: PyEnv, path: string): Promise<string> =>
 /** Read a `requirements.txt` into install specs, with the lines it could not use. */
 export const requirementsRead = (path: string): Promise<ParsedRequirements> =>
   invoke('requirements_read', { path })
+
+/** What PipDock has written to disk, by artefact (PRD P1-4). */
+export const cacheUsage = (): Promise<CacheUsage> => invoke('cache_usage')
+
+/**
+ * Remove one cache target, resolving to the bytes freed.
+ *
+ * A `CacheTarget`, never a path — Rust owns the mapping and checks the result is inside the data
+ * root before removing anything. `index.db` is deliberately not a target: it holds settings, pins
+ * and the consent record as well as the package index.
+ */
+export const cacheClear = (target: CacheTarget): Promise<number> =>
+  invoke('cache_clear', { target })
 
 /**
  * What `indexSearch` resolves to.

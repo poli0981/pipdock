@@ -34,6 +34,8 @@ export interface IpcMock {
   pinSuggestions: ReturnType<typeof vi.fn>
   envExport: ReturnType<typeof vi.fn>
   requirementsRead: ReturnType<typeof vi.fn>
+  cacheUsage: ReturnType<typeof vi.fn>
+  cacheClear: ReturnType<typeof vi.fn>
   planResolve: ReturnType<typeof vi.fn>
   planDecide: ReturnType<typeof vi.fn>
   planExecute: ReturnType<typeof vi.fn>
@@ -75,6 +77,14 @@ export function ipcMock(): IpcMock {
     pinSuggestions: vi.fn().mockResolvedValue([]),
     envExport: vi.fn().mockResolvedValue('C:/out/requirements.txt'),
     requirementsRead: vi.fn().mockResolvedValue({ specs: [], skipped: [] }),
+    cacheUsage: vi.fn().mockResolvedValue({
+      root: 'C:/data',
+      database: { bytes: 0, path: 'C:/data/index.db', exists: false },
+      snapshots: { bytes: 0, path: 'C:/data/snapshots', exists: false },
+      tools: { bytes: 0, path: 'C:/data/tools', exists: false },
+      snapshotCount: 0,
+    }),
+    cacheClear: vi.fn().mockResolvedValue(0),
     planResolve: vi.fn(),
     planDecide: vi.fn(),
     planExecute: vi.fn(),

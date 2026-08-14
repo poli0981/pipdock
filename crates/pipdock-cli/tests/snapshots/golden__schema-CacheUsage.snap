@@ -1,0 +1,68 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "Entry": {
+      "description": "One line of the cache report.",
+      "properties": {
+        "bytes": {
+          "description": "Bytes on disk, summed recursively.",
+          "format": "uint64",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "exists": {
+          "description": "False when nothing is there yet, so the UI can say \"nothing to clear\" rather than \"0 B\".",
+          "type": "boolean"
+        },
+        "path": {
+          "description": "Where it is. Data — shown verbatim, never translated (I18N §2).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "bytes",
+        "path",
+        "exists"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What PipDock is using, by artefact.",
+  "properties": {
+    "database": {
+      "$ref": "#/$defs/Entry",
+      "description": "`index.db` — the package index, settings, pins and the consent record. **Not clearable.**"
+    },
+    "root": {
+      "description": "The data root everything below lives in.",
+      "type": "string"
+    },
+    "snapshotCount": {
+      "description": "How many snapshot documents there are, across every environment.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "snapshots": {
+      "$ref": "#/$defs/Entry",
+      "description": "Snapshots, across every environment."
+    },
+    "tools": {
+      "$ref": "#/$defs/Entry",
+      "description": "The Code Health tools environment."
+    }
+  },
+  "required": [
+    "root",
+    "database",
+    "snapshots",
+    "tools",
+    "snapshotCount"
+  ],
+  "title": "Usage",
+  "type": "object"
+}

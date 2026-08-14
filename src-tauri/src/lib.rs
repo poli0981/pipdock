@@ -73,6 +73,8 @@ pub fn run() {
             commands::pin_suggestions,
             commands::env_export,
             commands::requirements_read,
+            commands::cache_usage,
+            commands::cache_clear,
             commands::plan_resolve,
             commands::plan_decide,
             commands::plan_execute,
