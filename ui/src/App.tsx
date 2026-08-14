@@ -1,9 +1,10 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { NAV_KEYS } from '@/components/nav'
 import { PdLegalGate } from '@/components/PdLegalGate'
 import { PdOfflineBanner } from '@/components/PdOfflineBanner'
+import { PdPalette } from '@/components/PdPalette'
 import { PdSidebar } from '@/components/PdSidebar'
 import { PdStatusLine } from '@/components/PdStatusLine'
 import { PdUninstallDialog } from '@/components/PdUninstallDialog'
@@ -65,6 +66,8 @@ export function App() {
   const resetPlan = usePlanStore((s) => s.reset)
   const guardOpen = planPhase === 'guard' && guard !== null
   const mainRef = useRef<HTMLElement>(null)
+  // Shell state, like `nav` — but local, because nothing outside this component reads it.
+  const [paletteOpen, setPaletteOpen] = useState(false)
 
   useEffect(() => {
     void checkConsent()
@@ -99,6 +102,20 @@ export function App() {
       // guarded neither. The sidebar was disabled and the panel kept rendering, so nothing looked
       // wrong until the plan finished and dropped the user on a tab they never chose.
       if (guardOpen || PANEL_PHASES.has(planPhase)) return
+
+      // UI-SPEC §1's Ctrl+K palette. Before the Ctrl+digit branch below, which parses `e.key` as a
+      // number — `'k'` becomes NaN and `NAV_KEYS[NaN]` is undefined, so this was a silent no-op
+      // rather than a collision. `toLowerCase`, because Shift+Ctrl+K reports `'K'`.
+      //
+      // It inherits both refusals above by construction: this line is unreachable while the legal
+      // gate is up, while the guard dialog is open, or while a plan owns the content area — which
+      // is the point. A palette that can navigate during an execution is the defect S3 shipped,
+      // reached through a different door.
+      if (e.ctrlKey && !e.altKey && !e.metaKey && e.key.toLowerCase() === 'k') {
+        e.preventDefault()
+        setPaletteOpen((open) => !open)
+        return
+      }
       // UI-SPEC §8: `/` focuses search. Guarded against text fields, or it would be impossible to
       // type a slash into a version specifier.
       const target = e.target as HTMLElement | null
@@ -173,6 +190,16 @@ export function App() {
       </div>
 
       <PdStatusLine />
+
+      {/* Outside <main> for `PdUninstallDialog`'s reason: it opens over whatever screen is
+          showing, and mounting it inside one would tie it to that screen's lifetime. */}
+      {paletteOpen ? (
+        <PdPalette
+          onClose={() => {
+            setPaletteOpen(false)
+          }}
+        />
+      ) : null}
 
       {/* Outside <main>, because the dialog opens *over* the table the user selected from — they
           need to still see what they picked while deciding. Mounted here rather than in the row

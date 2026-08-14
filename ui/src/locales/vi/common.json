@@ -158,6 +158,17 @@
     "checkFinding": "{{pkg}} yêu cầu {{requirement}}",
     "done": "Quay lại danh sách gói"
   },
+  "palette": {
+    "title": "Lệnh",
+    "placeholder": "Gõ tên một lệnh…",
+    "noMatch": "không có lệnh nào khớp “{{query}}”",
+    "refreshPackages": "Tải lại danh sách gói",
+    "clearSelection": "Bỏ chọn tất cả",
+    "clearQueue": "Xoá hàng đợi cài đặt",
+    "groups": {
+      "go": "Đi tới"
+    }
+  },
   "pins": {
     "empty": "môi trường này chưa có gói nào được ghim",
     "emptyHint": "Ghim một gói từ bảng Đã cài để các lần cập nhật hàng loạt bỏ qua nó.",
