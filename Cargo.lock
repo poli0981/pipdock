@@ -3168,7 +3168,7 @@ checksum = "a89322df9ebe1c1578d689c92318e070967d1042b512afbe49518723f4e6d5cd"
 
 [[package]]
 name = "pipdock-app"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "jiff",
  "pipdock-core",
@@ -3188,7 +3188,7 @@ dependencies = [
 
 [[package]]
 name = "pipdock-cli"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "assert_cmd",
  "clap",
@@ -3203,7 +3203,7 @@ dependencies = [
 
 [[package]]
 name = "pipdock-core"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "async-trait",
  "insta",
@@ -6371,7 +6371,7 @@ checksum = "ea6fc2961e4ef194dcbfe56bb845534d0dc8098940c7e5c012a258bfec6701bd"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "1.0.0"
 dependencies = [
  "pipdock-core",
 ]
