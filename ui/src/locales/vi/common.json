@@ -166,6 +166,7 @@
     "suggestTitle": "Nên cân nhắc ghim",
     "suggestIntro": "Rất nhiều gói bạn đang cài phụ thuộc vào những gói này, nên một lần cập nhật hàng loạt dễ làm xáo trộn thứ gì đó. Ghim sẽ giữ chúng ngoài Chọn tất cả — bạn vẫn có thể cập nhật từng gói một.",
     "suggest_other": "{{pkg}} — {{count}} gói phụ thuộc vào nó.",
+    "suggestMore_other": "Còn {{count}} gói nữa cũng đủ điều kiện. Hãy ghim bớt, hoặc nâng ngưỡng trong Cài đặt.",
     "suggestAccept": "Ghim",
     "suggestAcceptFor": "Ghim {{pkg}}",
     "suggestReason_other": "{{count}} gói đã phụ thuộc vào nó"

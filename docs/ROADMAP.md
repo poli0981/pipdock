@@ -781,6 +781,25 @@ called.**
 | **UI** | The suggestion section on Pins, above the list; `useEnvStore.suggestions` keyed on its own `suggestionsFor`; the app's first `type="number"` in Settings. |
 | **Docs** | UI-SPEC §4 (the section, and the Settings threshold), PRD P1-2 marked shipped. |
 
+**The one thing only a real environment could say: 94 suggestions.**
+
+Against `C:\Python314` — 352 packages, the scale fixture — the default threshold of 5 qualifies
+**94 packages**, a quarter of the environment. The top of the list is right (`setuptools` at 150
+dependents, then `zope` at 93, `zope-interface` at 86) but a "Worth pinning" section with 94 rows
+is not a suggestion, it is a second package list.
+
+Raising the default was the wrong fix: a deep dependency tree is exactly where a bulk update is
+most dangerous, so it is exactly where the feature has to work. The screen shows the top
+`SUGGESTIONS_SHOWN = 8` and says how many more qualify — the `RUFF_ROWS_SHOWN` pattern, and for
+the same reason: the count comes from the **full** list, so a capped view never misreports a total.
+`pins::suggest` still returns everything at or above the threshold, which is what makes it
+composable.
+
+Measured while there, in `--release`: the probe is **605 ms** and the graph build plus the whole
+suggest pass is **1 ms**. The plan's worry that `dependent_count` looping over 350 packages would
+be O(n·m) enough to matter was unfounded — the subprocess dominates completely, and there is no
+case for a batched counts method.
+
 **Three things the plan had wrong, all found by doing it.**
 
 1. **A six-place checklist, not five.** `crates/pipdock-cli/tests/golden.rs` keeps its *own* copy of

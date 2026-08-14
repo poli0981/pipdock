@@ -103,6 +103,12 @@ having acted, and it is absent entirely when there is nothing to suggest. Accept
 ordinary `Exclude` pin with the count as its reason (PRD P1-2's "suggest pin with reason"), which
 the reason field below can then replace.
 
+**It shows the top 8 and says how many more qualify.** Measured against the 352-package fixture,
+the default threshold of 5 qualifies 94 — a quarter of the environment. Raising the default would
+be the wrong fix, because a deep dependency tree is exactly where a bulk update is most dangerous;
+the count in the "N more" line comes from the full list, so a capped view never misreports a total.
+Same rule as `RUFF_ROWS_SHOWN` in the Health report.
+
 It costs one `probe.py` run, and that is why it is here rather than on a sidebar badge: only
 someone who opened this tab pays for it. It is also **silent on failure** — this screen's job is
 listing pins and it does that either way, so an error row about an advisory would be the loudest
