@@ -121,8 +121,14 @@ pub struct ReverseDeps {
 impl ReverseDeps {
     /// Build the graph from a full environment listing.
     ///
-    /// Requirements gated behind an extra are recorded but flagged, so callers can decide: the
-    /// uninstall guard ignores them, while pin auto-suggest may still count them.
+    /// Requirements gated behind an extra are recorded but flagged, and **every reader filters
+    /// them out** via [`Requirement::applies_in`]. This comment used to say auto-suggest "may
+    /// still count them", describing an intent nothing implemented — [`Self::dependent_count`]
+    /// delegates to [`Self::dependents_of`] and always has. Post-1.0 P1-A settled it in favour of
+    /// what shipped: a suggestion counts what actually depends on a package *in this environment*,
+    /// which is the same set the uninstall guard warns about. Two features disagreeing about one
+    /// edge rule is the failure mode worth avoiding, and it is the whole reason this lives in Rust
+    /// rather than being recomputed in the frontend.
     ///
     /// Prefer [`Self::build_for`] wherever the interpreter is known: without it, requirements
     /// gated on a different `python_version` are treated as if they were in force.

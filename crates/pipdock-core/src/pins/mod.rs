@@ -11,7 +11,8 @@
 use std::collections::BTreeSet;
 
 use crate::errors::{Code, PdError, Result};
-use crate::model::{PinnedSpec, PkgName, Version};
+use crate::graph::ReverseDeps;
+use crate::model::{Dist, PinnedSpec, PkgName, Version};
 use crate::store::Store;
 
 /// How a pin constrains a package.
@@ -217,6 +218,80 @@ pub fn filter_upgrades(
     out
 }
 
+/// A package worth pinning, and why — PRD P1-2, UI-SPEC §4.
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct PinSuggestion {
+    /// The package being suggested.
+    pub pkg: PkgName,
+    /// How many installed packages depend on it.
+    ///
+    /// The number is the whole argument, so it is carried rather than recomputed for display:
+    /// "12 packages depend on it" is what makes the suggestion actionable, and a count the screen
+    /// derived separately would eventually disagree with the one that qualified it.
+    pub dependents: usize,
+}
+
+/// Packages many others depend on, which a bulk update should probably leave alone.
+///
+/// **The advisory half of this module.** [`filter_upgrades`] is enforcement — what a pin *does*;
+/// this is what the shape of an environment suggests pinning. PRD P1-2: at or above `threshold`
+/// reverse dependencies, offer a pin.
+///
+/// Counts come from [`ReverseDeps::dependent_count`], which counts **in-force** edges only —
+/// extra-gated and marker-excluded requirements do not qualify a package. That is the same set the
+/// uninstall guard warns about, and keeping the two identical is the entire reason this is
+/// computed here rather than in the frontend, which already holds `requires_dist` and could
+/// plausibly loop over it. Two implementations of one edge rule drift, and the half that drifts
+/// silently is this one.
+///
+/// Takes the pins and the threshold as values rather than a `&Store`: `Store` is not `Sync`, so a
+/// future holding one is not `Send` and cannot be returned from a Tauri command. [`crate::flow`]
+/// takes pins for the same reason.
+///
+/// Already-pinned packages are dropped — suggesting what the user has already done is noise.
+/// Nothing records a *rejected* suggestion, so unpinning something re-offers it; that is a known
+/// rough edge rather than an oversight, and both are on the same screen so it is visible.
+#[must_use]
+pub fn suggest(
+    dists: &[Dist],
+    python_version: &str,
+    existing: &[Pin],
+    threshold: usize,
+) -> Vec<PinSuggestion> {
+    // A threshold of zero would suggest every package in the environment, including the leaves
+    // nothing depends on. Treated as "off" rather than as "suggest everything".
+    if threshold == 0 {
+        return Vec::new();
+    }
+
+    let pinned: BTreeSet<&PkgName> = existing.iter().map(|p| &p.pkg).collect();
+    // `build_for`, not `build`: without the interpreter, a requirement gated on some other
+    // `python_version` counts as if it were in force, and the suggestion inherits the same wrong
+    // answer the preview used to give (SP-5).
+    let graph = ReverseDeps::build_for(dists, python_version);
+
+    let mut out: Vec<PinSuggestion> = dists
+        .iter()
+        .filter(|d| !pinned.contains(&d.name))
+        .filter_map(|d| {
+            let dependents = graph.dependent_count(&d.name);
+            (dependents >= threshold).then(|| PinSuggestion {
+                pkg: d.name.clone(),
+                dependents,
+            })
+        })
+        .collect();
+
+    // Most-depended-upon first, then by name. Stable ordering matters more than it looks: this
+    // list is re-fetched on every visit to the screen, and one that reorders between two identical
+    // reads reads as though the environment changed.
+    out.sort_by(|a, b| b.dependents.cmp(&a.dependents).then(a.pkg.cmp(&b.pkg)));
+    out
+}
+
 /// The exact-version requirements `Hold` pins contribute to every plan.
 ///
 /// These join the guard set [`crate::engine::plan_requirements`] builds, so the resolver treats a
@@ -252,6 +327,113 @@ mod tests {
             mode: PinMode::Exclude,
             reason: reason.map(str::to_owned),
         }
+    }
+
+    fn dist(name: &str, requires: &[&str]) -> Dist {
+        Dist {
+            name: pkg(name),
+            version: Version("1.0".into()),
+            requires_dist: requires.iter().map(|s| (*s).to_owned()).collect(),
+            requires_python: None,
+            size_bytes: None,
+        }
+    }
+
+    /// `n` packages that all depend on `on`, plus `on` itself.
+    fn depended_on_by(on: &str, n: usize) -> Vec<Dist> {
+        std::iter::once(dist(on, &[]))
+            .chain((0..n).map(|i| {
+                let name = format!("app{i}");
+                dist(&name, &[on])
+            }))
+            .collect()
+    }
+
+    #[test]
+    fn a_package_below_the_threshold_is_not_suggested() {
+        let dists = depended_on_by("urllib3", 4);
+        assert_eq!(suggest(&dists, "3.12.4", &[], 5), Vec::new());
+    }
+
+    #[test]
+    fn the_threshold_is_inclusive() {
+        // PRD P1-2 says "count >= threshold". Off by one here means the default of 5 fires at 6,
+        // and nobody would notice because both are plausible.
+        let dists = depended_on_by("urllib3", 5);
+        let got = suggest(&dists, "3.12.4", &[], 5);
+        assert_eq!(got.len(), 1);
+        assert_eq!(got[0].pkg, pkg("urllib3"));
+        assert_eq!(got[0].dependents, 5);
+    }
+
+    #[test]
+    fn an_already_pinned_package_is_never_suggested() {
+        // Suggesting what the user has already done is noise, however high the count.
+        let dists = depended_on_by("urllib3", 50);
+        let pins = vec![exclude("urllib3", None)];
+        assert_eq!(suggest(&dists, "3.12.4", &pins, 5), Vec::new());
+    }
+
+    #[test]
+    fn extra_gated_dependents_do_not_qualify_a_package() {
+        // The same rule the uninstall guard follows. An extra is not installed unless it was
+        // asked for, so a dependency that exists only under `extra == "socks"` is not a reason to
+        // pin anything — and the guard and the suggestion must agree about which edges are real
+        // or the user is pinning on one rule and being warned on another.
+        let dists: Vec<Dist> = std::iter::once(dist("urllib3", &[]))
+            .chain((0..6).map(|i| {
+                let name = format!("app{i}");
+                dist(&name, &["urllib3; extra == \"socks\""])
+            }))
+            .collect();
+        assert_eq!(suggest(&dists, "3.12.4", &[], 5), Vec::new());
+    }
+
+    #[test]
+    fn requirements_gated_on_another_python_do_not_qualify_a_package() {
+        // `build_for`, not `build`. With markers unevaluated these six count and urllib3 is
+        // suggested on 3.12 because of constraints that only apply below 3.11.
+        let dists: Vec<Dist> = std::iter::once(dist("urllib3", &[]))
+            .chain((0..6).map(|i| {
+                let name = format!("app{i}");
+                dist(&name, &["urllib3; python_version < \"3.11\""])
+            }))
+            .collect();
+        assert_eq!(suggest(&dists, "3.12.4", &[], 5), Vec::new());
+    }
+
+    #[test]
+    fn suggestions_are_ordered_by_count_then_name() {
+        // The list is re-read on every visit to the screen. One that reorders between two
+        // identical reads reads as though the environment changed under the user.
+        let mut dists = vec![
+            dist("urllib3", &[]),
+            dist("certifi", &[]),
+            dist("idna", &[]),
+        ];
+        for i in 0..8 {
+            dists.push(dist(&format!("app{i}"), &["urllib3", "certifi", "idna"]));
+        }
+        // Two more that only reach urllib3, so it leads; certifi and idna tie at 8 and sort by
+        // name.
+        for i in 8..10 {
+            dists.push(dist(&format!("extra{i}"), &["urllib3"]));
+        }
+
+        let got = suggest(&dists, "3.12.4", &[], 5);
+        let names: Vec<&str> = got.iter().map(|s| s.pkg.as_str()).collect();
+        assert_eq!(names, ["urllib3", "certifi", "idna"]);
+        assert_eq!(got[0].dependents, 10);
+        assert_eq!(got[1].dependents, 8);
+        assert_eq!(got[2].dependents, 8);
+    }
+
+    #[test]
+    fn a_threshold_of_zero_suggests_nothing_rather_than_everything() {
+        // The degenerate setting. Every package trivially has >= 0 dependents, so without the
+        // guard this offers to pin the whole environment, leaves included.
+        let dists = depended_on_by("urllib3", 6);
+        assert_eq!(suggest(&dists, "3.12.4", &[], 0), Vec::new());
     }
 
     #[test]
