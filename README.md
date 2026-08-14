@@ -128,7 +128,7 @@ just stating them. Everything below is for reading the code.
 
 PipDock was written with substantial help from an AI coding assistant — **Claude Opus 5**, made by [Anthropic](https://www.anthropic.com), through [Claude Code](https://claude.com/claude-code) — under human review. It wrote source code, tests, debugging work and the Vietnamese translation. Every change reached `main` through a pull request the maintainer read and merged, `main` is protected and cannot be bypassed, and the built application was driven by hand on three machines before 1.0.0 shipped.
 
-That review mattered: **thirty-four defects** reached or nearly reached `main`, and not one was caught by the test suite that was green at the time. They were found by running the thing.
+That review mattered: **thirty-five defects** reached or nearly reached `main`, and not one was caught by the test suite that was green at the time. They were found by running the thing.
 
 Copyright and the GPL-3.0-only licence are unchanged. The full statement — model, vendor, what was and was not delegated, and how to verify any of it from `git log` — is in [docs/AI-DISCLOSURE.md](docs/AI-DISCLOSURE.md).
 
