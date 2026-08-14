@@ -38,6 +38,15 @@ const CONTACT = {
 /** The one page listing every other channel. Scoped in `capabilities/external-links.json`. */
 const LINKS = 'https://poli0981.dev/links/'
 
+/**
+ * The AI disclosure, in the app rather than only in the repository.
+ *
+ * Someone who installs PipDock and never opens GitHub is exactly the person the disclosure is for,
+ * and `docs/` is not a place they will look. It sits under *This build* because that is where the
+ * other facts about how this binary came to exist already are.
+ */
+const DISCLOSURE = `${REPO}/blob/main/docs/AI-DISCLOSURE.md`
+
 function CopyableAddress({ address, label }: { address: string; label: string }) {
   const { t } = useTranslation()
   const [copied, setCopied] = useState(false)
@@ -103,7 +112,21 @@ export function PdAbout() {
         </div>
       </dl>
 
-      <div className="mt-4 flex flex-wrap gap-2">
+      <h2 className="mt-8 text-text-dim">{t('about.aiTitle')}</h2>
+      <p className="mt-1 max-w-2xl text-data text-text-dim">{t('about.aiBody')}</p>
+      <p className="mt-2">
+        <button
+          type="button"
+          onClick={() => {
+            open(DISCLOSURE)
+          }}
+          className="rounded-pd border border-border px-3 py-1 text-data text-text-dim hover:bg-surface-2"
+        >
+          {t('about.aiRead')}
+        </button>
+      </p>
+
+      <div className="mt-8 flex flex-wrap gap-2">
         <button
           type="button"
           onClick={() => {
