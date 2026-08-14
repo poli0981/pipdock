@@ -758,6 +758,168 @@ Also worth doing when the Security tab lands: `capabilities/external-links.json`
 host, because DISCLAIMER §4 and SECURITY §6 both say findings link to the OSV entry and the current
 allowlist would reject it — silently, which is the failure mode SECURITY §4 exists to name.
 
+### Four items decomposed, easiest first
+
+Surveyed 2026-08-14 against the real tree. Ordered by how much already exists, not by value — each
+is a slice in the M2/Phase-3 shape: one PR, split commits, ending in a `docs:` commit.
+
+**The reusable-surface rule this survey confirmed:** three of the four are mostly *wiring*, and the
+fourth introduces the first delete-a-tree primitive in the codebase. Read the per-item notes before
+estimating; the interesting work is rarely where it looks.
+
+---
+
+#### P1-A · Pin auto-suggest — PRD P1-2, UI-SPEC §4
+
+**Most of this was built in M2 and never called.** `graph::dependent_count(&pkg) -> usize`
+(`graph/mod.rs:242`) exists, is documented *"for pin auto-suggest (PRD P1-2)"*, and has no caller
+outside its own test. So does `graph::PIN_SUGGEST_THRESHOLD = 5` (`:29`), documented *"default …
+Configurable"* and read by nothing. The graph module's own doc names auto-suggest as one of its
+three intended consumers.
+
+| Step | |
+|---|---|
+| 1 | `settings.rs` gains `pin_suggest_threshold: usize`. Five places: the `KEY_*` const, the struct field, `load`, `save`, and a test. `Settings` is **not** in `SCHEMA_TYPES` — its TS mirror at `ui/src/ipc/index.ts:160` is hand-written, so no bindings regeneration. Then `useSettingsStore`, `PdSettings.tsx`, and both catalogues. |
+| 2 | New command `pin_suggestions(envHash) -> Vec<PinSuggestion>` where `PinSuggestion { pkg, dependents }`. Probes once, `ReverseDeps::build_for(&dists, python_version)`, filters `dependent_count >= threshold`, drops already-pinned. Follow the ten-step IPC checklist below. |
+| 3 | A suggestion section on `PdPins`: UI-SPEC §4 specifies the copy shape — *"`urllib3` — 12 packages depend on it. Pin?"* — so it is `t()` with an interpolated name and a plural count. Accepting writes `{ pkg, mode: 'exclude' }` through the existing `togglePin`. |
+
+**Do not compute this in JavaScript**, even though the frontend already holds `dists` with
+`requiresDist` from `pkg_list`. The counts depend on PEP 508 marker evaluation and extra-gated edge
+exclusion, both of which live in `graph/markers.rs` and `Requirement::applies_in`. A JS
+reimplementation would drift from the guard that uses the same edges — and the guard is the one
+that stops people breaking their environments.
+
+**Do not touch `pins::hold_requirements`.** It is dead, it is on the M3 debt list, and it concerns
+`Hold` pins. Auto-suggest creates `Exclude` pins, which `togglePin` already writes.
+
+Cost: one probe per invocation, on a screen the user opened deliberately. `dependent_count` is
+`dependents_of().len()`, so a loop over 350 packages is O(n·m) — measure it before adding a batched
+method that may not be needed.
+
+---
+
+#### P1-B · Requirements / constraints export–import — PRD P1-3
+
+**A snapshot's freeze document already *is* a `requirements.txt`** — verbatim `pip freeze --all` /
+`uv pip freeze` from `Engine::freeze` (`engine/mod.rs:245`). Export is therefore mostly file I/O,
+and `health_save_report` (`commands.rs:1065`) is the shape to copy: the webview gets a path from
+the picker and **Rust does the write**, because `default.json` grants `dialog:allow-open` and
+`dialog:allow-save` and deliberately no `fs` permission at all.
+
+*Export* is the easy half:
+
+- `env_export(env, path, kind: Requirements | Constraints)`. Constraints is the same body — the
+  difference is how the file is used, not what it contains.
+- `snapshot::unrestorable_lines` (`:183`) already names what a freeze cannot express: editable
+  installs, direct URLs, VCS requirements. Report them the way the rollback preview does rather
+  than writing a file that silently loses them.
+
+*Import* is where the work is, and it is **parsing**:
+
+- `snapshot::parse_freeze` (`:144`) handles exactly `name==version` and nothing else, by design —
+  `pin_of` (`:165`) is deliberately narrow because it feeds rollback. **Do not widen it**; its
+  narrowness is what makes it the exact complement of `unrestorable_lines`, an invariant TESTING §2
+  calls out.
+- A real requirements file has `-r`/`-c` includes, `--hash`, extras (`pkg[extra]`), environment
+  markers, and comments after the spec. `graph::Requirement::parse` (`graph/mod.rs:71`) already
+  parses `name[extras] (spec); marker` and is exercised against real metadata — it is the closest
+  thing to a PEP 508 line parser in the tree and the right starting point.
+- Decide up front what an unsupported line does. Refusing the file is defensible; silently skipping
+  `-r requirements-dev.txt` is not.
+
+Once parsed, **the install flow already exists**: `Intent::Install { specs }` (`flow/mod.rs:59`),
+which `PdSearch` already drives at `:224`. An import can also fill the dock bay through
+`useIndexStore.enqueue`, giving the user the existing preview → snapshot → execute path for free.
+
+Missing plumbing: a file-*open* wrapper. `pickProjectFolder` passes `directory: true`; an import
+needs `open({ directory: false, filters: [...] })`. The `dialog:allow-open` permission already
+covers it.
+
+---
+
+#### P1-C · Cache manager — PRD P1-4
+
+**Scope it honestly first: there are no log files.** `LOG_RETENTION_DAYS` (`lib.rs:70`) has no
+reader anywhere. The only "log" that exists is the in-memory ring buffer at `state.rs:373`, and
+`logs_tail` is one of the two `NOT_YET` commands. `actions.openLogs` is an orphan string in both
+catalogues. So this covers **three** artefacts, not four:
+
+| Artefact | Path | Deletable? |
+|---|---|---|
+| Package index + settings + pins | `data\index.db` | **No** — it holds settings and pins too. Offer *refresh*, not *delete*. |
+| Snapshots | `data\snapshots\<env_hash>\` | Yes, per environment or per snapshot |
+| Tools venv | `data\tools\.venv\` | Yes — `tools sync` rebuilds it |
+
+**This introduces the first delete-a-tree primitive in production code.** Today the only deletion
+anywhere outside test scaffolding is one `remove_file` in `snapshot::create`'s failure path. That
+makes the safety design the actual work, not the UI:
+
+- Every path must be **asserted to be under `app_data`** before removal — canonicalised, not string-prefixed.
+- Deleting `index.db` must be refused outright, or it takes settings and pins with it.
+- SECURITY §8 and `legal/PRIVACY-POLICY.md` §2 both describe deleting `data\` as the complete
+  reset, and both now spell out that deleting the *parent* uninstalls the program. If this feature
+  offers a "reset everything" button, those two documents are part of the change — and a `legal/`
+  edit bumps `PIPDOCK_LEGAL_DOCS_HASH` and re-shows the gate.
+
+The easy parts: a recursive size walker (none exists — `probe.py`'s `_size_bytes` is per-package),
+and `formatBytes` in `ui/src/screens/rows.ts:126`, which is already the binary-units formatter
+I18N §2 requires. `pipdock tools status` (`run.rs:1174`) already reports the tools venv's path and
+sync state and would gain sizes for free.
+
+---
+
+#### P1-D · Command palette, `Ctrl+K` — PRD P1-5, UI-SPEC §1
+
+Frontend only. No new IPC command, no new Rust, no capability change — **every dispatch target
+already exists** as a store action.
+
+`Ctrl+K` collides with nothing. Verified against all ten existing bindings, including
+`Ctrl+Alt+P`'s separate listener in `i18n.ts:93`. Today it is a silent no-op:
+`App.tsx:114` does `Number.parseInt(e.key, 10) - 1`, so `'k'` becomes `NaN` and `NAV_KEYS[NaN]` is
+`undefined`. The branch goes **before** line 113's `if (!e.ctrlKey …) return`.
+
+**Write a matcher; do not route palette queries through `index_search`.** `nucleo` is a
+`pipdock-core` dependency and there is no JS fuzzy library. `PdSearch` does zero matching in JS —
+every keystroke is an IPC call into an index of 864,000 *PyPI package names*, which is the wrong
+corpus and the wrong cost for a 30-item action list. `index/mod.rs:78`'s `is_subsequence` is the
+algorithm to copy, and the tiering rationale at `:181` is worth reading first: nucleo ranks
+`requests-ntlm` above `requests`, which is why that module tiers rather than sorting by score.
+
+**Two rules the palette must honour or it reintroduces solved bugs:**
+
+1. **Refuse while a plan owns the screen.** `App.tsx:101` bails on `guardOpen || PANEL_PHASES.has(planPhase)`, and `PdSidebar` disables every tab for the same reason. A palette that can navigate during an execution is the same defect through a different door — and the Phase 4 record is explicit that guarding on one of those two conditions guards neither.
+2. **Refuse while the legal gate is up**, including the About tab's review mode (`App.tsx:91`).
+
+`PdDialog` is the wrong base — it hardcodes a Cancel-first button row and a heading — but its
+`showModal()` pattern (`PdDialog.tsx:51`) is the focus trap to lift, and the `if (!el.open)` guard
+there is there because StrictMode double-invokes the effect. The legal gate is **not** a model for
+this: it does not trap focus, and gets away with it only by replacing the entire shell.
+
+Setting `nav` from the palette gets `<h1>` focus for free — `App.tsx:78` moves focus on every nav
+change, which is exactly what a palette should do on dispatch.
+
+---
+
+#### Adding a command: the ten places
+
+For P1-A and P1-B, which both need new IPC. Three drift tests in `src-tauri/src/lib.rs` police the
+first four and fail at `cargo test`:
+
+1. `crates/pipdock-core/` — the logic. Business logic never goes in `src-tauri` (ARCHITECTURE §1.1).
+2. `src-tauri/src/commands.rs` — the `#[tauri::command]`, with a `# Errors` section naming its
+   catalog codes. **Never hold the store guard across an `await`.**
+3. `src-tauri/src/lib.rs` — `generate_handler![…]`.
+4. `ui/src/ipc/index.ts` — the name in `COMMANDS` **and** a hand-written typed wrapper.
+5. New wire type → `serde` + `schemars::JsonSchema` + `rename_all = "camelCase"`, register in
+   `SCHEMA_TYPES`, `cargo run -p xtask -- bindings`, and bless a new `golden__schema-<T>.snap`
+   plus every schema that embeds it.
+6. New error code → nine places; CLAUDE.md enumerates them.
+7. New event channel → `EVENTS` plus a `listen<T>` wrapper.
+8. `ui/src/test/ipc.ts` — the mock.
+9. Locale keys in **both** catalogues; `i18n.test.ts` fails on either direction.
+10. Capability changes → `capabilities/*.json`, and the `description` field is prose explaining
+    *why*. SECURITY §4 requires the widening be recorded in prose as well.
+
 ## Standing risks
 
 | Risk | Mitigation |
