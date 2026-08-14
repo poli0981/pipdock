@@ -22,7 +22,7 @@ PipDock's thesis: **don't reimplement the resolver — explain it.** Wrap pip/uv
 - G4 — Core happy paths complete in **≤ 5 clicks** (see UI-SPEC click budgets).
 - G5 — GUI and CLI share **one Rust core**; behavior never diverges.
 - G6 — PipDock **never modifies its own runtime** (standalone binary; the managed environments are external).
-- G7 — Zero telemetry; network traffic limited to PyPI + GitHub Releases.
+- G7 — Zero telemetry; **PyPI is the only host PipDock connects to.** It does not update itself, so it never calls home; GitHub, the ruff docs and the author's contact page are only ever handed to the browser as a link the user clicked (SECURITY §4/§5).
 
 ## 3. Personas
 
