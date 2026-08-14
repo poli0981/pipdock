@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next'
 
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
+import { PdRequirements } from '@/components/PdRequirements'
 import { PdSnapshotTimeline } from '@/components/PdSnapshotTimeline'
 import { useEnvStore, usePlanStore } from '@/stores'
 import { useEnvSnapshots } from '@/screens/useEnvSnapshots'
@@ -73,6 +74,8 @@ export function PdEnvDetail() {
       </div>
 
       <p className="mt-1 font-mono text-data text-text-dim">{openFor}</p>
+
+      <PdRequirements env={env} />
 
       {usable ? null : (
         <p className="mt-2 rounded-pd border-l-2 border-warn pl-2 text-data text-text-dim">

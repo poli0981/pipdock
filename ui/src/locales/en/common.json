@@ -181,6 +181,27 @@
     "suggestReason_one": "{{count}} package depended on it",
     "suggestReason_other": "{{count}} packages depended on it"
   },
+  "requirements": {
+    "title": "Requirements file",
+    "intro": "Write this environment out as a requirements.txt, or read one in. Importing previews and snapshots like any other install — it never writes to the environment on its own.",
+    "export": "Export…",
+    "import": "Import…",
+    "exportTitle": "Save the environment as",
+    "importTitle": "Choose a requirements file",
+    "wrote": "Written to",
+    "readCount_one": "{{count}} package to install.",
+    "readCount_other": "{{count}} packages to install.",
+    "skippedCount_one": "{{count}} line was not used:",
+    "skippedCount_other": "{{count}} lines were not used:",
+    "install_one": "Preview installing {{count}} package",
+    "install_other": "Preview installing {{count}} packages",
+    "skip": {
+      "include": "names another file, which PipDock has not read",
+      "not-from-index": "installs from somewhere other than the package index",
+      "option": "an option that would change how everything installs",
+      "unparsed": "not a requirement PipDock can read"
+    }
+  },
   "snapshots": {
     "title": "Snapshots",
     "take": "Take snapshot",

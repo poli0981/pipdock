@@ -171,6 +171,24 @@
     "suggestAcceptFor": "Ghim {{pkg}}",
     "suggestReason_other": "{{count}} gói đã phụ thuộc vào nó"
   },
+  "requirements": {
+    "title": "Tệp requirements",
+    "intro": "Ghi môi trường này ra một tệp requirements.txt, hoặc đọc một tệp vào. Khi nhập, PipDock vẫn xem trước và chụp ảnh như mọi lần cài khác — nó không bao giờ tự ghi vào môi trường.",
+    "export": "Xuất…",
+    "import": "Nhập…",
+    "exportTitle": "Lưu môi trường thành",
+    "importTitle": "Chọn tệp requirements",
+    "wrote": "Đã ghi vào",
+    "readCount_other": "{{count}} gói sẽ được cài.",
+    "skippedCount_other": "{{count}} dòng không dùng được:",
+    "install_other": "Xem trước việc cài {{count}} gói",
+    "skip": {
+      "include": "trỏ tới một tệp khác mà PipDock chưa đọc",
+      "not-from-index": "cài từ nơi khác chứ không phải chỉ mục gói",
+      "option": "một tuỳ chọn làm thay đổi cách mọi thứ được cài",
+      "unparsed": "không phải một requirement PipDock đọc được"
+    }
+  },
   "snapshots": {
     "title": "Ảnh chụp",
     "take": "Chụp ngay",

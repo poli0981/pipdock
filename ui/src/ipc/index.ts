@@ -30,6 +30,7 @@ import type {
   Intent,
   OutdatedDist,
   PackageMeta,
+  ParsedRequirements,
   Pin,
   PinSuggestion,
   ProgressEvent,
@@ -65,6 +66,8 @@ export const COMMANDS = [
   'pin_add',
   'pin_remove',
   'pin_suggestions',
+  'env_export',
+  'requirements_read',
   'snapshot_list',
   'snapshot_create',
   'snapshot_diff',
@@ -238,6 +241,20 @@ export const pinRemove = (envHash: string, pkg: string): Promise<boolean> =>
  */
 export const pinSuggestions = (env: PyEnv): Promise<PinSuggestion[]> =>
   invoke('pin_suggestions', { env })
+
+/**
+ * Write the environment out as a `requirements.txt`, resolving to the path written (PRD P1-3).
+ *
+ * The document is the engine's own `freeze`, which is what a snapshot records — so there is one
+ * idea of what an exported environment looks like, not two. Rust does the writing: the webview has
+ * no `fs` permission, only the ability to ask for a path.
+ */
+export const envExport = (env: PyEnv, path: string): Promise<string> =>
+  invoke('env_export', { env, path })
+
+/** Read a `requirements.txt` into install specs, with the lines it could not use. */
+export const requirementsRead = (path: string): Promise<ParsedRequirements> =>
+  invoke('requirements_read', { path })
 
 /**
  * What `indexSearch` resolves to.
@@ -493,6 +510,26 @@ export const pickProjectFolder = async (
 /** Ask the OS where to save a report. `null` when the user cancelled. */
 export const pickSavePath = async (title: string, defaultName: string): Promise<string | null> =>
   (await save({ title, defaultPath: defaultName })) ?? null
+
+/**
+ * Ask for one existing file.
+ *
+ * `pickProjectFolder`'s sibling, with `directory: false` — the same `dialog:allow-open` permission
+ * covers both, and neither grants the webview any ability to *read* what it named. That is Rust's
+ * job (`requirements_read`).
+ */
+export const pickOpenFile = async (
+  title: string,
+  extensions: string[],
+): Promise<string | null> => {
+  const chosen = await open({
+    directory: false,
+    multiple: false,
+    title,
+    filters: [{ name: title, extensions }],
+  })
+  return typeof chosen === 'string' ? chosen : null
+}
 
 /** Subscribe to discovery progress. Returns the unlisten function. */
 export const onScanProgress = (handler: (progress: ScanProgress) => void): Promise<UnlistenFn> =>

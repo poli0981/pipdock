@@ -477,6 +477,14 @@ export interface PackageMeta {
   version?: string | null;
 }
 
+/** What [`parse`] made of a file. */
+export interface ParsedRequirements {
+  /** Everything else, with its line number and reason. */
+  skipped: SkippedLine[];
+  /** Install specs, in file order, as `Intent::Install` wants them. */
+  specs: string[];
+}
+
 /** A pin with the reason the user gave for it. */
 export interface Pin {
   /** How it is constrained. */
@@ -688,6 +696,23 @@ export interface RuffFindings {
   fixable: number;
   /** How many distinct files those touch. The number P5's dialog names. */
   fixableFiles: number;
+}
+
+/** Why a line was not turned into a spec. */
+export type SkipReason =
+  | 'include'
+  | 'not-from-index'
+  | 'option'
+  | 'unparsed';
+
+/** A line the parser would not turn into an install spec, and what was wrong with it. */
+export interface SkippedLine {
+  /** 1-based, so it matches what an editor shows. */
+  line: number;
+  /** Why, as a catalog-style discriminant the UI turns into a sentence. */
+  reason: SkipReason;
+  /** The line, trimmed. Data — shown verbatim, never translated (I18N §2). */
+  text: string;
 }
 
 /**

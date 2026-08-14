@@ -32,6 +32,8 @@ export interface IpcMock {
   pinAdd: ReturnType<typeof vi.fn>
   pinRemove: ReturnType<typeof vi.fn>
   pinSuggestions: ReturnType<typeof vi.fn>
+  envExport: ReturnType<typeof vi.fn>
+  requirementsRead: ReturnType<typeof vi.fn>
   planResolve: ReturnType<typeof vi.fn>
   planDecide: ReturnType<typeof vi.fn>
   planExecute: ReturnType<typeof vi.fn>
@@ -46,6 +48,7 @@ export interface IpcMock {
   onHealthProgress: ReturnType<typeof vi.fn>
   pickProjectFolder: ReturnType<typeof vi.fn>
   pickSavePath: ReturnType<typeof vi.fn>
+  pickOpenFile: ReturnType<typeof vi.fn>
   healthSaveReport: ReturnType<typeof vi.fn>
   healthFix: ReturnType<typeof vi.fn>
   healthDirty: ReturnType<typeof vi.fn>
@@ -70,6 +73,8 @@ export function ipcMock(): IpcMock {
     // Empty by default: a screen that renders a suggestion section must not get one for free, or
     // a test asserting the section is absent passes for the wrong reason.
     pinSuggestions: vi.fn().mockResolvedValue([]),
+    envExport: vi.fn().mockResolvedValue('C:/out/requirements.txt'),
+    requirementsRead: vi.fn().mockResolvedValue({ specs: [], skipped: [] }),
     planResolve: vi.fn(),
     planDecide: vi.fn(),
     planExecute: vi.fn(),
@@ -87,6 +92,7 @@ export function ipcMock(): IpcMock {
     // run it never actually asked for.
     pickProjectFolder: vi.fn().mockResolvedValue(null),
     pickSavePath: vi.fn().mockResolvedValue(null),
+    pickOpenFile: vi.fn().mockResolvedValue(null),
     healthSaveReport: vi.fn().mockResolvedValue([]),
     healthFix: vi.fn(),
     healthDirty: vi.fn().mockResolvedValue(null),
