@@ -39,6 +39,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "ExecutionSummary",
     "Pin",
     "PinSuggestion",
+    "ParsedRequirements",
     "GuardReport",
     "Diff",
     "SnapshotMeta",

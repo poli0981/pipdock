@@ -38,6 +38,7 @@ pub mod model;
 pub mod pins;
 pub mod plan;
 pub mod report;
+pub mod requirements;
 pub mod settings;
 pub mod snapshot;
 pub mod store;

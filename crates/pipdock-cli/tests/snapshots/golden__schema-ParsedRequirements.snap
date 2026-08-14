@@ -1,0 +1,82 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "SkipReason": {
+      "description": "Why a line was not turned into a spec.",
+      "oneOf": [
+        {
+          "const": "include",
+          "description": "`-r` or `-c`: another file, which PipDock has not read.",
+          "type": "string"
+        },
+        {
+          "const": "not-from-index",
+          "description": "`-e`, or a `name @ url` / VCS requirement: installs from somewhere other than the index.",
+          "type": "string"
+        },
+        {
+          "const": "option",
+          "description": "An option line (`--index-url`, `--extra-index-url`, …) that changes how *everything*\ninstalls. Honouring one silently would change the meaning of the whole file.",
+          "type": "string"
+        },
+        {
+          "const": "unparsed",
+          "description": "The line is not a requirement PipDock can parse at all.",
+          "type": "string"
+        }
+      ]
+    },
+    "SkippedLine": {
+      "description": "A line the parser would not turn into an install spec, and what was wrong with it.",
+      "properties": {
+        "line": {
+          "description": "1-based, so it matches what an editor shows.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reason": {
+          "$ref": "#/$defs/SkipReason",
+          "description": "Why, as a catalog-style discriminant the UI turns into a sentence."
+        },
+        "text": {
+          "description": "The line, trimmed. Data — shown verbatim, never translated (I18N §2).",
+          "type": "string"
+        }
+      },
+      "required": [
+        "line",
+        "text",
+        "reason"
+      ],
+      "type": "object"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What [`parse`] made of a file.",
+  "properties": {
+    "skipped": {
+      "description": "Everything else, with its line number and reason.",
+      "items": {
+        "$ref": "#/$defs/SkippedLine"
+      },
+      "type": "array"
+    },
+    "specs": {
+      "description": "Install specs, in file order, as `Intent::Install` wants them.",
+      "items": {
+        "type": "string"
+      },
+      "type": "array"
+    }
+  },
+  "required": [
+    "specs",
+    "skipped"
+  ],
+  "title": "ParsedRequirements",
+  "type": "object"
+}

@@ -377,6 +377,65 @@ pub async fn pin_suggestions(
     ))
 }
 
+/// Write the environment out as a `requirements.txt` — PRD P1-3.
+///
+/// **The document is `Engine::freeze`'s**, byte for byte, which is the same one a snapshot
+/// records. A freeze *is* a requirements file, so there is no formatter here and no second idea
+/// of what an exported environment looks like. A constraints file is the same body under a
+/// different name; the difference is how the user feeds it back, not what it contains.
+///
+/// Writing happens in Rust because `capabilities/default.json` grants `dialog:allow-open` and
+/// `dialog:allow-save` and deliberately no `fs` permission — the picker returns a path and nothing
+/// in the webview can act on it. `health_save_report` is the same shape.
+///
+/// # Errors
+/// `PD-ENG-001` when the engine cannot be spawned, `PD-ENV-*` when the environment cannot be read,
+/// `PD-SYS-002` when the file cannot be written.
+#[tauri::command]
+pub async fn env_export(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+    path: String,
+) -> Wire<String> {
+    let engine = {
+        let store = state.store.lock().await;
+        engine::for_id(settings::load(&store)?.engine)
+    };
+    let freeze = engine.freeze(&env).await?;
+    let target = std::path::PathBuf::from(&path);
+    std::fs::write(&target, freeze).map_err(|e| {
+        PdError::new(
+            pipdock_core::errors::Code::SysDiskFull,
+            format!("write {}: {e}", target.display()),
+        )
+    })?;
+    Ok(target.display().to_string())
+}
+
+/// Read a `requirements.txt` into install specs, with whatever it could not use.
+///
+/// Reading happens in Rust for the same reason writing does: the webview has no `fs` permission,
+/// only the ability to ask for a path.
+///
+/// The result is deliberately **not** fed straight into a plan. The skipped lines are the point —
+/// an include or an editable install means the file asks for something PipDock will not do, and
+/// the user has to see that before a preview claims to represent their file.
+///
+/// # Errors
+/// `PD-SYS-002` when the file cannot be read.
+#[tauri::command]
+pub async fn requirements_read(
+    path: String,
+) -> Wire<pipdock_core::requirements::ParsedRequirements> {
+    let text = std::fs::read_to_string(&path).map_err(|e| {
+        PdError::new(
+            pipdock_core::errors::Code::SysDiskFull,
+            format!("read {path}: {e}"),
+        )
+    })?;
+    Ok(pipdock_core::requirements::parse(&text))
+}
+
 /// What `index_search` returns.
 ///
 /// A struct rather than a bare `Hit[]` because "no results" and "the index is not loaded yet" are

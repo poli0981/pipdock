@@ -52,7 +52,7 @@ import { joinRows, type LoadState, type PackageRow } from '@/screens/rows'
 export type EngineId = 'pip' | 'uv'
 
 /** Turn an unknown rejection into something a screen can render with a code. */
-function asPdError(e: unknown): PdError {
+export function asPdError(e: unknown): PdError {
   return isPdError(e)
     ? e
     : // A rejection that is not a PdError can only be a bug in the bridge, and PD-INT-001 means
