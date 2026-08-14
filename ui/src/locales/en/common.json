@@ -165,6 +165,17 @@
     "checkFinding": "{{pkg}} requires {{requirement}}",
     "done": "Back to packages"
   },
+  "palette": {
+    "title": "Commands",
+    "placeholder": "Type a command…",
+    "noMatch": "nothing matches “{{query}}”",
+    "refreshPackages": "Refresh the package list",
+    "clearSelection": "Clear the selection",
+    "clearQueue": "Empty the install queue",
+    "groups": {
+      "go": "Go to"
+    }
+  },
   "pins": {
     "empty": "no pins in this environment",
     "emptyHint": "Pin a package from the Installed table to keep bulk updates away from it.",
