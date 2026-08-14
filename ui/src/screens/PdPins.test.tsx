@@ -23,16 +23,25 @@ vi.mock('@/ipc', async () => {
 
 const PINS = pinFixture as Pin[]
 
-/** Put the store where it would be after an environment was selected and loaded. */
+const INTERPRETER = 'C:\\venv\\Scripts\\python.exe'
+
+/**
+ * Put the store where it would be after an environment was selected and loaded.
+ *
+ * The row carries `env`, because a real one does whenever the probe succeeded — and
+ * `pin_suggestions` takes a whole `PyEnv`, so a fixture without it silently tests the
+ * probe-failed path instead. `env` being optional is the point of the last case below.
+ */
 function withEnv(pins: Pin[] = PINS) {
   useEnvStore.setState({
-    selected: 'C:\\venv\\Scripts\\python.exe',
-    loadedFor: 'C:\\venv\\Scripts\\python.exe',
+    selected: INTERPRETER,
+    loadedFor: INTERPRETER,
     rows: [
       {
-        interpreter: 'C:\\venv\\Scripts\\python.exe',
+        interpreter: INTERPRETER,
         envHash: 'envhash01',
         source: 'manual',
+        env: { interpreter: INTERPRETER, pythonVersion: '3.12.4', externallyManaged: false },
       } as never,
     ],
     pins,
@@ -113,6 +122,112 @@ describe('PdPins', () => {
     fireEvent.click(row?.querySelector('[data-action="unpin"]') as HTMLElement)
     await vi.waitFor(() => {
       expect(ipc.pinRemove).toHaveBeenCalledWith('envhash01', 'scipy')
+    })
+  })
+
+  describe('suggestions', () => {
+    /** Two suggestions, as `pin_suggestions` orders them: most-depended-upon first. */
+    const SUGGESTIONS = [
+      { pkg: 'urllib3', dependents: 12 },
+      { pkg: 'certifi', dependents: 1 },
+    ]
+
+    it('asks for suggestions once per environment, not once per render', async () => {
+      // Each call is a `probe.py` run. StrictMode double-invokes effects and the store's guard is
+      // checked synchronously for that reason — the same defect `loadSnapshots` records, and the
+      // same one `app_info` shipped with.
+      withEnv()
+      vi.mocked(ipc.pinSuggestions).mockResolvedValue(SUGGESTIONS)
+      const first = render(<PdPins />)
+      await vi.waitFor(() => {
+        expect(ipc.pinSuggestions).toHaveBeenCalledTimes(1)
+      })
+      first.unmount()
+      render(<PdPins />)
+      await vi.waitFor(() => {
+        expect(screen.getByText(/urllib3 — 12 packages depend on it/)).toBeInTheDocument()
+      })
+      expect(ipc.pinSuggestions).toHaveBeenCalledTimes(1)
+    })
+
+    it('states the count, and pluralises it', async () => {
+      // UI-SPEC §4 fixes this sentence. One dependent is a different sentence from twelve, and a
+      // catalog with only `_other` renders "1 packages" — which is the failure I18N §1 forbids.
+      withEnv()
+      vi.mocked(ipc.pinSuggestions).mockResolvedValue(SUGGESTIONS)
+      render(<PdPins />)
+
+      expect(
+        await screen.findByText('urllib3 — 12 packages depend on it.'),
+      ).toBeInTheDocument()
+      expect(screen.getByText('certifi — 1 package depends on it.')).toBeInTheDocument()
+    })
+
+    it('pins with the count as the reason, and drops the suggestion', async () => {
+      // PRD P1-2: "suggest pin with reason". The reason is editable below, so this is a starting
+      // point rather than the last word — but a pin with no reason is the mystery the reason
+      // field exists to prevent.
+      withEnv([])
+      vi.mocked(ipc.pinSuggestions).mockResolvedValue(SUGGESTIONS)
+      render(<PdPins />)
+
+      fireEvent.click(await screen.findByLabelText('Pin urllib3'))
+      await vi.waitFor(() => {
+        expect(ipc.pinAdd).toHaveBeenCalledWith('envhash01', {
+          pkg: 'urllib3',
+          mode: 'exclude',
+          reason: '12 packages depended on it',
+        })
+      })
+      // Gone from the section without a second probe: the answer cannot have changed.
+      await vi.waitFor(() => {
+        expect(screen.queryByLabelText('Pin urllib3')).not.toBeInTheDocument()
+      })
+      expect(ipc.pinSuggestions).toHaveBeenCalledTimes(1)
+    })
+
+    it('renders nothing at all when there is nothing to suggest', () => {
+      // An empty "Worth pinning" heading is a question nobody asked.
+      withEnv()
+      render(<PdPins />)
+      expect(screen.queryByText('Worth pinning')).not.toBeInTheDocument()
+    })
+
+    it('stays quiet when the suggestion fetch fails', async () => {
+      // Advisory. This screen's job is listing pins, and it does that either way — so a failure
+      // must not put an error row above the thing the user came for.
+      withEnv()
+      vi.mocked(ipc.pinSuggestions).mockRejectedValue({ code: 'PD-ENV-003', message: 'nope' })
+      render(<PdPins />)
+
+      await vi.waitFor(() => {
+        expect(ipc.pinSuggestions).toHaveBeenCalled()
+      })
+      expect(screen.queryByText('Worth pinning')).not.toBeInTheDocument()
+      expect(screen.queryByRole('alert')).not.toBeInTheDocument()
+      // The list it exists to show is still there.
+      expect(document.querySelector('[data-pin="numpy"]')).not.toBeNull()
+    })
+
+    it('asks for nothing without an environment', () => {
+      render(<PdPins />)
+      expect(ipc.pinSuggestions).not.toHaveBeenCalled()
+    })
+
+    it('asks for nothing when the environment could not be probed', () => {
+      // `EnvRow.env` is absent exactly when the probe failed, and a suggestion needs an
+      // interpreter to probe. The pin list still renders — it is keyed by hash and outlives the
+      // Python that made it.
+      useEnvStore.setState({
+        selected: INTERPRETER,
+        loadedFor: INTERPRETER,
+        rows: [{ interpreter: INTERPRETER, envHash: 'envhash01', source: 'manual' } as never],
+        pins: PINS,
+      })
+      render(<PdPins />)
+
+      expect(ipc.pinSuggestions).not.toHaveBeenCalled()
+      expect(document.querySelector('[data-pin="numpy"]')).not.toBeNull()
     })
   })
 

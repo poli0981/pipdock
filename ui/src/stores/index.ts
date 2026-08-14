@@ -26,6 +26,7 @@ import {
   pinAdd,
   pinList,
   pinRemove,
+  pinSuggestions,
   pipUpgrade,
   pkgList,
   pkgOutdated,
@@ -39,6 +40,7 @@ import {
   type OutdatedDist,
   type PdError,
   type Pin,
+  type PinSuggestion,
   type ScanProgress,
   type Settings,
   type Diff,
@@ -68,6 +70,8 @@ interface SettingsState {
    * every mutating screen for such an env to show a persistent warning chip while it is set.
    */
   allowExternallyManaged: boolean
+  /** How many dependents qualify a package for a pin suggestion (PRD P1-2). Zero is off. */
+  pinSuggestThreshold: number
   /** True until the first `settings_get` resolves, so Settings never flashes defaults. */
   loading: boolean
   error: PdError | null
@@ -80,6 +84,9 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   locale: FALLBACK_LOCALE,
   engine: 'pip',
   allowExternallyManaged: false,
+  // Mirrors `graph::PIN_SUGGEST_THRESHOLD`. Only on screen until `load` resolves, which is what
+  // `loading` exists to hide.
+  pinSuggestThreshold: 5,
   loading: true,
   error: null,
 
@@ -89,6 +96,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({
         engine: s.engine,
         allowExternallyManaged: s.allowExternallyManaged,
+        pinSuggestThreshold: s.pinSuggestThreshold,
         loading: false,
         error: null,
       })
@@ -98,10 +106,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   },
 
   save: async (patch) => {
-    const { engine, allowExternallyManaged } = get()
+    const { engine, allowExternallyManaged, pinSuggestThreshold } = get()
     const next: Settings = {
       engine,
       allowExternallyManaged,
+      pinSuggestThreshold,
       // The store holds the *resolved* locale; `null` on the wire means "follow the OS", and only
       // an explicit choice in Settings should overwrite that.
       locale: null,
@@ -112,6 +121,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
       set({
         engine: saved.engine,
         allowExternallyManaged: saved.allowExternallyManaged,
+        pinSuggestThreshold: saved.pinSuggestThreshold,
         error: null,
       })
     } catch (e) {
@@ -188,6 +198,29 @@ interface EnvState {
   /** Set or clear a pin's reason, leaving its mode alone. `null` clears it. */
   updatePin: (name: string, reason: string | null) => Promise<void>
 
+  // -- pin auto-suggest, for the Pins screen (PRD P1-2) ----------------------------------------
+
+  suggestions: PinSuggestion[]
+  /**
+   * Which environment `suggestions` describes.
+   *
+   * Its own key rather than reusing `loadedFor`, for the reason `snapshotsFor` is its own: one
+   * flag covering two fetches means the cheaper one's staleness decides the expensive one's. This
+   * fetch costs a `probe.py` run, and `loadedFor` is written by `loadPackages`.
+   */
+  suggestionsFor: string | null
+  suggestionsLoading: LoadState
+  /**
+   * Fetch suggestions for the selected environment.
+   *
+   * Advisory, so a failure is deliberately silent — there is no `suggestionsError`. The screen it
+   * lives on works without it, and an error row about a *suggestion* would be the loudest thing
+   * on a screen whose actual job is listing pins.
+   */
+  loadSuggestions: () => Promise<void>
+  /** Accept one: pin it, with the count as its reason. */
+  acceptSuggestion: (name: string, reason: string) => Promise<void>
+
   // -- the snapshot slice, for the env detail (UI-SPEC §4) -------------------------------------
 
   /**
@@ -231,6 +264,11 @@ const NO_PACKAGES = {
   outdatedStatus: 'idle' as LoadState,
   outdatedError: null,
   selection: new Set<string>(),
+  // Keyed to `selected` like the rest of this slice, so it resets with it. `suggestionsFor` is a
+  // separate *fetch* key, not a separate reset key — the distinction `NO_SNAPSHOTS` documents.
+  suggestions: [] as PinSuggestion[],
+  suggestionsFor: null,
+  suggestionsLoading: 'idle' as LoadState,
 }
 
 /**
@@ -397,6 +435,40 @@ export const useEnvStore = create<EnvState>((set, get) => ({
           pinAdd(envHash, { pkg: name, mode: 'exclude' })
         : pinRemove(envHash, name).then(() => undefined),
     )
+  },
+
+  loadSuggestions: async () => {
+    const { selected, rows, suggestionsFor, suggestionsLoading } = get()
+    const row = rows.find((r) => r.interpreter === selected)
+    if (row?.env === undefined) return
+    if (suggestionsFor === selected) return
+    // Checked *synchronously*, before any await, for the reason `loadSnapshots` records: React
+    // runs effects twice in development and the second reaches this line before the first has
+    // answered. Without it this is Stage 2's double fetch again — and here each one costs a
+    // `probe.py` run rather than a SQLite read.
+    if (suggestionsLoading === 'loading') return
+
+    set({ suggestionsLoading: 'loading' })
+    try {
+      set({
+        suggestions: await pinSuggestions(row.env),
+        suggestionsFor: selected,
+        suggestionsLoading: 'ready',
+      })
+    } catch {
+      // Advisory. The Pins screen's job is listing pins, and it does that whether or not this
+      // resolved — so a failure leaves the section absent rather than putting an error row above
+      // the thing the user actually came for.
+      set({ suggestionsLoading: 'error' })
+    }
+  },
+
+  acceptSuggestion: async (name, reason) => {
+    // Through `writePin` like every other pin write, so the list is re-read and the selection
+    // pruned identically. Dropping it from `suggestions` locally rather than refetching: the
+    // answer cannot have changed, and a second probe to learn that would be absurd.
+    await writePin(set, get, (envHash) => pinAdd(envHash, { pkg: name, mode: 'exclude', reason }))
+    set((state) => ({ suggestions: state.suggestions.filter((s) => s.pkg !== name) }))
   },
 
   openEnv: (interpreter) =>
