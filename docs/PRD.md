@@ -62,9 +62,9 @@ PipDock's thesis: **don't reimplement the resolver — explain it.** Wrap pip/uv
 |---|---|---|
 | P1-1 | Security tab | pip-audit (freeze-file mode) listing known CVEs per installed package, severity-sorted. |
 | P1-2 | Pin auto-suggest | **Shipped post-1.0 (P1-A).** Reverse-dependency count ≥ threshold (default 5, configurable in Settings; zero is off) ⇒ suggest pin with reason. Counts in-force edges only — extras and other-Python markers do not qualify a package. |
-| P1-3 | Export / import | `requirements.txt` and `constraints.txt` export; import-as-queue. |
-| P1-4 | Cache manager | Show / purge engine cache (`pip cache`, `uv cache`) and PipDock's index cache. |
-| P1-5 | Command palette | Ctrl+K fuzzy action launcher (terminal-tech signature feature). |
+| P1-3 | **Shipped 1.1.0.** Export / import | `requirements.txt` and `constraints.txt` export; import-as-queue. |
+| P1-4 | **Partly shipped, 1.1.0.** Cache manager | Shows and clears **PipDock's own** disk usage: snapshots and the Code Health tools venv. `index.db` is reported but not clearable — it holds settings, pins and the consent record in the same file, so "clear the cache" must never take them. **The engine caches (`pip cache`, `uv cache`) are not covered** and are a separate item: they belong to the engine, live outside `%LOCALAPPDATA%\PipDock\`, and purging them is a subprocess rather than a file delete. |
+| P1-5 | **Shipped 1.1.0.** Command palette | Ctrl+K fuzzy action launcher (terminal-tech signature feature). |
 | P1-6 | Dependency graph view | Visual "who holds this back" graph for a selected package. |
 | P1-7 | Scheduled check | Optional background outdated-check with toast (no auto-apply, ever). |
 

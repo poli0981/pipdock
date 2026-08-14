@@ -4,7 +4,7 @@
 
 ## 1. Design intent
 
-PipDock should feel like a **precision instrument docked over a terminal** — the calm confidence of a good TUI with the affordances of a native app. Not a neon cyberpunk cliché, not a generic admin dashboard: restrained phosphor-green on near-black, monospace where data lives, one accent doing real work. Signature moves: a terminal-style **status line** pinned to the bottom, a live **execution console** that streams real engine output, and (P1) a Ctrl+K command palette.
+PipDock should feel like a **precision instrument docked over a terminal** — the calm confidence of a good TUI with the affordances of a native app. Not a neon cyberpunk cliché, not a generic admin dashboard: restrained phosphor-green on near-black, monospace where data lives, one accent doing real work. Signature moves: a terminal-style **status line** pinned to the bottom, a live **execution console** that streams real engine output, and a **Ctrl+K command palette** (shipped 1.1.0).
 
 Anti-goals: gradients-everywhere SaaS look, rounded-blob cards, decorative glow. Any glow is functional (focus rings, live-activity pulse) and subtle.
 
@@ -141,6 +141,8 @@ the snapshot's side.
 
 **Settings.** Engine (pip/uv radio + detected versions), locale (EN/VI), **pin auto-suggest count** (P1-A; zero turns suggestions off), snapshot retention, index refresh, PEP 668 override (off by default, scary copy), *Open logs folder*.
 
+**Disk usage** (P1-C) shows what PipDock has written — snapshots and the Code Health tools venv, each with a *Clear*, and `index.db` reported without one because it holds settings, pins and the consent record in the same file. Three artefacts, not four: there are no log files, `LOG_RETENTION_DAYS` has never had a reader, and a "logs — 0 B" row would invent one.
+
 The threshold is the app's **first numeric input**, and it sets the rule for the next one: reject at the boundary, never store junk. `<input type="number">` reports `''` for anything it cannot parse, so coercing the raw value writes `0` — which here is a meaningful setting, "off", that the user did not ask for. Its label avoids the word *threshold* on purpose; see `PdPins.test.tsx`'s Hold assertion, which matches `/hold/i`.
 
 **Legal & About left Settings** in Phase 4 and became the About tab below. Neither is a setting: they are read-only surfaces, and folding them into a screen of controls is what kept them unbuilt for four milestones while every control around them shipped.
@@ -216,7 +218,7 @@ table and the Pins screen) and `PdRollbackPreview` (DATA-FLOW §8's preview, inc
 
 ## 8. Keyboard & accessibility
 
-Full keyboard traversal: `Ctrl+1..9` sidebar tabs, `/` focuses search, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6).
+Full keyboard traversal: `Ctrl+1..9` sidebar tabs, **`Ctrl+K` opens the command palette**, `/` focuses search, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6).
 
 **The arrow keys are not decoration, and the gap they close was real.** Making the row the only tab stop is what keeps 200 rows from becoming 600 — but every control inside one is `tabIndex={-1}`, and that left *Pin* and *Remove* reachable by mouse only: a WCAG 2.1.1 failure, found by tabbing to a row in the running app and discovering there was nowhere further to go. `←`/`→` are the ARIA grid pattern's roving tabindex, `Esc` returns focus to the row, and no tab stops are added.
 
