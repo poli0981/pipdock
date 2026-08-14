@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0 · **Status: M1, M2 and Phase 3 complete; Phase 4 in progress — the pipeline builds and installs, the RC tag is the owner's call**.
+Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.0.0. M1, M2, Phase 3 and Phase 4 all complete — the release pipeline runs, `main` is protected, the manual charter is done, and the legal documents match the code.** Post-1.0 is the P1 wave in `docs/ROADMAP.md`.
 
 ## Read the docs before changing anything
 
@@ -73,8 +73,10 @@ Every caller needs an explicit `permissions:` block — callers without one defa
 and search+install all 2026-08-04). The app discovers, lists, previews, decides, executes, streams,
 summarises and installs over real commands. **"Update everything" is 4 clicks and "install one" is
 4 clicks**, both counted by hand in the running app; search is **22 ms median per keystroke**
-against a 50 ms budget. All 16 of UI-SPEC §6's components exist. `docs/ROADMAP.md` Phase 2 has a
-table per stage and says where to pick up; read it before starting a slice.
+against a 50 ms budget. **15 of UI-SPEC §6's 16 components exist** — `PdEnvSwitcher` alone does
+not, and nothing needs it while the header shows the selected interpreter. (This line said 16 of 16
+for two milestones; §6 itself was corrected in P4 and is the authority.) `docs/ROADMAP.md` Phase 2
+has a table per stage and says where to pick up; read it before starting a slice.
 
 **Phase 3 is complete** — six slices, exit criteria met and recorded. P4 put Code Health on screen: `PdHealthReport` is UI-SPEC §6's
 fifteenth of sixteen, `EnvRow.healthProject` remembers the folder per environment, and
@@ -99,10 +101,13 @@ wrong; the record says why). P1 closed **P0-10**: pip's version is on every Envi
 *Upgrade pip* is 2 clicks. **Next is P3** (the three runners + `HealthReport`), then P4 (the Health
 screen) and P5 (the gated `ruff --fix`); `~/.claude/plans/b-n-c-th-b-t-snappy-rabin.md` has all
 four decomposed, including six corrections to the specs found by running the pinned tools.
-`src-tauri/src/lib.rs`'s `NOT_YET` is down to **four** — `health_run`, `health_fix`, and
-`env_add_manual`/`logs_tail` which are M3-general — and three tests keep that list honest in both
-directions. P2 touched none of them: it is CLI-only on purpose, so P3's `health_run` owns the
+P2 touched no `NOT_YET` entry: it is CLI-only on purpose, so P3's `health_run` owns the
 implicit sync rather than the frontend getting two ways to reach one operation.
+
+**`NOT_YET` is two**, and only two: `env_add_manual` and `logs_tail`, both M3-general.
+`src-tauri/src/lib.rs:25-28` is the authority and three tests keep it honest in both directions —
+this file used to say "four" in one paragraph and "two" in another, each true when written and
+neither updated.
 
 Three rules P1 left behind, all found by running rather than reading:
 
@@ -176,6 +181,33 @@ Things worth knowing before you change any of it:
   `PdSummarySheet` had tests; `PdPlanPanel` had none; both rendered `plan.done`, so a successful
   run showed *Back to packages* twice and every suite stayed green. Found by a human using the
   installed build. When adding a component test, ask what renders it.
+
+- **A green badge is not a green `main`.** The README badge is per *workflow file* and shows that
+  file's last run, which may be a schedule on a different commit. `main` was red for a day at
+  `3eeda05` — every cargo job failing before a crate compiled — because `Cargo.lock` carried a
+  dependency edge to `thiserror 2.0.19` while its package entry said `2.0.20`, which `--locked`
+  refuses to repair. Start with `gh run list --branch main`, not the badge. And when bumping a
+  version: it lives in **five** places (`Cargo.toml`, `Cargo.lock`, `package.json`,
+  `package-lock.json`, `tauri.conf.json`) and they move together or you have reproduced this bug.
+  `cargo metadata --locked` is the one-command check.
+
+- **A `docs/` fix and a `legal/` fix are two different changes.** Removing the self-updater updated
+  `THIRD-PARTY-NOTICES.md` and not `PRIVACY-POLICY.md`, so the shipped privacy policy described a
+  feature that no longer existed — and, worse, still told users to delete `%LOCALAPPDATA%\PipDock\`
+  for "a complete reset", which is the folder the program installs into. `docs/SECURITY.md` had
+  recorded the data-root move correctly the whole time. Anything under `legal/` is what a *user*
+  reads; grep it separately whenever behaviour changes. Every `legal/*.md` and `LICENSE` is hashed
+  into `PIPDOCK_LEGAL_DOCS_HASH`, so any edit re-shows the gate once — that is the mechanism
+  working, not a regression.
+
+- **A spec sentence is not a test.** UI-SPEC §8 asserted for two milestones that `Ctrl+1..N` refused
+  while a plan owned the screen. It did not: `App.tsx` guarded on `guardOpen`, and `PANEL_PHASES`
+  excludes `guard` on purpose, so the two sets are disjoint and guarding on one guarded neither.
+  Invisible until the plan ended and dropped the user on a tab they never chose.
+
+- **Appending to `NAV_KEYS` is free; inserting is not.** `Ctrl+9` for About cost one array entry.
+  Four comments claimed "a ninth entry would renumber `Ctrl+1..8`" and had the reason wrong —
+  Snapshots stays a mode of Environments because it would sit *beside* Environments, an insert.
 
 - **Building and installing are their own test tier, and nothing else substitutes.** The first
   bundle ever produced exposed three defects in one afternoon: `release.yml` could not have run

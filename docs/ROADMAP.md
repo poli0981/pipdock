@@ -386,18 +386,15 @@ against the slice that owes it.
 **Phase 3 is complete.** P1 (pip upkeep), P2 (the tools venv), P3 (the runners and `HealthReport`),
 P4 (the Health screen), P5 (the gated `ruff --fix`) and P6 (the tail) are all merged, each with a
 stage table above, and the exit criteria are recorded with the numbers they were measured at.
-**Next is Phase 4** — the release pipeline, the manual charter, and a clean install of the RC on a
-machine that has never run PipDock.
+**Phase 4 is complete too** — see its section below. `1.0.0` is tagged.
 
 `NOT_YET` is down to **two**, both M3-general: `env_add_manual` (*Browse…* has no surface) and
-`logs_tail` (needs the logging subsystem). The M3 debt list is otherwise unchanged: dead
+`logs_tail` (needs the logging subsystem). `src-tauri/src/lib.rs:25-28` and the three tests that
+police it in both directions are the authority; a paragraph here used to say "three" and was
+describing the state before P5 merged. The M3 debt list is otherwise unchanged: dead
 `pins::hold_requirements`, unread `allow_externally_managed`, DATA-FLOW §8's dry-run resolve,
 snapshot retention, `PdEnvSwitcher`, CLI-SPEC §6's NDJSON gap, and `RunOptions`/the confidence floor
 reaching Settings.
-
-`NOT_YET` is down to three and **only `health_fix` is Phase 3's**. P4 did add two commands after
-all — `health_save_report` and, had it been taken, `health_cancel` — so the earlier claim that it
-needed none was wrong; both land implemented, so neither is owed.
 
 The four things P4 was warned it would otherwise rediscover all held: `@tauri-apps/plugin-dialog`
 really was absent from `package.json`, the opener really was scoped to GitHub only, UI-SPEC §6
@@ -654,26 +651,112 @@ window; the real `HWND` style carries no `WS_MAXIMIZEBOX` and still carries `WS_
 steps against real artifacts); the installer ships both binaries; program and data no longer share
 a directory; the shell bugs above are fixed; README carries the badges RELEASE-CI §5 asks for.
 
-**Still open, in rough order:**
+### Phase 4 closed — 2026-08-14
 
-1. **A genuinely clean machine.** This one has run PipDock; isolating the app-data root
-   approximates the criterion rather than meeting it.
-2. **SmartScreen.** The installer has only ever been run scripted, and SmartScreen is an Explorer
-   behaviour — it needs a double-click on a freshly downloaded file.
-3. **The rest of the manual charter** (TESTING §4): the VI locale sweep of the mutation dialogs,
-   corporate-proxy simulation for `PD-NET-002`, and cancel mid-Phase-B. Fixtures for the scale and
-   non-ASCII cases are already recorded above.
-4. **The icon**, still the Tauri-era placeholder — a brand decision, deliberately not invented.
-5. **Version and tag.** Everything is `0.1.0`; the RC and the `v*` tag that fires `release.yml`
-   are the owner's call, and that tag is the first time the pipeline runs for real.
-6. **`docs/README` screenshots**, which want the finished icon first.
+All six of the items above are done. What actually happened, item by item, because "we ran the
+charter" ages into nothing:
 
-**Repo scaffolding (RELEASE-CI §5)** still owes the two owner-only items: branch protection plus
-disabling CodeQL default setup, and the three Discord webhook secrets. Neither is committable.
+1. **A genuinely clean machine.** The RC was installed and driven on a real Windows 11 machine
+   that had never run PipDock, plus **Windows Sandbox** and a **Windows 10 VM under VirtualBox**.
+   Three installs, three uninstalls, no failures.
+2. **SmartScreen produced no prompt** on any of the three. Worth knowing *why* that is not a
+   guarantee: SmartScreen's reputation check is per-file-hash and per-publisher, and the binaries
+   are still not EV-code-signed, so a warning on some future user's first download remains
+   possible. The README's checksum instructions are the answer either way, and they stay.
+3. **The manual charter is complete** (TESTING §4). The three that were owed — the VI locale sweep
+   of the mutation dialogs, cancel mid-Phase-B, and corporate-proxy simulation for `PD-NET-002` —
+   were all executed, as was a **non-ASCII Windows username**, which is a different case from the
+   non-ASCII *path* already covered by `E:\sp5\dự án tiếng việt`: the username is in
+   `%LOCALAPPDATA%`, so it is in the data root, the log paths and the tools venv.
+4. **The icon is decided, not deferred.** The green triangle stays. It was called a placeholder
+   because nobody had chosen it; the owner has now chosen it, which is what "a brand decision"
+   needed. `bundle.icon` still names only `icons/icon.ico` — correct for a Windows-only build; the
+   Square*.png set is Microsoft Store furniture nothing reads.
+5. **Version is `1.0.0`** in all five places (`Cargo.toml`, `Cargo.lock`, `package.json`,
+   `package-lock.json`, `tauri.conf.json`). The `v1.0.0` tag is the first real run of
+   `release.yml`.
+6. **Seven screenshots** are in `screenshot/` and referenced from the README. They predate the
+   About tab, so their sidebar has eight entries where 1.0 has nine.
+
+**Repo scaffolding (RELEASE-CI §5) is complete**, and three of its items turned out to be already
+done and undocumented: the Discord webhook secrets were set 2026-08-14, CodeQL *Default setup* was
+already `not-configured` (which is what the advanced-setup caller requires), and Discussions were
+already on. **Branch protection** was the only genuinely outstanding one and is now applied over
+the API — five required checks, `enforce_admins: true`, PR required, linear history. RELEASE-CI §2
+has claimed `main` was protected since it was written; that claim is true for the first time.
+
+`CI / Integration` is deliberately **not** a required check: its `pull_request` trigger is
+`paths:`-filtered, and a required check that never starts leaves a PR pending forever — so
+requiring it would deadlock every docs-only and UI-only PR.
+
+### What Phase 4 found that was not on its list
+
+Four things, three of them defects that had been shipping.
+
+**`main` was red and nobody knew.** `Cargo.lock` at `3eeda05` carried a dependency edge to
+`thiserror 2.0.19` while its package entry said `2.0.20` — a lockfile cargo wants to repair and
+`--locked` forbids repairing, so every cargo job in every workflow died before compiling a crate.
+Same shape as the ruff-pin defect in P4: a Dependabot bump whose base predated the code that would
+have caught it. The lesson is the one already written — **check `gh run list` before believing a
+green badge**, because the badge is per-workflow-file and shows the last run, not the last commit.
+
+**The privacy policy described a self-updater deleted two weeks earlier**, and told users to delete
+`%LOCALAPPDATA%\PipDock\` for "a complete reset" — the folder the program installs into. Following
+the shipped privacy policy uninstalled the application. `d829c4f` had updated
+THIRD-PARTY-NOTICES and not PRIVACY-POLICY; SECURITY §8 recorded the data-root move and the legal
+document never got it. **A `docs/` fix and a `legal/` fix are two different changes**, and the
+second is the one a user reads.
+
+**Four documents credited `specta`/`tauri-specta`,** which `bindings.rs` has recorded since M1 that
+the project deliberately does not use. One of them was `legal/THIRD-PARTY-NOTICES.md`, i.e. a
+licence attribution for a dependency that does not exist, beside eleven that do and were unlisted.
+
+**`Ctrl+N` never refused while a plan owned the screen,** despite UI-SPEC §8 asserting it did since
+S3. `App.tsx` guarded on `guardOpen`, and `PANEL_PHASES` excludes `guard` on purpose — the two sets
+are disjoint, so guarding on one guarded neither. Invisible, because the sidebar was disabled and
+the panel kept rendering, until the plan finished and dropped the user on a tab they never chose.
+**A spec sentence is not a test.** Found by reading `App.tsx` to add a ninth tab.
+
+### The About tab (early out of the Post-1.0 wave)
+
+UI-SPEC §4 has specified *Legal & About* since the spec was written, as a section inside Settings,
+and four milestones shipped without it — so after acceptance there was no in-app path back to the
+documents at all. It is the ninth tab instead, because a read-only surface folded into a screen of
+controls is the thing that never gets built.
+
+Three things it settled that outlive it:
+
+- **Appending to `NAV_KEYS` is free; inserting is not.** `Ctrl+9` cost one array entry and one
+  label. Every comment saying "a ninth entry would renumber `Ctrl+1..8`" was wrong about the
+  reason: Snapshots stays a mode of Environments because it would have to sit *beside*
+  Environments, which is an insert.
+- **A review is not a revocation.** Re-opening the gate by setting `accepted = false` was one line
+  and would have offered Accept and a Decline-that-quits to someone re-reading their privacy
+  policy. `useLegalStore.review` is its own flag and the gate takes a presentational prop.
+- **`app_info` fired twice per mount, and only the running app said so.** StrictMode's doubling is
+  dev-only, but it exposed the real one: `key={nav}` remounts `<main>`, so every visit re-fetched a
+  value baked in at compile time. `PdAbout.test.tsx` asserted one call and passed, because Testing
+  Library does not use StrictMode. **Run it, don't just test it** — the twenty-fifth time.
 
 ## Post-1.0 (P1 wave)
 
 Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
+
+**About shipped early, in Phase 4** — see above. Two smaller items were added to this wave rather
+than done at 1.0:
+
+- **Generate `legal/THIRD-PARTY-NOTICES.md`.** Both it and SECURITY §7 claimed `cargo about` +
+  `license-checker` regenerated it at release into a `licenses/` directory; no `about.toml`, no
+  such directory and no such release step have ever existed. The claim now describes what is
+  actually done — a hand-maintained inventory of the *direct* dependencies, reconciled against the
+  manifests at each release. Making it true is the item. Doing it at 1.0 would have meant
+  complicating `release.yml` on the first run it had ever had.
+- **Re-capture the screenshots** once anything visible changes; the seven in `screenshot/` show an
+  eight-entry sidebar.
+
+Also worth doing when the Security tab lands: `capabilities/external-links.json` will need an OSV
+host, because DISCLAIMER §4 and SECURITY §6 both say findings link to the OSV entry and the current
+allowlist would reject it — silently, which is the failure mode SECURITY §4 exists to name.
 
 ## Standing risks
 
