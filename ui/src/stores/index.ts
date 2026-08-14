@@ -512,14 +512,34 @@ async function writePin(
 interface LegalState {
   /** Null until checked; false means the gate must be shown. */
   accepted: boolean | null
+  /**
+   * The gate is on screen *voluntarily*, opened from About rather than by a missing consent.
+   *
+   * Separate from `accepted` on purpose. Re-using `accepted: false` would have been one line, but
+   * it makes a review indistinguishable from a revocation: the gate would offer Accept and
+   * Decline, and Decline closes the application. Nobody reading their privacy policy expects the
+   * program to quit. So the flag is its own, `PdLegalGate` renders a Close instead, and consent on
+   * disk is neither read nor written.
+   */
+  review: boolean
   error: PdError | null
   check: () => Promise<void>
   accept: () => Promise<void>
+  openReview: () => void
+  closeReview: () => void
 }
 
 export const useLegalStore = create<LegalState>((set) => ({
   accepted: null,
+  review: false,
   error: null,
+
+  openReview: () => {
+    set({ review: true })
+  },
+  closeReview: () => {
+    set({ review: false })
+  },
 
   check: async () => {
     try {

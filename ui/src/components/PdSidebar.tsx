@@ -9,14 +9,14 @@ const NOT_YET: readonly NavKey[] = ['security']
 /**
  * The sidebar — UI-SPEC §3 and §8.
  *
- * `Ctrl+1..8` maps to `NAV_KEYS` positionally, which is why that order is load-bearing. Tabs
+ * `Ctrl+1..9` maps to `NAV_KEYS` positionally, which is why that order is load-bearing. Tabs
  * without a screen yet stay in place and stay focusable rather than being hidden: hiding them
  * would renumber every shortcut after them, and the user would relearn the map twice.
  *
  * **Every tab is disabled while a plan owns the content area.** `PdPlanPanel` replaces `<main>`
  * for the whole of a preview, an execution and its summary; navigating away left the plan parked
  * in Rust with nothing on screen driving it, and the user's next Update answered `PD-RES-003`
- * about a plan they could no longer see. `App.tsx` already refuses `Ctrl+1..8` while the guard
+ * about a plan they could no longer see. `App.tsx` refuses `Ctrl+1..9` while the guard
  * dialog is open, for the same reason — this is that rule applied to the panel and to the mouse.
  */
 export function PdSidebar() {

@@ -40,6 +40,7 @@ Type: **Inter** (UI), **JetBrains Mono** (package names, versions, console, stat
 │ Health              │                                        │
 │ Security (P1)       │                                        │
 │ Settings            │                                        │
+│ About               │                                        │
 ├───────────┴──────────────────────────────────────────────────┤
 │ ▸ .venv · Py 3.12.4 · uv 0.9.x · idle            log ⌄  ⚠ 0  │  status line
 └──────────────────────────────────────────────────────────────┘
@@ -99,8 +100,11 @@ packages depend on it. Pin?".
 
 **Snapshots** (surfaced under Environments → env detail): timeline of snapshots with trigger label, diff viewer (added/removed/changed in mono), `Rollback…` with its own preview per DATA-FLOW §8.
 
-The detail view is a **mode of the Environments tab**, not a ninth sidebar entry — §8 fixes
-`Ctrl+1..8` to the eight that exist, and a ninth would renumber every shortcut after it. Which
+The detail view is a **mode of the Environments tab**, not a sidebar entry of its own. The reason is
+adjacency, not arity: §8's shortcuts are *positional* over `NAV_KEYS`, so **appending is free and
+inserting is not** — Phase 4 put About on the end and it became `Ctrl+9` without moving a single
+existing binding, while a Snapshots entry would have to sit *beside* Environments to read as
+related, renumbering everything after it. Which
 environment is open lives in `useEnvStore`, because the plan panel replaces the whole content area
 while a rollback runs and component state would be unmounted with it.
 
@@ -117,9 +121,15 @@ the snapshot's side.
 
 **Health.** Project-folder picker (persisted per env) → run panel with three result tabs (deptry / vulture / ruff) per CODE-HEALTH-SPEC; `Fix with ruff` gated behind explicit confirm listing file count.
 
-**Settings.** Engine (pip/uv radio + detected versions), locale (EN/VI), thresholds (pin auto-suggest count, snapshot retention), index refresh, PEP 668 override (off by default, scary copy), *Open logs folder*, *Legal & About* (links to GitHub legal docs + re-open legal gate).
+**Settings.** Engine (pip/uv radio + detected versions), locale (EN/VI), thresholds (pin auto-suggest count, snapshot retention), index refresh, PEP 668 override (off by default, scary copy), *Open logs folder*.
+
+**Legal & About left Settings** in Phase 4 and became the About tab below. Neither is a setting: they are read-only surfaces, and folding them into a screen of controls is what kept them unbuilt for four milestones while every control around them shipped.
 
 **Legal gate (first run).** Modal listing the five documents with GitHub links and a summarized disclaimer sentence; single checkbox "I have read and accept" → `Continue`. Decline exits the app. Consent stored with docs-version hash; hash bump re-triggers the gate.
+
+It has a second, **presentational** mode since Phase 4: About re-opens it so the documents can be read again, and in that mode the checkbox and both buttons are replaced by a single *Close*. Consent is neither read nor written. This is a flag of its own (`useLegalStore.review`) rather than setting `accepted = false`, which would have been one line and would have made a review indistinguishable from a revocation — offering Accept and a Decline that closes the application to someone who only wanted to re-read their privacy policy.
+
+**About.** The ninth tab (`Ctrl+9`): what PipDock is; this build — version from `app_info`, the SPDX identifier `GPL-3.0-only`, and the legal-documents hash consent is recorded against; a button that puts the gate back on screen; and contact — two addresses and the author's links page. The addresses are **copied to the clipboard, not opened**: `mailto:` would widen the opener capability by a whole URL scheme, and SECURITY §4 asks for a reason per widening. They are also rendered from a TypeScript constant rather than the catalogs, because an address is data (I18N §2) and a catalog invites a translator to change it. Only `https://poli0981.dev/*` was added to the allowlist, for the links page.
 
 ## 5. Click budgets (owner ceiling: 5)
 
@@ -148,8 +158,14 @@ launches, one process, one window.
 
 **The sidebar is disabled while `PANEL_PHASES` owns the content area.** Navigating away left the
 plan parked in Rust with nothing driving it, and the next Update answered `PD-RES-003` about a plan
-the user could no longer see. §8's `Ctrl+1..8` already refuses while the guard dialog is open; this
-is the same rule for the panel and for the mouse.
+the user could no longer see. §8's `Ctrl+1..9` is the same rule for the keyboard.
+
+**And it did not, until Phase 4.** This paragraph said the shortcuts "already refuse" for two
+milestones while they did not: `App.tsx` returned early on the guard dialog alone, and
+`PANEL_PHASES` *excludes* `guard` on purpose, so the two sets are disjoint and guarding on one
+guarded neither. Nothing looked wrong — the sidebar was disabled and the panel kept rendering —
+until the plan finished and dropped the user on a tab they never chose. The shortcuts now also
+refuse while the legal gate is on screen, which matters once About can re-open it.
 
 **The window is bounded at 1600×1100 and cannot be maximized or go fullscreen.** The layout is a
 fixed sidebar plus one scrolling column; stretched across a 4K panel it is a column of text beside
@@ -180,7 +196,7 @@ table and the Pins screen) and `PdRollbackPreview` (DATA-FLOW §8's preview, inc
 
 ## 8. Keyboard & accessibility
 
-Full keyboard traversal: `Ctrl+1..8` sidebar tabs, `/` focuses search, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6).
+Full keyboard traversal: `Ctrl+1..9` sidebar tabs, `/` focuses search, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6).
 
 **The arrow keys are not decoration, and the gap they close was real.** Making the row the only tab stop is what keeps 200 rows from becoming 600 — but every control inside one is `tabIndex={-1}`, and that left *Pin* and *Remove* reachable by mouse only: a WCAG 2.1.1 failure, found by tabbing to a row in the running app and discovering there was nowhere further to go. `←`/`→` are the ARIA grid pattern's roving tabindex, `Esc` returns focus to the row, and no tab stops are added.
 

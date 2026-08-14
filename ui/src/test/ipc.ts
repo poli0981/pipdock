@@ -49,6 +49,7 @@ export interface IpcMock {
   healthFix: ReturnType<typeof vi.fn>
   healthDirty: ReturnType<typeof vi.fn>
   reportBugUrl: ReturnType<typeof vi.fn>
+  appInfo: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
 
@@ -96,6 +97,11 @@ export function ipcMock(): IpcMock {
       url: 'https://github.com/poli0981/pipdock/issues/new',
       log: '[log excerpt]',
     }),
+    // The one command in the surface that cannot fail — `app_info` is a `const fn` in Rust
+    // returning `AppInfo`, not `Wire<AppInfo>`. So it resolves by default rather than being a bare
+    // `vi.fn()`: About renders version and docs hash unconditionally and has no error branch, and
+    // a mock resolving `undefined` would invent one.
+    appInfo: vi.fn().mockResolvedValue({ version: '0.1.0', docsHash: 'a1b2c3d4e5f60718' }),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
     // and a stub that always answered one way would make every error test agree with itself.
     isPdError: (value: unknown): boolean =>

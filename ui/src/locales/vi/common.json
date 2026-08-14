@@ -11,7 +11,8 @@
     "pins": "Ghim",
     "health": "Sức khỏe mã",
     "security": "Bảo mật",
-    "settings": "Cài đặt"
+    "settings": "Cài đặt",
+    "about": "Giới thiệu"
   },
   "status": {
     "idle": "rảnh",
@@ -304,7 +305,31 @@
     },
     "summary": "PipDock được cung cấp không kèm bảo hành. Nó chạy pip hoặc uv trên những môi trường bạn chọn, và mọi thay đổi đều được xem trước và chụp ảnh trước — nhưng bạn vẫn chịu trách nhiệm về những gì mình cài.",
     "accept": "Tôi đã đọc và chấp nhận các tài liệu này.",
-    "openFailed": "Không mở được liên kết. Các tài liệu nằm trên GitHub tại poli0981/pipdock."
+    "openFailed": "Không mở được liên kết. Các tài liệu nằm trên GitHub tại poli0981/pipdock.",
+    "close": "Đóng"
+  },
+  "about": {
+    "title": "Giới thiệu",
+    "what": "PipDock quản lý những gì được cài trong các môi trường Python của bạn. Nó điều khiển pip hoặc uv chứ không thay thế chúng: mọi thay đổi đều được xem trước khi chạy, môi trường luôn được chụp ảnh trước khi bị đụng tới, và mỗi lượt chạy hàng loạt đều báo cáo lại từng gói một khi kết thúc.",
+    "privacy": "PipDock không thu thập gì cả — không telemetry, không tài khoản, không tự cập nhật. Nó chỉ kết nối tới PyPI, và nút báo lỗi chỉ mở sẵn một biểu mẫu để chính bạn đọc lại rồi gửi đi.",
+    "buildTitle": "Bản dựng này",
+    "version": "Phiên bản",
+    "license": "Giấy phép",
+    "docsHash": "Tài liệu pháp lý",
+    "docsHashDetail": "Việc bạn chấp nhận được ghi lại kèm giá trị này. Sửa bất kỳ tài liệu nào cũng làm nó đổi, và màn hình chấp nhận sẽ hiện lại một lần ở lần mở tiếp theo.",
+    "openRepo": "Mở kho mã nguồn",
+    "reopen": "Xem lại các tài liệu",
+    "reopenDetail": "Đưa màn hình chạy lần đầu trở lại để bạn đọc năm tài liệu. Nó không thay đổi gì cả: việc bạn đã chấp nhận vẫn giữ nguyên, và đóng màn hình đó sẽ đưa bạn về đây.",
+    "contactTitle": "Liên hệ",
+    "contactIntro": "PipDock do một người làm ra. Cả hai địa chỉ đều được đọc.",
+    "contactGeneral": "Câu hỏi chung và góp ý",
+    "contactCode": "Mã nguồn, báo cáo bảo mật và giấy phép",
+    "copy": "Sao chép",
+    "copyAddress": "Sao chép {{address}}",
+    "copied": "Đã sao chép",
+    "linksTitle": "Các kênh khác",
+    "linksIntro": "Mọi cách liên hệ khác đều được liệt kê trên một trang.",
+    "openLinks": "Mở trang liên kết"
   },
   "errors": {
     "title": "Đã xảy ra lỗi",
