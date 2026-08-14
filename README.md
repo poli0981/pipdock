@@ -29,6 +29,8 @@
 
 ![Code Health against a project folder: deptry 1, vulture 0, ruff 56, grouped by file with rule codes and "fixable" badges on the ones ruff can repair itself.](screenshot/health.png)
 
+![The About tab: version 1.0.0, licence GPL-3.0-only, the SHA-256 the legal-document acceptance was recorded against, a button that puts the first-run screen back, and two contact addresses with copy buttons.](screenshot/about.png)
+
 <details>
 <summary>Environments, Updates, Search, Pins, Settings</summary>
 
@@ -104,7 +106,9 @@ pipdock snapshot rollback latest
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Crate layout, Engine trait, IPC surface, storage |
 | [docs/DATA-FLOW.md](docs/DATA-FLOW.md) | State machines for update / install / uninstall, engine command mapping |
 | [docs/UI-SPEC.md](docs/UI-SPEC.md) | Terminal-tech design system, screens, click budgets |
-| [docs/CLI-SPEC.md](docs/CLI-SPEC.md) | Commands, flags, exit codes, JSON contracts |
+| [docs/CLI-GUIDE.md](docs/CLI-GUIDE.md) | **Start here for the CLI** — what to type, in the order you need it |
+| [docs/CLI-SPEC.md](docs/CLI-SPEC.md) | The CLI contract: every flag, exit code and JSON shape |
+| [docs/AI-DISCLOSURE.md](docs/AI-DISCLOSURE.md) | Which AI model helped build this, what it did, and how it was reviewed |
 | [docs/CODE-HEALTH-SPEC.md](docs/CODE-HEALTH-SPEC.md) | deptry / vulture / ruff integration |
 | [docs/ERROR-CATALOG.md](docs/ERROR-CATALOG.md) | Error codes, stderr detection patterns, user guidance |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, PEP 668 policy, supply-chain hygiene |
@@ -113,6 +117,14 @@ pipdock snapshot rollback latest
 | [docs/I18N.md](docs/I18N.md) | EN/VI localization rules |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Spike week, milestones, exit criteria |
 | [legal/](legal/) | EULA, Disclaimer, Privacy Policy, Third-Party Notices (linked by the in-app legal gate) |
+
+## How this was built
+
+PipDock was written with substantial help from an AI coding assistant — **Claude Opus 5**, made by [Anthropic](https://www.anthropic.com), through [Claude Code](https://claude.com/claude-code) — under human review. It wrote source code, tests, debugging work and the Vietnamese translation. Every change reached `main` through a pull request the maintainer read and merged, `main` is protected and cannot be bypassed, and the built application was driven by hand on three machines before 1.0.0 shipped.
+
+That review mattered: **thirty-four defects** reached or nearly reached `main`, and not one was caught by the test suite that was green at the time. They were found by running the thing.
+
+Copyright and the GPL-3.0-only licence are unchanged. The full statement — model, vendor, what was and was not delegated, and how to verify any of it from `git log` — is in [docs/AI-DISCLOSURE.md](docs/AI-DISCLOSURE.md).
 
 ## License
 

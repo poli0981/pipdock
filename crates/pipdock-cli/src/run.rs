@@ -1353,10 +1353,13 @@ pub async fn report_bug(opts: &GlobalOpts) -> Result<Exit> {
 
     println!("{url}");
     if !opts.quiet {
+        // Concatenated rather than a multi-line literal: a bare string literal keeps the source
+        // indentation, which shipped this line with fourteen stray spaces in the middle of a
+        // sentence. Found by reading the actual output while writing docs/CLI-GUIDE.md.
         eprintln!(
-            "
-Open that in a browser to review the prefilled issue. Nothing is sent until you              submit it yourself.
-Check the log excerpt for paths or names you would rather not              make public."
+            "\nOpen that in a browser to review the prefilled issue. \
+             Nothing is sent until you submit it yourself.\n\
+             Check the log excerpt for paths or names you would rather not make public."
         );
     }
     Ok(Exit::Success)
