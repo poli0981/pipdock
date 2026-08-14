@@ -36,7 +36,7 @@ Every change reached `main` through a pull request that the owner read and merge
 diffs, four things were load-bearing, and all four caught real defects the review-by-reading did
 not:
 
-1. **A green test suite was never sufficient.** Thirty-four defects reached `main` or nearly did,
+1. **A green test suite was never sufficient.** Thirty-five defects reached `main` or nearly did,
    and *not one* was caught by the suite that was green at the time. They were found by running
    the thing — against a real interpreter, a real CI runner, a real browser, a real installer.
    `docs/ROADMAP.md` records each one against the stage it was found in.
@@ -85,8 +85,9 @@ git log --format=%b | grep -c 'Co-Authored-By'    # how many carry the trailer
 gh pr list --state merged                         # every change, and the review it went through
 ```
 
-At 1.0.0: **172 commits, 163 of them carrying the trailer.** The remainder are Dependabot bumps and
-a handful of hand-written mechanical commits.
+At the 1.0.0 tag: **175 commits, 166 of them carrying the trailer.** The remainder are Dependabot
+bumps and a handful of hand-written mechanical commits. Re-run the commands rather than trusting
+these two numbers — they move with every release, and this page is only re-checked at one.
 
 ## Questions
 
