@@ -23,6 +23,27 @@
 - **Skip-and-continue execution** — one failed package never aborts the batch; you get a final report: *"13 successful, 2 failed"* with per-package reasons.
 - **Never touches itself** — PipDock is a standalone binary that lives outside every environment it manages, so it can never break itself mid-update.
 
+## Screenshots
+
+![The Installed tab listing 352 packages in C:\Python314, each with version, size and status. A note explains that user-site packages are hidden because PipDock reads this environment in isolated mode.](screenshot/installed.png)
+
+![Code Health against a project folder: deptry 1, vulture 0, ruff 56, grouped by file with rule codes and "fixable" badges on the ones ruff can repair itself.](screenshot/health.png)
+
+<details>
+<summary>Environments, Updates, Search, Pins, Settings</summary>
+
+![Environments: two interpreters found through the registry — Python 3.14.7 with 352 packages and pip 26.2.1, and Python 3.12.10 with 2 packages and pip 25.0.1.](screenshot/env.png)
+
+![The Updates tab reporting "all packages up to date" for the selected environment.](screenshot/update.png)
+
+![Search: typing "hello" lists matching PyPI names from the local index, each with an Add button that queues an install.](screenshot/search.png)
+
+![Pins: two packages excluded from bulk updates, each with a free-text field for why it is pinned.](screenshot/pin.png)
+
+![Settings: engine radio (pip / uv), language (en / vi), and the PEP 668 override with warning copy explaining what enabling it risks.](screenshot/settings.png)
+
+</details>
+
 ## Features (v1)
 
 | Area | What you get |
