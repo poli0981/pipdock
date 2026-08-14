@@ -1,6 +1,6 @@
 # PipDock — Privacy Policy
 
-*Version 1.0 · Effective 2026-07-17 · Governing language: English.*
+*Version 1.1 · Effective 2026-08-14 · Governing language: English.*
 
 ## 1. The short version
 
@@ -8,7 +8,7 @@
 
 ## 2. Data stored locally on your device
 
-All application data lives under `%LOCALAPPDATA%\PipDock\` and never leaves your machine:
+All application data lives under `%LOCALAPPDATA%\PipDock\data\` and never leaves your machine:
 
 | Data | Purpose |
 |---|---|
@@ -18,11 +18,17 @@ All application data lives under `%LOCALAPPDATA%\PipDock\` and never leaves your
 | Pins | update exclusions |
 | Log files (14-day rotation) | troubleshooting; may contain package names and file paths |
 
-Deleting this folder is a complete reset. No data is synced or backed up anywhere by PipDock.
+Deleting the `data\` folder is a complete reset. **Delete `data\`, not its parent:** PipDock's own program files are installed in `%LOCALAPPDATA%\PipDock\`, so removing that folder uninstalls the application as well — use the uninstaller for that. No data is synced or backed up anywhere by PipDock.
 
 ## 3. Network connections
 
-PipDock connects only to: **pypi.org / files.pythonhosted.org** (package name index and metadata — standard web requests carrying no personal data beyond your IP address, as with any website) and **github.com** (checking for and downloading PipDock's own updates). The pip/uv engines make their own connections to the package indexes configured on your system (including any private indexes you have set up); PipDock does not alter or observe those configurations beyond invoking the engines.
+PipDock connects to exactly one destination: **pypi.org / files.pythonhosted.org**, for the package name index and per-package metadata — standard web requests carrying no personal data beyond your IP address, as with any website.
+
+**PipDock does not update itself**, so it never contacts GitHub or anywhere else to look for a new version. New versions are downloaded by you from the Releases page.
+
+Some buttons hand a URL to your browser rather than fetching anything: the legal documents and the bug-report form on **github.com**, ruff's rule pages on **docs.astral.sh**, and the author's contact page on **poli0981.dev**. Those are visits your browser makes, under its own settings, only after you click.
+
+The pip/uv engines make their own connections to the package indexes configured on your system (including any private indexes you have set up); PipDock does not alter or observe those configurations beyond invoking the engines.
 
 ## 4. Bug reports (opt-in, manual)
 
@@ -38,10 +44,10 @@ Material changes to this policy bump the legal documents' version hash, and the 
 
 ## 7. Contact
 
-Privacy questions: open a discussion or issue at <https://github.com/poli0981/pipdock>.
+Privacy questions: email <contact@poli0981.dev>, or open a discussion or issue at <https://github.com/poli0981/pipdock>. The same contact details are listed in the application under **About**.
 
 ---
 
 ## Tóm tắt Tiếng Việt (tham khảo)
 
-PipDock **không thu thập bất kỳ dữ liệu nào**: không telemetry, không analytics, không tài khoản. Mọi dữ liệu (cài đặt, cache chỉ mục, snapshot, log) nằm trong `%LOCALAPPDATA%\PipDock\` trên máy bạn; xóa thư mục này là xóa sạch. Ứng dụng chỉ kết nối tới pypi.org (dữ liệu gói) và github.com (cập nhật chính PipDock). Nút báo lỗi chỉ mở form GitHub đã điền sẵn — không gì được gửi đi cho tới khi bạn tự xem lại và bấm gửi.
+PipDock **không thu thập bất kỳ dữ liệu nào**: không telemetry, không analytics, không tài khoản. Mọi dữ liệu (cài đặt, cache chỉ mục, snapshot, log) nằm trong `%LOCALAPPDATA%\PipDock\data\` trên máy bạn; xóa thư mục `data\` là xóa sạch — **đừng xóa thư mục cha**, vì chính chương trình được cài ở đó và xóa nó là gỡ luôn ứng dụng. Ứng dụng **chỉ** kết nối tới pypi.org (dữ liệu gói); PipDock không tự cập nhật nên không bao giờ gọi về GitHub. Một vài nút giao URL cho trình duyệt của bạn mở (github.com, docs.astral.sh, poli0981.dev) — đó là trình duyệt truy cập, sau khi bạn bấm. Nút báo lỗi chỉ mở form GitHub đã điền sẵn — không gì được gửi đi cho tới khi bạn tự xem lại và bấm gửi. Liên hệ: <contact@poli0981.dev>.

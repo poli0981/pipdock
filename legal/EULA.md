@@ -1,6 +1,6 @@
 # PipDock — End User License Agreement (Terms of Use)
 
-*Version 1.0 · Effective 2026-07-17 · Governing language: English (bản Tiếng Việt tóm tắt ở cuối chỉ mang tính tham khảo).*
+*Version 1.1 · Effective 2026-08-14 · Governing language: English (bản Tiếng Việt tóm tắt ở cuối chỉ mang tính tham khảo).*
 
 ## 1. License
 
@@ -8,7 +8,7 @@ PipDock is free software, licensed under the **GNU General Public License, versi
 
 ## 2. What PipDock does (acknowledgment)
 
-PipDock installs, upgrades, and removes packages in Python environments **at your direction**, by invoking third-party package managers (pip, uv) and analysis tools (deptry, vulture, ruff, and optionally pip-audit). These operations modify software environments on your computer and can affect the behavior of your projects. You are responsible for reviewing each preview and confirmation the application presents before applying changes.
+PipDock installs, upgrades, and removes packages in Python environments **at your direction**, by invoking third-party package managers (pip, uv) and analysis tools (deptry, vulture, ruff; pip-audit is planned and is not invoked in version 1.0). These operations modify software environments on your computer and can affect the behavior of your projects. You are responsible for reviewing each preview and confirmation the application presents before applying changes.
 
 ## 3. No warranty
 
@@ -28,7 +28,7 @@ Packages you choose to install come from the Python Package Index or other index
 
 ## 7. Acceptance record
 
-The application records your acceptance of this document (together with the Disclaimer and Privacy Policy) locally on your device, keyed to the documents' version hash. If these documents change materially, the application will ask again.
+The application records your acceptance of this document (together with the Disclaimer and Privacy Policy) locally on your device, keyed to the documents' version hash. If these documents change materially, the application will ask again. You can read them at any time from the **About** tab, which also shows the hash your acceptance was recorded against.
 
 ---
 

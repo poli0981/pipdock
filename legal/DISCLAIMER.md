@@ -1,6 +1,6 @@
 # PipDock — Disclaimer
 
-*Version 1.0 · Effective 2026-07-17 · Governing language: English.*
+*Version 1.1 · Effective 2026-08-14 · Governing language: English.*
 
 ## 1. Modifying environments carries inherent risk
 
@@ -16,7 +16,7 @@ PipDock blocks modification of externally-managed (PEP 668) Python installations
 
 ## 4. Information accuracy
 
-Package metadata, latest-version information, vulnerability findings (where enabled), and code-health reports are derived from third-party sources (PyPI, the OSV database, deptry/vulture/ruff output) and from heuristics such as reverse-dependency analysis. They may be incomplete, outdated, or wrong — for example, dead-code detection produces false positives on dynamically referenced code. **Review before acting**; PipDock's reports are assistance, not authority.
+Package metadata, latest-version information and code-health reports are derived from third-party sources (PyPI, and deptry/vulture/ruff output) and from heuristics such as reverse-dependency analysis. They may be incomplete, outdated, or wrong — for example, dead-code detection produces false positives on dynamically referenced code, and deptry reports a module name rather than the distribution that provides it. **Review before acting**; PipDock's reports are assistance, not authority. Version 1.0 ships no vulnerability scanning; if a future release adds it, its findings come from the OSV database and this paragraph covers them too.
 
 ## 5. Not professional advice; no affiliation
 
