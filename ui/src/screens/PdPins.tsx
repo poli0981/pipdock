@@ -30,6 +30,21 @@ import { PdPinChip } from '@/components/PdPinChip'
 import { useEnvPackages } from '@/screens/useEnvPackages'
 import { useEnvStore } from '@/stores'
 
+/**
+ * How many suggestions to offer at once.
+ *
+ * **Measured, not guessed.** Against the 352-package scale fixture the default threshold of 5
+ * qualifies **94** packages — a quarter of the environment, which is not a suggestion but a second
+ * package list. Deep dependency trees are exactly where a bulk update is most dangerous and
+ * therefore exactly where this feature matters, so the answer cannot be "raise the default until
+ * the list is short".
+ *
+ * Bounded here rather than in `pins::suggest`, which correctly returns everything at or above the
+ * threshold: the count below is *from the full list*, so a capped view never misreports the total.
+ * The same rule `PdHealthReport`'s `RUFF_ROWS_SHOWN` follows, for the same reason.
+ */
+export const SUGGESTIONS_SHOWN = 8
+
 export function PdPins() {
   const { t } = useTranslation()
   const selected = useEnvStore((s) => s.selected)
@@ -72,7 +87,7 @@ export function PdPins() {
           </h2>
           <p className="mt-1 max-w-2xl text-data text-text-dim">{t('pins.suggestIntro')}</p>
           <ul className="mt-2 space-y-1">
-            {suggestions.map((s) => (
+            {suggestions.slice(0, SUGGESTIONS_SHOWN).map((s) => (
               <li
                 key={s.pkg}
                 data-suggestion={s.pkg}
@@ -103,6 +118,13 @@ export function PdPins() {
               </li>
             ))}
           </ul>
+          {/* Never a silent cap. The number comes from the full list, so it is the honest total
+              rather than the length of what is rendered. */}
+          {suggestions.length > SUGGESTIONS_SHOWN ? (
+            <p className="mt-2 text-data text-text-dim">
+              {t('pins.suggestMore', { count: suggestions.length - SUGGESTIONS_SHOWN })}
+            </p>
+          ) : null}
         </section>
       ) : null}
 

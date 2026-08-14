@@ -186,6 +186,24 @@ describe('PdPins', () => {
       expect(ipc.pinSuggestions).toHaveBeenCalledTimes(1)
     })
 
+    it('caps the list and says how many it did not show', async () => {
+      // Found by running against the 352-package fixture: the default threshold of 5 qualifies 94
+      // packages there. A quarter of the environment is not a suggestion, it is a second package
+      // list — and the deep trees where that happens are exactly where the feature matters, so
+      // the answer is a bounded view, not a higher default.
+      withEnv()
+      vi.mocked(ipc.pinSuggestions).mockResolvedValue(
+        Array.from({ length: 94 }, (_, i) => ({ pkg: `pkg${i}`, dependents: 100 - i })),
+      )
+      render(<PdPins />)
+
+      await vi.waitFor(() => {
+        expect(screen.getByText(/86 more packages would qualify/)).toBeInTheDocument()
+      })
+      // The count is from the *full* list, so a capped view never misreports the total.
+      expect(screen.getAllByRole('button', { name: /^Pin pkg/ })).toHaveLength(8)
+    })
+
     it('renders nothing at all when there is nothing to suggest', () => {
       // An empty "Worth pinning" heading is a question nobody asked.
       withEnv()
