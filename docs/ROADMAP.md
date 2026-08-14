@@ -758,6 +758,55 @@ Also worth doing when the Security tab lands: `capabilities/external-links.json`
 host, because DISCLAIMER §4 and SECURITY §6 both say findings link to the OSV entry and the current
 allowlist would reject it — silently, which is the failure mode SECURITY §4 exists to name.
 
+### The P1 wave, closed — 1.1.0, 2026-08-14
+
+All four items shipped, in one afternoon after 1.0.0. **The estimate's central claim held for
+three of them and was wrong about the fourth in a useful direction:** P1-A was mostly already
+written, P1-B's export needed no code at all, P1-D touched no Rust — and P1-C turned out to have a
+scope error rather than an effort error.
+
+| Slice | What it cost |
+|---|---|
+| **P1-A** pin auto-suggest | 6 commits. `dependent_count` finally has a caller. |
+| **P1-B** requirements | 1 commit. Export is `Engine::freeze` and a path; import is a parser. |
+| **P1-C** cache manager | 1 commit. Three artefacts, not four, and the first delete-a-tree. |
+| **P1-D** command palette | 1 commit. Frontend only, exactly as estimated. |
+
+**Four things running it said that reading could not.**
+
+1. **94 suggestions** on a 352-package environment at the default threshold — a quarter of the
+   install list. Fixed by bounding the view, not by raising the default: a deep tree is where a
+   bulk update is most dangerous.
+2. **`graph::Requirement::parse` accepts prose.** It splits the name at the first space, so
+   `this is not a requirement` parses as package `this` with constraint `is not a requirement` —
+   correct for `Requires-Dist`, which never looks like that, and a spec containing spaces heading
+   for argv when the input is a file a person typed. P1-B shape-checks the constraint, which is
+   the obligation SECURITY §2 already places on every other user-supplied version.
+3. **There are no log files.** `LOG_RETENTION_DAYS` has never had a reader. P1-C reports three
+   artefacts; a "logs — 0 B" row would have invented one.
+4. **The palette's first ranking put an action above the screen it belongs to.** Matching one flat
+   `"${group} ${label}"` string ranked *Download the index* above the Search tab. Label matches now
+   outrank group matches by a margin wider than any tier.
+
+**Two corrections to the process, both from P1-A and both now in the checklist below.** Adding a
+command touches **six** places, not five — `golden.rs` keeps its own copy of `SCHEMA_TYPES`. And
+a generated type must be added to the `import type` list in `ui/src/ipc/index.ts`; `export type *`
+does not bring it into scope for a wrapper's own signature.
+
+**What P1 did not do.** No `pipdock pin suggest`, no CLI surface for export/import or the cache —
+all four are GUI-only, and `pins::suggest`, `requirements::parse` and `cache::usage` are in core
+precisely so a subcommand is later trivial. No dismissal for a rejected pin suggestion. `index.db`
+is not a clearable target and will not become one while it holds settings, pins and the consent
+record in the same file.
+
+**Still open from the original P1 list:** the Security tab (pip-audit), the dependency-graph view,
+the scheduled check — and the half of P1-4 this did not do. PRD P1-4 also asked for the *engine*
+caches (`pip cache`, `uv cache`); those belong to the engine, live outside
+`%LOCALAPPDATA%\PipDock\`, and purging them is a subprocess rather than a file delete, so they are
+a different feature wearing the same word. The PRD row now says so rather than reading as done. The Security tab remains the one that needs an OSV host added to
+`capabilities/external-links.json` — DISCLAIMER §4 and SECURITY §6 both say findings link there,
+and the allowlist would reject it silently.
+
 ### Four items decomposed, easiest first
 
 Surveyed 2026-08-14 against the real tree. Ordered by how much already exists, not by value — each
@@ -865,7 +914,7 @@ method that may not be needed.
 
 ---
 
-#### P1-B · Requirements / constraints export–import — PRD P1-3
+#### P1-B · Requirements / constraints export–import — PRD P1-3 — **done 2026-08-14**
 
 **A snapshot's freeze document already *is* a `requirements.txt`** — verbatim `pip freeze --all` /
 `uv pip freeze` from `Engine::freeze` (`engine/mod.rs:245`). Export is therefore mostly file I/O,
@@ -904,7 +953,7 @@ covers it.
 
 ---
 
-#### P1-C · Cache manager — PRD P1-4
+#### P1-C · Cache manager — PRD P1-4 — **done 2026-08-14**
 
 **Scope it honestly first: there are no log files.** `LOG_RETENTION_DAYS` (`lib.rs:70`) has no
 reader anywhere. The only "log" that exists is the in-memory ring buffer at `state.rs:373`, and
@@ -935,7 +984,7 @@ sync state and would gain sizes for free.
 
 ---
 
-#### P1-D · Command palette, `Ctrl+K` — PRD P1-5, UI-SPEC §1
+#### P1-D · Command palette, `Ctrl+K` — PRD P1-5, UI-SPEC §1 — **done 2026-08-14**
 
 Frontend only. No new IPC command, no new Rust, no capability change — **every dispatch target
 already exists** as a store action.

@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.0.0. M1, M2, Phase 3 and Phase 4 all complete — the release pipeline runs, `main` is protected, the manual charter is done, and the legal documents match the code.** Post-1.0 is the P1 wave in `docs/ROADMAP.md`, where **P1-A (pin auto-suggest) is done** and P1-B/C/D are decomposed against what already exists.
+Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.1.0. M1, M2, Phase 3, Phase 4 and the P1 wave are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette. What is left of Post-1.0 is the Security tab, the dependency-graph view and the scheduled check — see `docs/ROADMAP.md`.
 
 ## Read the docs before changing anything
 
@@ -181,6 +181,17 @@ Things worth knowing before you change any of it:
   `PdSummarySheet` had tests; `PdPlanPanel` had none; both rendered `plan.done`, so a successful
   run showed *Back to packages* twice and every suite stayed green. Found by a human using the
   installed build. When adding a component test, ask what renders it.
+
+- **A parser that is correct for trusted input is a hole for untrusted input.**
+  `graph::Requirement::parse` splits the name at the first space, so `this is not a requirement`
+  parses as package `this` with constraint `is not a requirement` — exactly right for
+  `Requires-Dist` metadata, which never looks like prose, and a spec containing spaces heading for
+  argv the moment the input is a file a user typed. Reuse the parser, then re-validate at the new
+  boundary; SECURITY §2's obligation follows the *input*, not the function.
+
+- **Before adding a size or a "clear" for something, check it exists.** `LOG_RETENTION_DAYS` has
+  had no reader since it was written, so P1-C's cache manager covers three artefacts rather than
+  the four the roadmap listed. A row reading "logs — 0 B" would have invented a subsystem.
 
 - **A test can assert a substring you did not think of.** `PdPins.test.tsx` proves the screen
   offers no way to create a `Hold` pin with `queryByText(/hold/i)` — and **"threshold" matches
