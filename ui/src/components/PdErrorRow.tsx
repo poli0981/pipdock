@@ -16,15 +16,16 @@
  */
 
 import { writeText } from '@tauri-apps/plugin-clipboard-manager'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { useOpenExternal } from '@/components/useOpenExternal'
 import { reportBugUrl, type BugReportLink, type PdError } from '@/ipc'
 import { useUiStore } from '@/stores'
 
 export function PdErrorRow({ error, counted = true }: { error: PdError; counted?: boolean }) {
   const { t } = useTranslation()
+  const { open: openExternal, failed: openFailed } = useOpenExternal()
   const [open, setOpen] = useState(false)
   const [link, setLink] = useState<BugReportLink | null>(null)
   const [copied, setCopied] = useState(false)
@@ -107,7 +108,7 @@ export function PdErrorRow({ error, counted = true }: { error: PdError; counted?
           <button
             type="button"
             onClick={() => {
-              void openUrl(link.url)
+              openExternal(link.url)
             }}
             data-action="report-bug"
             className="text-data text-text-dim underline underline-offset-2"
@@ -117,6 +118,11 @@ export function PdErrorRow({ error, counted = true }: { error: PdError; counted?
           {/* §4.4: nothing is sent automatically, and the row says so rather than leaving the
               user to guess what "Report bug" does. */}
           <span className="text-data text-text-dim">{t('errors.logPrivacy')}</span>
+          {openFailed ? (
+            <span className="text-data text-warn" role="alert">
+              {t('actions.openFailed')}
+            </span>
+          ) : null}
         </div>
       )}
     </div>

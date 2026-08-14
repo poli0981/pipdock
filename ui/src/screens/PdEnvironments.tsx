@@ -9,13 +9,14 @@
  * interpreter must not hide the rest, which is the rule `pipdock env list` already follows.
  */
 
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdDialog } from '@/components/PdDialog'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
+import { REPO } from '@/components/legal'
+import { useOpenExternal } from '@/components/useOpenExternal'
 import { onScanProgress, type EnvRow } from '@/ipc'
 import { PdEnvDetail } from '@/screens/PdEnvDetail'
 import { PIP_MIN_FOR_REPORT, pipNeedsUpgrade } from '@/screens/pip'
@@ -180,7 +181,7 @@ export function PdEnvironments() {
   const scan = useEnvStore((s) => s.scan)
   const setProgress = useEnvStore((s) => s.setProgress)
   const openFor = useEnvStore((s) => s.openFor)
-
+  const { open, failed: openFailed } = useOpenExternal()
 
   useEffect(() => {
     // Subscribe before scanning, or the first phases are emitted into nothing.
@@ -245,13 +246,19 @@ export function PdEnvironments() {
         <button
           type="button"
           onClick={() => {
-            void openUrl('https://github.com/poli0981/pipdock')
+            open(REPO)
           }}
           className="text-accent-dim underline underline-offset-2"
         >
           {t('app.name')}
         </button>
       </p>
+
+      {openFailed ? (
+        <p className="mt-2 text-data text-warn" role="alert">
+          {t('actions.openFailed')}
+        </p>
+      ) : null}
     </section>
   )
 }

@@ -5,40 +5,25 @@
  * documents' hash, so a bump re-triggers this (`docs_hash`, computed at build time).
  *
  * The links are opened by Rust, not by the webview: `connect-src` in `tauri.conf.json` allows only
- * `'self'` and the IPC origin, and the `opener` capability is scoped to `https://github.com/*`.
+ * `'self'` and the IPC origin, and the `opener` capability is scoped to three hosts (SECURITY §4).
  * A failure to open is shown rather than swallowed — the documents are the thing the user is being
- * asked to agree to, so silently failing to show them is not acceptable.
+ * asked to agree to, so silently failing to show them is not acceptable. That rule is now the
+ * shared `useOpenExternal`, and the rest of the app follows it too.
  */
 
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { openUrl } from '@tauri-apps/plugin-opener'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { LEGAL_DOCUMENTS } from '@/components/legal'
+import { useOpenExternal } from '@/components/useOpenExternal'
 import { useLegalStore } from '@/stores'
-
-const REPO = 'https://github.com/poli0981/pipdock/blob/main'
-
-/** The five documents the gate lists. `legal/` holds four; the fifth is the root GPL-3.0 file. */
-const DOCUMENTS = [
-  { key: 'license', href: `${REPO}/LICENSE` },
-  { key: 'eula', href: `${REPO}/legal/EULA.md` },
-  { key: 'disclaimer', href: `${REPO}/legal/DISCLAIMER.md` },
-  { key: 'privacy', href: `${REPO}/legal/PRIVACY-POLICY.md` },
-  { key: 'thirdParty', href: `${REPO}/legal/THIRD-PARTY-NOTICES.md` },
-] as const
 
 export function PdLegalGate() {
   const { t } = useTranslation()
   const accept = useLegalStore((s) => s.accept)
   const [checked, setChecked] = useState(false)
-  const [openFailed, setOpenFailed] = useState(false)
-
-  const open = (href: string) => {
-    openUrl(href).catch(() => {
-      setOpenFailed(true)
-    })
-  }
+  const { open, failed: openFailed } = useOpenExternal()
 
   return (
     <div
@@ -55,7 +40,7 @@ export function PdLegalGate() {
         <p className="mt-3 text-text-dim">{t('legal.intro')}</p>
 
         <ul className="mt-3 space-y-1">
-          {DOCUMENTS.map(({ key, href }) => (
+          {LEGAL_DOCUMENTS.map(({ key, href }) => (
             <li key={key}>
               <button
                 type="button"
