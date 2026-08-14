@@ -100,6 +100,12 @@ pipdock snapshot rollback latest
 
 ## Documentation
 
+**Using PipDock?** The [wiki](https://github.com/poli0981/pipdock/wiki) is the user-facing set —
+[Getting Started](https://github.com/poli0981/pipdock/wiki/Getting-Started),
+[Troubleshooting](https://github.com/poli0981/pipdock/wiki/Troubleshooting) and an
+[FAQ](https://github.com/poli0981/pipdock/wiki/FAQ) that explains the design decisions rather than
+just stating them. Everything below is for reading the code.
+
 | Doc | Purpose |
 |---|---|
 | [docs/PRD.md](docs/PRD.md) | Product goals, personas, feature matrix P0–P2, non-goals |
