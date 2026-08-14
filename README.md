@@ -8,7 +8,7 @@
 
 **A friendly dock for your Python environments.** Inspect, install, update, and clean up Python packages in bulk — through a keyboard-first GUI or a scriptable CLI — without ever hand-typing another `pip install` incantation or guessing why an upgrade broke your project.
 
-> Repo: `poli0981/pipdock` · License: **GPL-3.0** · Platform: **Windows 10/11 (v1)** · Status: **pre-release** — every v1 feature is built; the release pipeline and the manual charter are what remain
+> Repo: `poli0981/pipdock` · License: **GPL-3.0-only** · Platform: **Windows 10/11** · Contact: [contact@poli0981.dev](mailto:contact@poli0981.dev) · [other channels](https://poli0981.dev/links/)
 
 ---
 
@@ -95,7 +95,7 @@ pipdock snapshot rollback latest
 
 ## License
 
-GPL-3.0. See [LICENSE](LICENSE) (add the standard GPL-3.0 text at repo creation). The legal documents in [legal/](legal/) must be committed publicly so the in-app legal gate can link to them on GitHub.
+Copyright © 2026 Kokone (poli0981). PipDock is free software under **GPL-3.0-only** — see [LICENSE](LICENSE). The legal documents in [legal/](legal/) are committed publicly so the in-app legal gate and the About tab can link to them on GitHub.
 
 PipDock is an independent project. It is not affiliated with or endorsed by the Python Software Foundation (Python, pip, PyPI) or Astral (uv, ruff).
 

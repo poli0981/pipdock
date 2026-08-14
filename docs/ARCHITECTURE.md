@@ -176,7 +176,7 @@ Uninstalls are always sequential (cheap) with the reverse-dep guard evaluated on
 
 ## 9. Frontend architecture
 
-Zustand stores: `useEnvStore`, `usePlanStore`, `useIndexStore`, `useSettingsStore`, `useHealthStore`. All engine data enters via typed IPC wrappers (`ui/src/ipc/*.ts`) mirroring the Rust types (generated with `specta`/`tauri-specta` to prevent drift). No component calls `invoke` directly. i18next with `en`/`vi` JSON catalogs (see I18N.md). Styling via Tailwind 4 tokens defined in UI-SPEC.
+Zustand stores: `useEnvStore`, `usePlanStore`, `useIndexStore`, `useSettingsStore`, `useHealthStore`. All engine data enters via typed IPC wrappers (`ui/src/ipc/*.ts`) mirroring the Rust types. **This section originally specified `specta`/`tauri-specta` and that is not what shipped:** `ui/src/ipc/generated.ts` comes from a first-party `xtask` over `schemars`, which makes drift a *test* failure rather than a compile error. `crates/pipdock-core/src/bindings.rs` records why — specta 2 is still `2.0.0-rc`, and a second derive stack over ~40 types was not worth it — and names the condition for revisiting. No component calls `invoke` directly. i18next with `en`/`vi` JSON catalogs (see I18N.md). Styling via Tailwind 4 tokens defined in UI-SPEC.
 
 ## 10. Version manifest (verified 2026-07; re-verify at implementation)
 
