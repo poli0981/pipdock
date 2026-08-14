@@ -13,7 +13,7 @@ use pipdock_core::envs::{self, ScanProgress};
 use pipdock_core::flow;
 use pipdock_core::index::{self, NameIndex};
 use pipdock_core::model::{EnvSource, StepResult};
-use pipdock_core::pins::{self, Pin};
+use pipdock_core::pins::{self, Pin, PinSuggestion};
 use pipdock_core::plan::{Decision, ExecutionSummary};
 use pipdock_core::settings::{self, Consent, Settings};
 use pipdock_core::snapshot;
@@ -337,6 +337,44 @@ pub async fn pin_remove(
     let name = pipdock_core::PkgName::parse(&pkg)?;
     let store = state.store.lock().await;
     Ok(pins::remove(&store, &env_hash, &name)?)
+}
+
+/// Packages worth pinning, most-depended-upon first — PRD P1-2, UI-SPEC §4.
+///
+/// Takes the whole `PyEnv` rather than an `env_hash` for [`pkg_list`]'s reason: it is handed
+/// straight back from `env_scan`, and the hash is a one-way digest of the interpreter path, so
+/// there is nothing to resolve it *from*. The hash is derived here instead — the same thing
+/// `flow::UpdateFlow::start` does.
+///
+/// **One probe per call**, and that is why UI-SPEC §4 puts this on the Pins screen rather than on
+/// a sidebar badge: the count is only paid by someone who opened the tab. The alternative — asking
+/// the frontend for the `Dist` list it already holds — would send several hundred packages' worth
+/// of `requires_dist` back across the bridge to save a subprocess.
+///
+/// The store guard is dropped before the probe, per [`pkg_outdated`]'s note: holding it across the
+/// await compiles, passes every test, and freezes `settings_get` and the pin commands for as long
+/// as the probe takes.
+///
+/// # Errors
+/// `PD-ENV-001` when the interpreter has gone, `PD-ENV-003` when the probe output is unreadable,
+/// `PD-INT-001` when the pin table cannot be read.
+#[tauri::command]
+pub async fn pin_suggestions(
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+) -> Wire<Vec<PinSuggestion>> {
+    let (existing, threshold) = {
+        let store = state.store.lock().await;
+        let existing = pins::list(&store, &envs::env_hash(&env.interpreter))?;
+        (existing, settings::load(&store)?.pin_suggest_threshold)
+    };
+    let probed = envs::probe(&env.interpreter, env.source).await?;
+    Ok(pins::suggest(
+        &probed.dists,
+        &probed.env.python_version,
+        &existing,
+        threshold,
+    ))
 }
 
 /// What `index_search` returns.

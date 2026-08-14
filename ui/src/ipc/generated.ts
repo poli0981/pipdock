@@ -497,6 +497,20 @@ export type PinMode =
   | 'exclude'
   | { hold: { version: Version } };
 
+/** A package worth pinning, and why — PRD P1-2, UI-SPEC §4. */
+export interface PinSuggestion {
+  /**
+   * How many installed packages depend on it.
+   *
+   * The number is the whole argument, so it is carried rather than recomputed for display:
+   * "12 packages depend on it" is what makes the suggestion actionable, and a count the screen
+   * derived separately would eventually disagree with the one that qualified it.
+   */
+  dependents: number;
+  /** The package being suggested. */
+  pkg: PkgName;
+}
+
 /** A resolved, exact `name==version` pair. Only these reach a mutating engine command. */
 export interface PinnedSpec {
   /** Normalized distribution name. */
