@@ -16,6 +16,7 @@ use crate::store::Store;
 const KEY_ENGINE: &str = "settings.engine";
 const KEY_LOCALE: &str = "settings.locale";
 const KEY_ALLOW_EXTERNALLY_MANAGED: &str = "settings.allowExternallyManaged";
+const KEY_PIN_SUGGEST_THRESHOLD: &str = "settings.pinSuggestThreshold";
 const KEY_CONSENT_HASH: &str = "legal.consentDocsHash";
 const KEY_CONSENT_AT: &str = "legal.consentAt";
 
@@ -37,6 +38,11 @@ pub struct Settings {
     /// `--break-system-packages` equivalent be passed. PipDock never adds that flag silently —
     /// hard invariant 5.
     pub allow_externally_managed: bool,
+    /// How many reverse dependencies qualify a package for a pin suggestion (PRD P1-2).
+    ///
+    /// UI-SPEC §4 lists this under Settings' thresholds. Zero means off — see
+    /// [`crate::pins::suggest`], which would otherwise offer to pin every leaf in the environment.
+    pub pin_suggest_threshold: usize,
 }
 
 impl Default for Settings {
@@ -48,6 +54,9 @@ impl Default for Settings {
             engine: EngineId::Pip,
             locale: None,
             allow_externally_managed: false,
+            // The const, not a literal 5. It exists so the default has one home, and it lived in
+            // `graph` unread from M2 until P1-A gave it a caller.
+            pin_suggest_threshold: crate::graph::PIN_SUGGEST_THRESHOLD,
         }
     }
 }
@@ -71,6 +80,13 @@ pub fn load(store: &Store) -> Result<Settings> {
     if let Some(raw) = store.get(KEY_ALLOW_EXTERNALLY_MANAGED)? {
         out.allow_externally_managed = raw == "true";
     }
+    if let Some(raw) = store.get(KEY_PIN_SUGGEST_THRESHOLD)? {
+        // Same rule as the engine key above: an unparseable value keeps the default rather than
+        // failing the load. Settings is where the user would fix it, so it has to open.
+        if let Ok(n) = raw.parse::<usize>() {
+            out.pin_suggest_threshold = n;
+        }
+    }
     Ok(out)
 }
 
@@ -88,6 +104,10 @@ pub fn save(store: &Store, settings: &Settings) -> Result<()> {
         } else {
             "false"
         },
+    )?;
+    store.set(
+        KEY_PIN_SUGGEST_THRESHOLD,
+        &settings.pin_suggest_threshold.to_string(),
     )
 }
 
@@ -168,6 +188,37 @@ mod tests {
         assert_eq!(s.engine, EngineId::Pip);
         assert!(!s.allow_externally_managed, "SECURITY §3: off by default");
         assert_eq!(s.locale, None, "None means follow the OS");
+        assert_eq!(
+            s.pin_suggest_threshold,
+            crate::graph::PIN_SUGGEST_THRESHOLD,
+            "PRD P1-2's default of 5, from the const rather than a second copy of it"
+        );
+    }
+
+    #[test]
+    fn an_unparseable_threshold_falls_back_rather_than_failing() {
+        // Same rule as the engine key: Settings is where a bad value gets fixed, so it must open.
+        let store = store();
+        store
+            .set("settings.pinSuggestThreshold", "lots")
+            .expect("set");
+        assert_eq!(
+            load(&store).expect("load").pin_suggest_threshold,
+            crate::graph::PIN_SUGGEST_THRESHOLD
+        );
+    }
+
+    #[test]
+    fn a_threshold_of_zero_survives_a_round_trip() {
+        // Zero is the "off" setting, so it must not be mistaken for absent and replaced by the
+        // default — which is exactly what a `filter(|n| *n > 0)` in `load` would do.
+        let store = store();
+        let want = Settings {
+            pin_suggest_threshold: 0,
+            ..Settings::default()
+        };
+        save(&store, &want).expect("save");
+        assert_eq!(load(&store).expect("load").pin_suggest_threshold, 0);
     }
 
     #[test]
@@ -177,6 +228,7 @@ mod tests {
             engine: EngineId::Uv,
             locale: Some("vi".into()),
             allow_externally_managed: true,
+            pin_suggest_threshold: 12,
         };
         save(&store, &want).expect("save");
         assert_eq!(load(&store).expect("load"), want);
