@@ -217,6 +217,21 @@
       "manual": "bạn tự chụp"
     }
   },
+  "cache": {
+    "title": "Dung lượng đĩa",
+    "intro": "Mọi thứ PipDock ghi ra đều nằm trong một thư mục. Xoá bất kỳ mục nào cũng chỉ mất đúng thứ ghi trên dòng đó; các môi trường Python của bạn không thay đổi gì.",
+    "database": "Chỉ mục gói, cài đặt và danh sách ghim",
+    "databaseWhy": "Không xoá được — tệp này còn giữ cài đặt, các gói bạn đã ghim và việc bạn đã chấp nhận tài liệu pháp lý. Muốn làm mới danh sách gói, dùng Tìm kiếm → Tải chỉ mục.",
+    "snapshots": "Ảnh chụp",
+    "snapshotCount_other": "({{count}} ảnh chụp)",
+    "tools": "Bộ công cụ Sức khỏe mã",
+    "clear": "Xoá",
+    "confirmTitle": "Xoá mục này?",
+    "confirm": {
+      "snapshots": "Toàn bộ ảnh chụp của mọi môi trường sẽ bị xoá, và chức năng hoàn tác mất lịch sử. Các gói đã cài không bị đụng tới — thao tác này xoá bản ghi, không xoá môi trường.",
+      "tools": "Môi trường biệt lập mà deptry, vulture và ruff chạy trong đó sẽ bị xoá. Lần chạy Sức khỏe mã tiếp theo sẽ dựng lại nó, và việc đó cần kết nối mạng."
+    }
+  },
   "health": {
     "title": "Sức khỏe mã",
     "chooseFolder": "Chọn thư mục…",

@@ -42,6 +42,25 @@ export interface BrokenDependent {
   version?: string | null;
 }
 
+/** Something the user can be offered a *Clear* button for. */
+export type CacheTarget =
+  | 'snapshots'
+  | 'tools';
+
+/** What PipDock is using, by artefact. */
+export interface CacheUsage {
+  /** `index.db` — the package index, settings, pins and the consent record. **Not clearable.** */
+  database: Entry;
+  /** The data root everything below lives in. */
+  root: string;
+  /** How many snapshot documents there are, across every environment. */
+  snapshotCount: number;
+  /** Snapshots, across every environment. */
+  snapshots: Entry;
+  /** The Code Health tools environment. */
+  tools: Entry;
+}
+
 /** One line of the preview diff. */
 export interface Change {
   /** Version before, absent for a fresh install. */
@@ -233,6 +252,16 @@ export interface EngineInfo {
   id: EngineId;
   /** Reported version, absent when the engine is not available. */
   version?: string | null;
+}
+
+/** One line of the cache report. */
+export interface Entry {
+  /** Bytes on disk, summed recursively. */
+  bytes: number;
+  /** False when nothing is there yet, so the UI can say "nothing to clear" rather than "0 B". */
+  exists: boolean;
+  /** Where it is. Data — shown verbatim, never translated (I18N §2). */
+  path: string;
 }
 
 /** How an environment was discovered. Surfaced as the source chip in the Environments screen. */

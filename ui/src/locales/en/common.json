@@ -237,6 +237,22 @@
       "manual": "taken by you"
     }
   },
+  "cache": {
+    "title": "Disk usage",
+    "intro": "Everything PipDock has written lives under one folder. Clearing any of these loses only what the line says; nothing about your Python environments changes.",
+    "database": "Package index, settings and pins",
+    "databaseWhy": "Not clearable — this one file also holds your settings, your pins and your record of accepting the legal documents. Use Search → Download the index to refresh the package list.",
+    "snapshots": "Snapshots",
+    "snapshotCount_one": "({{count}} snapshot)",
+    "snapshotCount_other": "({{count}} snapshots)",
+    "tools": "Code Health tools",
+    "clear": "Clear",
+    "confirmTitle": "Clear this?",
+    "confirm": {
+      "snapshots": "Every snapshot of every environment is removed, and rollback loses its history. Your installed packages are untouched — this deletes the record, not the environment.",
+      "tools": "The isolated environment deptry, vulture and ruff run from is removed. The next Code Health run rebuilds it, which needs a network connection."
+    }
+  },
   "health": {
     "title": "Code Health",
     "chooseFolder": "Choose folder…",

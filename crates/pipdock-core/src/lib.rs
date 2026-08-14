@@ -24,6 +24,7 @@
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
 pub mod bindings;
+pub mod cache;
 pub mod compat;
 pub mod engine;
 pub mod envs;

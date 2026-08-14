@@ -1,0 +1,21 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "Something the user can be offered a *Clear* button for.",
+  "oneOf": [
+    {
+      "const": "snapshots",
+      "description": "Every snapshot of every environment. Rollback loses its history; nothing else changes.",
+      "type": "string"
+    },
+    {
+      "const": "tools",
+      "description": "The isolated environment Code Health runs deptry, vulture and ruff from. Rebuilt on the\nnext run, or by `pipdock tools sync`.",
+      "type": "string"
+    }
+  ],
+  "title": "Target"
+}

@@ -40,6 +40,8 @@ const SCHEMA_TYPES: &[&str] = &[
     "Pin",
     "PinSuggestion",
     "ParsedRequirements",
+    "CacheUsage",
+    "CacheTarget",
     "GuardReport",
     "Diff",
     "SnapshotMeta",

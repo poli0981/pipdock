@@ -12,6 +12,7 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { PdCacheUsage } from '@/components/PdCacheUsage'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { SUPPORTED_LOCALES, type Locale } from '@/i18n'
 import { useSettingsStore } from '@/stores'
@@ -129,6 +130,8 @@ export function PdSettings() {
           <span className="text-data text-warn">{t('settings.overrideDetail')}</span>
         </label>
       </fieldset>
+
+      <PdCacheUsage />
     </section>
   )
 }
