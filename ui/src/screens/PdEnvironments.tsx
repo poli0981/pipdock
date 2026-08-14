@@ -195,9 +195,10 @@ export function PdEnvironments() {
     }
   }, [scan, setProgress])
 
-  // The detail view is a mode of this tab, not a ninth sidebar entry — a ninth entry would
-  // renumber Ctrl+1..8, which the keyboard map fixes in place. Below the hooks, so the hook order
-  // is identical whether or not a detail is open.
+  // The detail view is a mode of this tab, not a sidebar entry of its own. Not because the sidebar
+  // is full — Phase 4 appended About as the ninth and nothing renumbered — but because Snapshots
+  // would have to sit *beside* Environments to read as related, and that is an insert, which moves
+  // every shortcut after it. Below the hooks, so the hook order is identical either way.
   if (openFor !== null) return <PdEnvDetail />
 
   return (

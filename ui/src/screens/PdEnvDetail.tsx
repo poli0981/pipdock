@@ -2,8 +2,10 @@
  * One environment, in detail — UI-SPEC §4 puts Snapshots here: "surfaced under Environments → env
  * detail".
  *
- * It is a *mode* of the Environments tab rather than a ninth sidebar entry, because a ninth entry
- * would renumber `Ctrl+1..8` and the M2 plan is explicit that the positions stay. `useEnvStore`
+ * It is a *mode* of the Environments tab rather than a sidebar entry of its own. Appending is free
+ * — Phase 4 put About on the end as `Ctrl+9` without moving a binding — but Snapshots would have to
+ * sit beside Environments to read as related, and an *insert* renumbers everything after it, which
+ * the M2 plan is explicit about not doing. `useEnvStore`
  * holds which environment is open, not this component's state: the plan panel replaces the whole
  * content area while a rollback runs, so local state would be unmounted with it and the user would
  * land back on the flat list the moment their rollback finished.

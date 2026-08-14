@@ -8,6 +8,7 @@ import { PdSidebar } from '@/components/PdSidebar'
 import { PdStatusLine } from '@/components/PdStatusLine'
 import { PdUninstallDialog } from '@/components/PdUninstallDialog'
 import type { NavKey } from '@/components/nav'
+import { PdAbout } from '@/screens/PdAbout'
 import { PdEnvironments } from '@/screens/PdEnvironments'
 import { PdHealth } from '@/screens/PdHealth'
 import { PdPackages } from '@/screens/PdPackages'
@@ -31,6 +32,7 @@ const SCREENS: Partial<Record<NavKey, React.ReactNode>> = {
   pins: <PdPins />,
   health: <PdHealth />,
   settings: <PdSettings />,
+  about: <PdAbout />,
 }
 
 /**
@@ -45,6 +47,8 @@ export function App() {
   const setNav = useUiStore((s) => s.setNav)
   const accepted = useLegalStore((s) => s.accepted)
   const checkConsent = useLegalStore((s) => s.check)
+  const review = useLegalStore((s) => s.review)
+  const closeReview = useLegalStore((s) => s.closeReview)
   const selected = useEnvStore((s) => s.selected)
   const loadPackages = useEnvStore((s) => s.loadPackages)
   const loadOutdated = useEnvStore((s) => s.loadOutdated)
@@ -84,7 +88,7 @@ export function App() {
       // Nothing is navigable before the documents are accepted. This effect is registered *above*
       // the `accepted` early return, so without the check the shortcuts stayed live behind the
       // modal and the user could change tabs behind a document they were being asked to agree to.
-      if (accepted !== true) return
+      if (accepted !== true || review) return
       // A native <dialog> makes the rest of the document inert to pointers and to focus, but a
       // window-level keydown listener is neither — so without this, Ctrl+3 changes the tab
       // underneath an open guard dialog and the user answers it about a screen they left.
@@ -118,7 +122,7 @@ export function App() {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [setNav, guardOpen, planPhase, accepted])
+  }, [setNav, guardOpen, planPhase, accepted, review])
 
   // Nothing is usable before the documents are accepted, so the gate replaces the shell rather
   // than overlaying a working app (UI-SPEC §4).
@@ -126,6 +130,9 @@ export function App() {
   // `null` means the check has not resolved yet. Rendering the shell first would flash it at
   // someone who has never agreed to anything.
   if (accepted === null) return <div className="h-full bg-bg" />
+  // Opened from About, after acceptance. Same documents, no checkbox, no Decline — see the store's
+  // note on why this is a flag of its own rather than `accepted = false`.
+  if (review) return <PdLegalGate review onClose={closeReview} />
 
   return (
     <div className="flex h-full flex-col bg-bg text-text">

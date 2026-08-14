@@ -11,7 +11,8 @@
     "pins": "Pins",
     "health": "Health",
     "security": "Security",
-    "settings": "Settings"
+    "settings": "Settings",
+    "about": "About"
   },
   "status": {
     "idle": "idle",
@@ -332,7 +333,31 @@
     },
     "summary": "PipDock is provided without warranty. It runs pip or uv against environments you choose, and every change is previewed and snapshotted first — but you remain responsible for what you install.",
     "accept": "I have read and accept these documents.",
-    "openFailed": "Could not open the link. The documents are on GitHub under poli0981/pipdock."
+    "openFailed": "Could not open the link. The documents are on GitHub under poli0981/pipdock.",
+    "close": "Close"
+  },
+  "about": {
+    "title": "About",
+    "what": "PipDock manages what is installed in your Python environments. It drives pip or uv rather than replacing them: every change is previewed before it runs, an environment is snapshotted before it is touched, and a batch reports back package by package when it finishes.",
+    "privacy": "PipDock collects nothing — no telemetry, no account, no self-update. It connects only to PyPI, and the bug-report button opens a prefilled form that you read and send yourself.",
+    "buildTitle": "This build",
+    "version": "Version",
+    "license": "Licence",
+    "docsHash": "Legal documents",
+    "docsHashDetail": "Your acceptance is recorded against this value. Editing any of the documents changes it, and the acceptance screen appears once more on the next launch.",
+    "openRepo": "Open the repository",
+    "reopen": "Show the documents again",
+    "reopenDetail": "Puts the first-run screen back so you can read the five documents. It changes nothing: your acceptance stays as it is, and closing that screen returns you here.",
+    "contactTitle": "Contact",
+    "contactIntro": "PipDock is made by one person. Both addresses are read.",
+    "contactGeneral": "General questions and feedback",
+    "contactCode": "Source code, security reports and licensing",
+    "copy": "Copy",
+    "copyAddress": "Copy {{address}}",
+    "copied": "Copied",
+    "linksTitle": "Elsewhere",
+    "linksIntro": "Every other way to get in touch is listed on one page.",
+    "openLinks": "Open the links page"
   },
   "errors": {
     "title": "Something went wrong",
