@@ -46,7 +46,7 @@
 
 </details>
 
-## Features (v1)
+## Features
 
 | Area | What you get |
 |---|---|
@@ -55,12 +55,15 @@
 | Updates | Bulk update with group dry-run resolve, held-back explanations, 3-way conflict choices |
 | Search & Install | Instant fuzzy search over a locally cached PyPI name index (PEP 691), metadata on demand, install queue |
 | Uninstall | Bulk uninstall with reverse-dependency warnings |
-| Pins | Exclude packages from bulk updates; auto-suggest pinning heavily-depended-on packages |
+| Pins | Exclude packages from bulk updates, with a reason. The Pins screen suggests packages a lot of your others depend on, and the threshold is configurable |
 | Snapshots | Automatic pre-batch snapshots, diff view, one-click rollback |
 | Engine | pip **or** uv, selectable in Settings (uv auto-detected on first run) |
 | Code Health | deptry + vulture + ruff against a project folder — unused deps, dead code, style — run from PipDock's own isolated tools env |
 | pip upkeep | Check & update pip itself per environment |
 | CLI | `pipdock` — full parity for core operations, JSON output, CI-friendly exit codes |
+| Requirements | Export an environment as `requirements.txt`; import one and preview what it would install, with every line it will not use reported by number |
+| Disk usage | See and clear what PipDock has written — snapshots and the Code Health tools environment |
+| Keyboard | `Ctrl+K` command palette, `Ctrl+1`–`Ctrl+9` tabs, full keyboard traversal |
 | i18n | English + Tiếng Việt |
 | Privacy | No telemetry. **PyPI is the only host PipDock connects to.** It does not check for updates, so it never calls home — GitHub and the ruff docs are only ever handed to your browser as a link you clicked |
 

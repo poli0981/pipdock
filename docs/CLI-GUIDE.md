@@ -3,7 +3,7 @@
 `docs/CLI-SPEC.md` is the contract: every flag, every exit code, every JSON shape. This is the
 guide — what you actually type, in the order you would need it.
 
-Everything here was run against `pipdock 1.0.0` on Windows. Where a number or a code appears, it
+Everything here was run against `pipdock 1.1.0` on Windows. Where a number or a code appears, it
 came out of a real invocation, not out of the spec.
 
 ---
@@ -334,6 +334,24 @@ pipdock self report-bug
 **Nothing is transmitted** — you open it, read what it filled in, and submit it yourself.
 
 ---
+
+## What is GUI-only
+
+1.1.0's four features have **no CLI surface yet**, and that is deliberate rather than an oversight
+— each would add a subcommand and churn the help goldens for something nothing scripts against
+today. The logic lives in `pipdock-core` (`pins::suggest`, `requirements::parse`, `cache::usage`),
+so adding one later is small:
+
+| Feature | Where it is | Nearest CLI equivalent today |
+|---|---|---|
+| Pin suggestions | Pins screen | none — `pin list` shows what you have pinned |
+| Requirements export | Environments → *Open* | `snapshot create`, then read the `.freeze.txt` |
+| Requirements import | Environments → *Open* | `install` with the specs, which is what import does anyway |
+| Disk usage | Settings | `tools status` reports the tools venv; nothing reports sizes |
+| Command palette | `Ctrl+K` | not applicable |
+
+If you want one of these on the command line, say so in an
+[issue](https://github.com/poli0981/pipdock/issues) — the core function is already there.
 
 ## See also
 
