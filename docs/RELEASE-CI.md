@@ -38,6 +38,24 @@ permissions: { contents: read }
 
 `main` protected (PR + green CI required). SemVer; tags `vX.Y.Z`. Conventional commits feed the changelog generator.
 
+**Applied 2026-08-14, and it had been false until then** — `/branches/main/protection` returned 404 for four milestones, which is also why `gh pr merge --auto` merged immediately on this repo rather than waiting: with no required checks there is nothing for auto-merge to wait on. Exact settings:
+
+| Setting | Value | Why |
+|---|---|---|
+| Required checks | `fmt · clippy · test`, `cargo audit`, `lint · typecheck · test · build / build`, `npm audit`, `analyze / Analyze (javascript-typescript)` | the five that run on **every** PR |
+| Check app | pinned to `app_id: 15368` (`github-actions`) | a check from another app cannot satisfy a requirement |
+| `enforce_admins` | `true` | the owner is the only contributor; protection that exempts them protects nothing |
+| Required approvals | **0** | a solo owner cannot approve their own PR, so 1 would deadlock. A PR is still required |
+| `strict` | `false` | up-to-date-before-merge is friction on a repo that rebase-merges |
+| Linear history | `true` | matches rebase-merge |
+| Force pushes / deletions | `false` | |
+
+**`CI / Integration` is deliberately excluded, and this is the trap worth remembering:** its `pull_request` trigger is `paths:`-filtered, so on a docs-only or UI-only PR it never starts — and a required check that never starts stays *pending forever*. Requiring it would deadlock exactly the PRs it has no opinion about. `Re-capture against the latest engines` is schedule-only and excluded for the same reason. The bare `CodeQL` check belongs to the `github-advanced-security` app rather than Actions and is left out too.
+
+**Two required contexts are named by the ops repo, not by this one.** `analyze / Analyze (javascript-typescript)` and `lint · typecheck · test · build / build` come from `poli0981/.github`'s reusables. If either job is renamed upstream, every PipDock PR deadlocks with no obvious cause and no failing check to point at — the fix is to update the protection payload, not the code.
+
+**If protection wedges**, `PUT` the same endpoint with `enforce_admins: false`, or `DELETE /branches/main/protection`. Worth knowing before it is needed rather than discovering it during an incident.
+
 Dependency updates use **Dependabot** (`.github/dependabot.yml`) — the portfolio standard, as evidenced by the ops repo's `dependabot-summary.yml`; there is no Renovate configuration anywhere in the ops repo. Four ecosystems: `cargo`, `npm`, `github-actions`, and `pip` scoped to `tools-requirements.txt` (the Code Health pins). Weekly schedule with minor/patch grouped per ecosystem; security advisories arrive as **immediate, ungrouped** PRs (Dependabot's default for security updates), and the `pip` ecosystem stays its own group so Code Health pin bumps are reviewable in isolation. Watching `pip`/`uv` releases to trigger the parser-fixture job is the scheduled job in `ci-integration.yml`, not the dependency bot.
 
 ## 3. Release pipeline (tag `v*`)
@@ -66,7 +84,12 @@ Two active lines at most: latest release gets features; previous minor gets secu
 - [x] `.github/ISSUE_TEMPLATE/bug_report.yml` (shipped in this suite) + `config.yml` disabling blank issues.
 - [x] `.github/dependabot.yml` covering cargo, npm, github-actions and the Code Health pins.
 - [x] `rust-toolchain.toml`, `.nvmrc` (24), `Cargo.lock`/`package-lock.json` committed.
-- [ ] **Repo settings (owner, via the GitHub UI or `gh` — not committable):** branch protection on `main`; disable Advanced Security → CodeQL *Default setup* (the reusable is advanced-setup and is rejected at upload time otherwise); enable Discussions for the issue-template contact links.
-- [ ] **Secrets via `gh secret set`:** the Discord webhooks (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`). No signing key — see §3.
-- [ ] Replace the placeholder app icon (`src-tauri/icons/`) in the ROADMAP Phase 3 branding pass.
-- [ ] README badges: CI, CodeQL, release, license.
+- [x] **Repo settings (owner, via the GitHub UI or `gh` — not committable):** branch protection on `main`; disable Advanced Security → CodeQL *Default setup* (the reusable is advanced-setup and is rejected at upload time otherwise); enable Discussions for the issue-template contact links.
+- [x] **Secrets via `gh secret set`:** the Discord webhooks (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`). No signing key — see §3.
+- [x] App icon settled (`src-tauri/icons/`). It was called a placeholder because nobody had chosen it; the owner chose it in Phase 4, which is what "a brand decision" needed.
+- [x] README badges: CI, CodeQL, release, license.
+
+**Closed 2026-08-14, and three of the last four were already true.** CodeQL *Default setup* read
+`not-configured` and Discussions were already on — both had been done and never ticked, which is
+its own small lesson about a checklist nobody reads back. The Discord secrets were set the same
+day. Branch protection was the only genuinely outstanding item; §2's exact settings are below.
