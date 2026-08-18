@@ -60,7 +60,7 @@ PipDock's thesis: **don't reimplement the resolver — explain it.** Wrap pip/uv
 
 | # | Feature | Notes |
 |---|---|---|
-| P1-1 | Security tab | pip-audit (freeze-file mode) listing known CVEs per installed package, severity-sorted. |
+| P1-1 | **Shipped 1.2.0.** Security tab | pip-audit (freeze-file mode) listing known advisories per installed package. **Not severity-sorted, because pip-audit has no severity field** — under either vulnerability service its findings carry only `id`, `fix_versions`, `aliases` and `description`, verified against the pinned 2.10.1. Ordered by package, then by whether anything *fixes* it, then by id: the one distinction that changes what the user can do. The CVE is an **alias**; the primary id is a `PYSEC-*`. |
 | P1-2 | Pin auto-suggest | **Shipped post-1.0 (P1-A).** Reverse-dependency count ≥ threshold (default 5, configurable in Settings; zero is off) ⇒ suggest pin with reason. Counts in-force edges only — extras and other-Python markers do not qualify a package. |
 | P1-3 | **Shipped 1.1.0.** Export / import | `requirements.txt` and `constraints.txt` export; import-as-queue. |
 | P1-4 | **Partly shipped, 1.1.0.** Cache manager | Shows and clears **PipDock's own** disk usage: snapshots and the Code Health tools venv. `index.db` is reported but not clearable — it holds settings, pins and the consent record in the same file, so "clear the cache" must never take them. **The engine caches (`pip cache`, `uv cache`) are not covered** and are a separate item: they belong to the engine, live outside `%LOCALAPPDATA%\PipDock\`, and purging them is a subprocess rather than a file delete. |

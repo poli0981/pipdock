@@ -139,6 +139,16 @@ the snapshot's side.
 
 **Health.** Project-folder picker (persisted per env) → run panel with three result tabs (deptry / vulture / ruff) per CODE-HEALTH-SPEC; `Fix with ruff` gated behind explicit confirm listing file count.
 
+**Security.** *Run audit* → advisories grouped by package, each with its id, the versions that fix
+it (or **no fix**, stated rather than left blank), its aliases — which is where the CVE lives, since
+pip-audit's primary id is a `PYSEC-*` — the advisory prose verbatim, and a link to its OSV entry.
+**No severity column**: pip-audit publishes none under either vulnerability service, so the order is
+package → fixable → id, and inventing a severity would put a number PipDock made up beside real
+ones (PRD P1-1 is amended to say so). A *Cancel* appears while a run is going, which Code Health has
+no equivalent of: an audit is 18-68 s against Health's 1.3 s. **The body says nothing while a run is
+in flight** — not "no audit has run", which is what it said until someone clicked Run against a slow
+bridge and read it.
+
 **Settings.** Engine (pip/uv radio + detected versions), locale (EN/VI), **pin auto-suggest count** (P1-A; zero turns suggestions off), snapshot retention, index refresh, PEP 668 override (off by default, scary copy), *Open logs folder*.
 
 **Disk usage** (P1-C) shows what PipDock has written — snapshots and the Code Health tools venv, each with a *Clear*, and `index.db` reported without one because it holds settings, pins and the consent record in the same file. Three artefacts, not four: there are no log files, `LOG_RETENTION_DAYS` has never had a reader, and a "logs — 0 B" row would invent one.
@@ -168,6 +178,7 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 | Switch engine | **3** | Settings → engine radio → (auto-saved) back |
 | Run Code Health | **3** | Health → Run (folder persisted) → view (**4** the first time in a project: Health → *Choose folder…* → the OS dialog, which is not PipDock's click → Run → view. The folder is remembered per environment from then on.) |
 | Fix ruff findings | **3** | ruff tab → *Fix N…* → *Fix* (from a report already on screen; **5** from the landing screen with a folder remembered, which is the owner's ceiling). Cancel holds default focus, so `Enter` without `Tab` cancels. |
+| Run a security audit | **2** | Security → *Run audit*. Counted in the running app against a stubbed bridge. The first run also builds the audit environment, which is a wait rather than a click. |
 | Upgrade pip | **2** | *Upgrade pip* → *Upgrade* (Environments is the landing screen, so no tab click). The button appears only when pip is below the 22.2 planner floor — the case the ordinary Updates path cannot fix, because the planner it needs will not run. |
 
 ### Shell rules established by the first installed build (2026-08-13)
@@ -201,12 +212,14 @@ a metre of empty surface. Still resizable, and `minWidth`/`minHeight` are unchan
 `PdEnvSwitcher` alone, which nothing needs while the header shows the selected interpreter and the
 Environments tab switches it. (ROADMAP and
 CLAUDE.md both claimed 16 of 16 after S4; the count had quietly folded in components that are not on
-this list.) Four components not on this list have
-turned out to be load-bearing and are listed here so the inventory stays honest: `PdErrorRow`
-(ERROR-CATALOG §3's row, used by every error surface), `PdDialog` (the shared modal §7's destructive
-confirms need), `PdUninstallDialog` (§5's three options), `PdPinChip` (the 🔒 chip, shared by the
-table and the Pins screen) and `PdRollbackPreview` (DATA-FLOW §8's preview, including its
-`PD-SNP-002` list).
+this list.) **Six** components not on this list have
+turned out to be load-bearing and are listed here so the inventory stays honest — the number said
+*four* while naming five for two milestones, which is the counting trap this section exists to
+avoid: `PdErrorRow` (ERROR-CATALOG §3's row, used by every error surface), `PdDialog` (the shared
+modal §7's destructive confirms need), `PdUninstallDialog` (§5's three options), `PdPinChip` (the
+🔒 chip, shared by the table and the Pins screen), `PdRollbackPreview` (DATA-FLOW §8's preview,
+including its `PD-SNP-002` list) and `PdAuditReport` (P1-1's advisory list). Three more shipped in
+1.1.0 and are named nowhere in this section: `PdCacheUsage`, `PdPalette` and `PdRequirements`.
 
 ## 7. States & feedback
 
