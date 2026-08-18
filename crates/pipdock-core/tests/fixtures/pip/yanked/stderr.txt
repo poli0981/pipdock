@@ -1,5 +1,5 @@
 WARNING: The candidate selected for download or install is a yanked version: 'urllib3' candidate (version 2.0.0 at https://files.pythonhosted.org/packages/ca/25/fe81738a115a2f1005b19bd69b6253b7b5cd6c9119164f13f02ec627fc41/urllib3-2.0.0-py3-none-any.whl (from https://pypi.org/simple/urllib3/) (requires-python:>=3.7))
 Reason for being yanked: Truncated response bodies when streaming a large compressed body. Upgrade to at least 2.0.2 (See: https://github.com/urllib3/urllib3/issues/3009)
 
-[notice] A new release of pip is available: 25.0.1 -> 26.1.2
+[notice] A new release of pip is available: <VERSION> -> <VERSION>
 [notice] To update, run: <WORK>\venv\Scripts\python.exe -m pip install --upgrade pip
