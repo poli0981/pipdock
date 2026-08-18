@@ -1145,6 +1145,44 @@ pub async fn audit_run(
     Ok(outcome?)
 }
 
+/// Write a finished audit as Markdown **and** JSON beside a user-chosen path, returning both.
+///
+/// `health_save_report`'s shape exactly, including its two reasons. Rust-side rather than through
+/// a filesystem capability: `dialog:allow-save` lets the webview *ask* for a path and nothing more.
+/// And it takes the report from the frontend rather than a parked session, because what the user
+/// asked to save is what is on their screen. Nothing is executed from it.
+///
+/// # Errors
+/// `PD-SYS-002` when either file cannot be written, `PD-INT-001` if the report cannot be
+/// serialized.
+#[tauri::command]
+pub async fn audit_save_report(
+    report: pipdock_core::audit::AuditReport,
+    path: String,
+) -> Wire<Vec<String>> {
+    let base = std::path::PathBuf::from(&path);
+    let md = base.with_extension("md");
+    let json = base.with_extension("json");
+
+    let body = pipdock_core::audit::markdown(&report);
+    let document = serde_json::to_string_pretty(&report).map_err(|e| {
+        PdError::new(
+            pipdock_core::errors::Code::IntUnexpected,
+            format!("serialize report: {e}"),
+        )
+    })?;
+
+    for (target, contents) in [(&md, body), (&json, document)] {
+        std::fs::write(target, contents).map_err(|e| {
+            PdError::new(
+                pipdock_core::errors::Code::SysDiskFull,
+                format!("write {}: {e}", target.display()),
+            )
+        })?;
+    }
+    Ok(vec![md.display().to_string(), json.display().to_string()])
+}
+
 /// Stop a running audit, and say whether there was one.
 ///
 /// Shaped like [`plan_cancel`] rather than returning `()`: "nothing was running" is a real answer

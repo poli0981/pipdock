@@ -236,11 +236,13 @@
     "snapshots": "Ảnh chụp",
     "snapshotCount_other": "({{count}} ảnh chụp)",
     "tools": "Bộ công cụ Sức khỏe mã",
+    "audit": "Môi trường công cụ bảo mật",
     "clear": "Xoá",
     "confirmTitle": "Xoá mục này?",
     "confirm": {
       "snapshots": "Toàn bộ ảnh chụp của mọi môi trường sẽ bị xoá, và chức năng hoàn tác mất lịch sử. Các gói đã cài không bị đụng tới — thao tác này xoá bản ghi, không xoá môi trường.",
-      "tools": "Môi trường biệt lập mà deptry, vulture và ruff chạy trong đó sẽ bị xoá. Lần chạy Sức khỏe mã tiếp theo sẽ dựng lại nó, và việc đó cần kết nối mạng."
+      "tools": "Môi trường biệt lập mà deptry, vulture và ruff chạy trong đó sẽ bị xoá. Lần chạy Sức khỏe mã tiếp theo sẽ dựng lại nó, và việc đó cần kết nối mạng.",
+      "audit": "Môi trường biệt lập mà pip-audit chạy trong đó sẽ bị xóa. Lần quét sau sẽ dựng lại, mất khoảng một phút. Các môi trường của bạn không thay đổi."
     }
   },
   "health": {
@@ -309,7 +311,10 @@
     "noFix": "chưa có bản vá",
     "fixedIn": "vá ở {{versions}}",
     "osv": "Trang OSV",
-    "linkFailed": "Không mở được liên kết đó."
+    "linkFailed": "Không mở được liên kết đó.",
+    "save": "Lưu báo cáo…",
+    "saveTitle": "Lưu báo cáo bảo mật",
+    "saved": "Đã lưu {{files}}"
   },
   "uninstall": {
     "title": "Gỡ gói",

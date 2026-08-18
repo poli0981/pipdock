@@ -81,6 +81,7 @@ export const COMMANDS = [
   'health_run',
   'audit_run',
   'audit_cancel',
+  'audit_save_report',
   'health_dirty',
   'health_fix',
   'health_save_report',
@@ -469,6 +470,15 @@ export const auditRun = (env: PyEnv): Promise<AuditReport> => invoke('audit_run'
 
 /** Stop a running audit; resolves false when there was nothing to stop. */
 export const auditCancel = (): Promise<boolean> => invoke('audit_cancel')
+
+/**
+ * Write a finished audit beside `path`, as Markdown and JSON, resolving to both paths.
+ *
+ * The picker only asks for a path; Rust does the writing, because `default.json` grants no `fs`
+ * permission at all. `healthSaveReport` is the same shape.
+ */
+export const auditSaveReport = (report: AuditReport, path: string): Promise<string[]> =>
+  invoke('audit_save_report', { report, path })
 
 /**
  * Write the report beside `path`, as Markdown and JSON. Returns the two paths written.

@@ -33,6 +33,10 @@ expression: out
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "description": "What PipDock is using, by artefact.",
   "properties": {
+    "audit": {
+      "$ref": "#/$defs/Entry",
+      "description": "The Security tab's pip-audit environment (PRD P1-1)."
+    },
     "database": {
       "$ref": "#/$defs/Entry",
       "description": "`index.db` — the package index, settings, pins and the consent record. **Not clearable.**"
@@ -61,6 +65,7 @@ expression: out
     "database",
     "snapshots",
     "tools",
+    "audit",
     "snapshotCount"
   ],
   "title": "Usage",

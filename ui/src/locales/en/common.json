@@ -257,11 +257,13 @@
     "snapshotCount_one": "({{count}} snapshot)",
     "snapshotCount_other": "({{count}} snapshots)",
     "tools": "Code Health tools",
+    "audit": "Security tool environment",
     "clear": "Clear",
     "confirmTitle": "Clear this?",
     "confirm": {
       "snapshots": "Every snapshot of every environment is removed, and rollback loses its history. Your installed packages are untouched — this deletes the record, not the environment.",
-      "tools": "The isolated environment deptry, vulture and ruff run from is removed. The next Code Health run rebuilds it, which needs a network connection."
+      "tools": "The isolated environment deptry, vulture and ruff run from is removed. The next Code Health run rebuilds it, which needs a network connection.",
+      "audit": "The isolated environment pip-audit runs from is removed. The next audit rebuilds it, which takes about a minute. Nothing in your own environments changes."
     }
   },
   "health": {
@@ -341,7 +343,10 @@
     "noFix": "no fix",
     "fixedIn": "fixed in {{versions}}",
     "osv": "OSV entry",
-    "linkFailed": "That link could not be opened."
+    "linkFailed": "That link could not be opened.",
+    "save": "Save report…",
+    "saveTitle": "Save the security audit",
+    "saved": "Saved {{files}}"
   },
   "uninstall": {
     "title": "Remove packages",

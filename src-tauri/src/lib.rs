@@ -94,6 +94,7 @@ pub fn run() {
             commands::health_run,
             commands::audit_run,
             commands::audit_cancel,
+            commands::audit_save_report,
             commands::health_save_report,
             commands::index_search,
             commands::index_refresh,

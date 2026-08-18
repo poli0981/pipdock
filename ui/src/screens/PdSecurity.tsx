@@ -10,12 +10,14 @@
  * "nothing has run" are different claims and P4 shipped the wrong one once already.
  */
 
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdAuditReport } from '@/components/PdAuditReport'
 import { PdConsoleDrawer } from '@/components/PdConsoleDrawer'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
+import { auditSaveReport, pickSavePath } from '@/ipc'
 import type { PdError, ToolProblem } from '@/ipc'
 import { freshAudit, useEnvStore, useSecurityStore } from '@/stores'
 
@@ -46,6 +48,10 @@ export function PdSecurity() {
   const setConsoleOpen = useSecurityStore((s) => s.setConsoleOpen)
   const run = useSecurityStore((s) => s.run)
   const cancel = useSecurityStore((s) => s.cancel)
+
+  // Where the last save went, so the confirmation names the files rather than merely claiming
+  // success. Screen state, not store state: it describes an action, not a report.
+  const [saved, setSaved] = useState<string[] | null>(null)
 
   const row = rows.find((r) => r.interpreter === selected)
   const env = row?.env
@@ -88,6 +94,20 @@ export function PdSecurity() {
           </button>
         ) : null}
 
+        {shown === null ? null : (
+          <button
+            type="button"
+            onClick={() => {
+              void pickSavePath(t('security.saveTitle'), 'security-audit.md').then((target) => {
+                if (target !== null) void auditSaveReport(shown, target).then(setSaved)
+              })
+            }}
+            className="rounded-pd bg-surface-2 px-3 py-1.5 text-text"
+          >
+            {t('security.save')}
+          </button>
+        )}
+
         <button
           type="button"
           onClick={() => {
@@ -102,7 +122,7 @@ export function PdSecurity() {
       {/* One live region for the whole screen. Two would serialize against each other
           unpredictably — the pair P6 folded for exactly this reason. */}
       <p aria-live="polite" className="mt-2 text-data text-text-dim">
-        {running ? t('security.running') : ''}
+        {running ? t('security.running') : saved === null ? '' : t('security.saved', { files: saved.join(', ') })}
       </p>
 
       {/* A run that failed outright — as opposed to a tool problem inside a report, below. */}
