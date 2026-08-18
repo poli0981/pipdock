@@ -49,6 +49,15 @@ failed package never aborts a batch (skip-and-continue, then a `"13 successful, 
 
 ## Conventions
 
+- **One session, one slice, one version.** A session takes a single item — a `docs/ROADMAP.md`
+  entry, or something that surfaced while doing one — takes it *deep*, tests it properly, and ships
+  it as one version, plus a patch release if it needs a hotfix. Not several shallow items. The
+  record of what a slice cost goes in ROADMAP; what a *user* would notice goes in `changelog/`.
+- **The changelog lives in `changelog/`, one file per major line** (`1.x.md`), with a pre-release
+  line getting its own file (`2.0-beta.md`). Root `CHANGELOG.md` is a pointer only. Split a file by
+  minor range at roughly 600 lines and never renumber an existing range file —
+  `changelog/README.md` is the authority.
+
 - Crates `pipdock-*`; React components prefixed `Pd` (`PdPackageRow`, `PdConflictDialog`)
 - Tauri identifier `com.skullmute.pipdock`; CLI binary `pipdock`
 - Frontend lives in `ui/`, but `package.json` sits at the **repo root** so the ops-repo
