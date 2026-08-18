@@ -33,3 +33,6 @@ crates/pipdock-core/tests/fixtures/**/*.json text eol=crlf
 # get — the rule above would have rewritten a captured document's line endings and quietly made it
 # something no tool ever emitted. Later rules win, which is what lets this sit as an exception.
 crates/pipdock-core/tests/fixtures/health/** -text
+
+# pip-audit captures are a tool's own output, like health/ above.
+crates/pipdock-core/tests/fixtures/audit/** -text
