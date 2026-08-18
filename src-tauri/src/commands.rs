@@ -1077,6 +1077,86 @@ pub async fn health_run(
     }
 }
 
+/// Audit an environment against the PyPI advisory database — PRD P1-1, SECURITY §6.
+///
+/// Syncs the audit venv on first use, exactly as [`health_run`] syncs Code Health's: the implicit
+/// sync belongs to the command that needs it, or the frontend would have two ways to reach one
+/// operation. It is a *different* venv, and that is the point — a CPython with no `msgpack` wheel
+/// fails this and leaves Code Health working.
+///
+/// **The freeze is taken here, through the configured engine.** Which engine matters: pip is
+/// invoked with `--all` and includes pip and setuptools, uv has no such flag and omits them, so
+/// the engine selection changes what is audited. The store guard is read and dropped before any
+/// subprocess, per [`pkg_outdated`]'s note.
+///
+/// **Cancellable, unlike `health_run`.** P4 deferred that for Code Health on a measurement of
+/// 1.3 s; an audit measures 18-68 s, which is long enough that stopping one is an ordinary thing
+/// to want. The token is registered beside the slot rather than inside it, so [`audit_cancel`] can
+/// reach a run the slot no longer owns.
+///
+/// # Errors
+/// `PD-RES-003` when an audit is already running; `PD-ENG-001` or `PD-ENV-*` when the freeze cannot
+/// be taken; `PD-NET-011` when the audit venv cannot be bootstrapped. **pip-audit failing is not an
+/// error** — it lands in `AuditReport.problems` and the report still returns.
+#[tauri::command]
+pub async fn audit_run(
+    app: tauri::AppHandle,
+    state: tauri::State<'_, AppState>,
+    env: PyEnv,
+) -> Wire<pipdock_core::audit::AuditReport> {
+    use pipdock_core::{audit, health};
+
+    state.audit.claim().await?;
+
+    let dir = health::audit_dir(&state.app_data);
+    let outcome = async {
+        let engine = {
+            let store = state.store.lock().await;
+            engine::for_id(settings::load(&store)?.engine)
+        };
+        let freeze = engine.freeze(&env).await?;
+
+        let sync_needed = health::needs_sync(&dir, health::AUDIT_TOOLS)?.is_needed();
+        let synced = if sync_needed {
+            health::sync_steps(health::AUDIT_TOOLS)
+        } else {
+            0
+        };
+
+        let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+        forward_progress(&app, "audit-progress", rx);
+        let token = CancellationToken::new();
+        state.audit.set_cancel(Some(token.clone()));
+        let sink = engine::ProgressSink::new(tx, audit::AUDIT_STEPS + synced, token);
+
+        if sync_needed {
+            let (python, _) = health::choose_tools_python(&envs::scan().await).await?;
+            health::sync_tools_venv(&dir, &python, health::AUDIT_TOOLS, &sink).await?;
+        }
+        audit::run(&dir, &env, &freeze, &sink.at(synced)).await
+    }
+    .await;
+
+    // Released on both paths, and the token cleared with it: a token left registered would let the
+    // *next* `audit_cancel` stop a run that had not started, which is S5's wedge bug wearing a
+    // different hat.
+    state.audit.release().await;
+    state.audit.set_cancel(None);
+    Ok(outcome?)
+}
+
+/// Stop a running audit, and say whether there was one.
+///
+/// Shaped like [`plan_cancel`] rather than returning `()`: "nothing was running" is a real answer
+/// and the caller should not have to guess it from a silent success.
+///
+/// # Errors
+/// Never fails.
+#[tauri::command]
+pub async fn audit_cancel(state: tauri::State<'_, AppState>) -> Wire<bool> {
+    Ok(state.audit.stop().await)
+}
+
 /// Whether the parked report's project has uncommitted work, so the confirm can say so.
 ///
 /// A command of its own rather than a field on `HealthReport`, because the answer expires: the

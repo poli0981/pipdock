@@ -61,6 +61,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "Intent",
     "Code",
     "HealthReport",
+    "AuditReport",
     "FixReport",
 ];
 
@@ -125,6 +126,7 @@ fn every_command_documents_itself() {
         "snapshot",
         "doctor",
         "health",
+        "audit",
         "pip-upgrade",
         "engine",
         "index",

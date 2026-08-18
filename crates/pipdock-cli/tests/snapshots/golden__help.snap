@@ -19,6 +19,7 @@ Commands:
   snapshot     Manage snapshots
   doctor       Engine check and environment sanity report
   health       Run Code Health (deptry / vulture / ruff) over a project folder
+  audit        Check the environment against the PyPI advisory database
   pip-upgrade  Upgrade pip inside the selected environment
   engine       Show or set the configured engine
   index        Index maintenance

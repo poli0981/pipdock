@@ -47,6 +47,8 @@ export interface IpcMock {
   envProbe: ReturnType<typeof vi.fn>
   pipUpgrade: ReturnType<typeof vi.fn>
   healthRun: ReturnType<typeof vi.fn>
+  auditRun: ReturnType<typeof vi.fn>
+  auditCancel: ReturnType<typeof vi.fn>
   onHealthProgress: ReturnType<typeof vi.fn>
   pickProjectFolder: ReturnType<typeof vi.fn>
   pickSavePath: ReturnType<typeof vi.fn>
@@ -97,6 +99,8 @@ export function ipcMock(): IpcMock {
     envProbe: vi.fn(),
     pipUpgrade: vi.fn().mockResolvedValue(undefined),
     healthRun: vi.fn(),
+    auditRun: vi.fn(),
+    auditCancel: vi.fn(),
     onHealthProgress: vi.fn().mockResolvedValue(() => undefined),
     // Cancelled by default. A picker that silently returned a folder would let a test assert a
     // run it never actually asked for.

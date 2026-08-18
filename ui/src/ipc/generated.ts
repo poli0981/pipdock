@@ -6,6 +6,78 @@
 // Command signatures are not here — they are not derivable from a schema and stay hand-written
 // in `./index.ts`.
 
+/** One advisory against one installed distribution. */
+export interface Advisory {
+  /**
+   * Other ids for the same advisory, which is where the `CVE-*` and `GHSA-*` live.
+   *
+   * PRD P1-1 says "known CVEs"; a CVE is never the primary id here, so a screen that wants to
+   * show one reads this.
+   */
+  aliases?: string[];
+  /** The advisory prose, verbatim. Never translated (I18N §2) and never trimmed here. */
+  description: string;
+  /**
+   * Versions that fix it. **Empty is meaningful** — an advisory with nowhere to upgrade to —
+   * and [`sort_advisories`] puts those last rather than hiding them.
+   */
+  fixVersions?: string[];
+  /** pip-audit's primary id — `PYSEC-*` under the default service. */
+  id: string;
+  /** The installed distribution the advisory is against. */
+  pkg: PkgName;
+  /**
+   * The OSV entry, when the id is shaped like one.
+   *
+   * **Built from a validated id rather than taken from the tool**, which is the whole
+   * difference between this and `PdHealthReport`'s `finding.url`.
+   * `capabilities/external-links.json` records that ruff's URL is the only one in the
+   * application derived from a third party's output; this one is derived from a string PipDock
+   * has checked, so widening the allowlist to `osv.dev` does not widen what can reach it.
+   */
+  url?: string | null;
+  /** The version installed, not the version that fixes it. */
+  version: Version;
+}
+
+/**
+ * What a Security-tab run produced.
+ *
+ * Shaped like [`crate::health::HealthReport`] deliberately: a `problems` list rather than an
+ * early return, so a failed audit still *returns a report* and the screen renders one error row
+ * instead of nothing at all. That shape is what makes a partial result expressible.
+ */
+export interface AuditReport {
+  /** Deduplicated and ordered by [`sort_advisories`]. */
+  advisories?: Advisory[];
+  /**
+   * The user stopped it.
+   *
+   * A **state, not an error**, which is the shape `ExecutionSummary.cancelled` established: the
+   * user asking a run to stop is not a tool failure, so nothing lands in `problems` and no
+   * catalog code is minted for something that went right. It matters here in a way it did not
+   * for Code Health, whose runs are 1.3 s — an audit is 18-68 s, which is long enough that
+   * stopping one is an ordinary thing to want.
+   */
+  cancelled?: boolean;
+  /** `canonical_interpreter` of the environment audited. Data, never localized (I18N §2). */
+  env: string;
+  /**
+   * Distributions the freeze document listed.
+   *
+   * **Separate from `advisories.len()`**, because "audited 145 packages and found nothing" and
+   * "audited nothing" are different answers. A screen that cannot tell them apart tells P4's
+   * lie — *no issues found* before anything has run.
+   */
+  packages: number;
+  /** Why the run contributed nothing. Empty means it completed. */
+  problems?: ToolProblem[];
+  /** When the run finished, RFC 3339. */
+  ranAt: string;
+  /** pip-audit's version, out of the audit venv's manifest. Empty if it has never synced. */
+  toolVersion: string;
+}
+
 /**
  * The package responsible for holding another one back.
  *

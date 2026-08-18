@@ -889,6 +889,143 @@ pub async fn tools_sync(opts: &GlobalOpts, force: bool, python: Option<&Path>) -
     Ok(Exit::Success)
 }
 
+/// `pipdock audit` — CLI-SPEC §3, PRD P1-1.
+///
+/// Exits **1 on findings**, the way `health` does: an advisory is a result, not a failure, and a
+/// script wants to branch on it. A pip-audit that could not run is a different thing and exits on
+/// its catalog code.
+///
+/// # Errors
+/// `PD-ENG-001` or `PD-ENV-*` when the environment cannot be read or frozen, `PD-NET-011` when the
+/// audit venv cannot be bootstrapped.
+pub async fn audit(opts: &GlobalOpts) -> Result<Exit> {
+    use pipdock_core::audit;
+
+    let env = select_env(opts).await?;
+    let app_data = app_data_dir();
+    let store = Store::open(&app_data)?;
+    let engine = engine::for_id(settings::load(&store)?.engine);
+    drop(store);
+
+    // Taken before the venv is touched, so an unreadable environment fails before a 15-second
+    // bootstrap rather than after one.
+    let freeze = engine.freeze(&env).await?;
+
+    let dir = health::audit_dir(&app_data);
+    let sync_needed = health::needs_sync(&dir, health::AUDIT_TOOLS)?.is_needed();
+    let synced = if sync_needed {
+        health::sync_steps(health::AUDIT_TOOLS)
+    } else {
+        0
+    };
+
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
+    let quiet = opts.quiet;
+    let pump = tokio::spawn(async move {
+        while let Some(event) = rx.recv().await {
+            if let Some(line) = event.line().filter(|_| !quiet) {
+                eprintln!("{line}");
+            }
+        }
+    });
+    let sink = engine::ProgressSink::new(tx, audit::AUDIT_STEPS + synced, CancellationToken::new());
+
+    let outcome = async {
+        if sync_needed {
+            if !opts.quiet && !opts.json {
+                println!("building the audit environment (first run)…");
+            }
+            let (python, _) = health::choose_tools_python(&envs::scan().await).await?;
+            health::sync_tools_venv(&dir, &python, health::AUDIT_TOOLS, &sink).await?;
+        }
+        // Said before the wait rather than after it: 18-68 seconds of silence reads as a hang, and
+        // this is the one command whose cost is a network fetch the user cannot see.
+        if !opts.quiet && !opts.json {
+            println!(
+                "checking {} packages against the advisory database…",
+                freeze.lines().count()
+            );
+        }
+        audit::run(&dir, &env, &freeze, &sink.at(synced)).await
+    }
+    .await;
+
+    drop(sink);
+    let _ = pump.await;
+    let report = outcome?;
+
+    if opts.json {
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&report).map_err(|e| PdError::new(
+                Code::IntUnexpected,
+                format!("serialize the audit report: {e}")
+            ))?
+        );
+    } else {
+        print_audit(&report);
+    }
+
+    // A tool problem outranks the findings: a report with an empty list because pip-audit never ran
+    // must not exit 0 and read as "nothing wrong here".
+    if let Some(problem) = report.problems.first() {
+        return Ok(exit_for(problem.code));
+    }
+    Ok(if report.has_findings() {
+        Exit::PartialFailure
+    } else {
+        Exit::Success
+    })
+}
+
+/// The human form of an audit report.
+fn print_audit(report: &pipdock_core::audit::AuditReport) {
+    if report.cancelled {
+        println!("stopped before it finished; nothing below is complete");
+    }
+    for problem in &report.problems {
+        eprintln!("error[{}]: {}", problem.code, problem.message);
+    }
+    if report.advisories.is_empty() && report.problems.is_empty() {
+        println!(
+            "no known advisories against {} packages (pip-audit {})",
+            report.packages, report.tool_version
+        );
+        return;
+    }
+
+    let mut current = String::new();
+    for a in &report.advisories {
+        let pkg = a.pkg.to_string();
+        if pkg != current {
+            println!("\n{pkg} {}", a.version);
+            current = pkg;
+        }
+        // The fix is the actionable half, so it leads. "no fix" is stated rather than left blank:
+        // an advisory nothing upgrades away is the one worth reading the description for.
+        let fix = if a.fix_versions.is_empty() {
+            "no fix".to_owned()
+        } else {
+            format!("fixed in {}", a.fix_versions.join(", "))
+        };
+        println!("  {:<20} {fix}", a.id);
+        if !a.aliases.is_empty() {
+            println!("  {:<20} {}", "", a.aliases.join(", "));
+        }
+    }
+    println!(
+        "\n{} advisories across {} of {} packages",
+        report.advisories.len(),
+        report
+            .advisories
+            .iter()
+            .map(|a| a.pkg.to_string())
+            .collect::<std::collections::BTreeSet<_>>()
+            .len(),
+        report.packages
+    );
+}
+
 /// `pipdock health`
 ///
 /// Exits **1 when any tool reported a finding**, 0 when all of them were clean. A linter that
