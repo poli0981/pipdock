@@ -1,0 +1,322 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "Advisory": {
+      "description": "One advisory against one installed distribution.",
+      "properties": {
+        "aliases": {
+          "default": [],
+          "description": "Other ids for the same advisory, which is where the `CVE-*` and `GHSA-*` live.\n\nPRD P1-1 says \"known CVEs\"; a CVE is never the primary id here, so a screen that wants to\nshow one reads this.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "description": {
+          "description": "The advisory prose, verbatim. Never translated (I18N §2) and never trimmed here.",
+          "type": "string"
+        },
+        "fixVersions": {
+          "default": [],
+          "description": "Versions that fix it. **Empty is meaningful** — an advisory with nowhere to upgrade to —\nand [`sort_advisories`] puts those last rather than hiding them.",
+          "items": {
+            "type": "string"
+          },
+          "type": "array"
+        },
+        "id": {
+          "description": "pip-audit's primary id — `PYSEC-*` under the default service.",
+          "type": "string"
+        },
+        "pkg": {
+          "$ref": "#/$defs/PkgName",
+          "description": "The installed distribution the advisory is against."
+        },
+        "url": {
+          "description": "The OSV entry, when the id is shaped like one.\n\n**Built from a validated id rather than taken from the tool**, which is the whole\ndifference between this and `PdHealthReport`'s `finding.url`.\n`capabilities/external-links.json` records that ruff's URL is the only one in the\napplication derived from a third party's output; this one is derived from a string PipDock\nhas checked, so widening the allowlist to `osv.dev` does not widen what can reach it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "$ref": "#/$defs/Version",
+          "description": "The version installed, not the version that fixes it."
+        }
+      },
+      "required": [
+        "pkg",
+        "version",
+        "id",
+        "description"
+      ],
+      "type": "object"
+    },
+    "Code": {
+      "description": "Every code PipDock can surface at v1 launch.\n\n`docs/TESTING.md` §2 requires at least one captured stderr fixture per variant before ship;\nthe test that enforces \"no code without fixture\" lives beside the classifiers.",
+      "oneOf": [
+        {
+          "const": "PD-ENV-001",
+          "description": "Interpreter path missing or not executable — the env was deleted or moved.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENV-002",
+          "description": "PEP 668 `EXTERNALLY-MANAGED` marker present; mutation blocked by default.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENV-003",
+          "description": "`probe.py` exited non-zero or produced unparseable output.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-001",
+          "description": "pip or uv binary not found.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-002",
+          "description": "pip older than 22.2, which predates `--dry-run --report`.",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-003",
+          "description": "uv emitted a shape the adapter does not recognize (uv newer than PipDock).",
+          "type": "string"
+        },
+        {
+          "const": "PD-ENG-999",
+          "description": "Fallback for engine failures no classifier matched. Always last.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-001",
+          "description": "`ResolutionImpossible` or the uv equivalent: constraints cannot be satisfied.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-002",
+          "description": "Plan older than 10 minutes, or the env's probe hash changed since the preview.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-003",
+          "description": "A plan is already resolving or executing in this session.\n\nThe GUI drives one resumable flow across several IPC calls, so \"start a plan\" and \"run the\nplan\" are different messages arriving at different times — nothing structurally stops a\nsecond one arriving in between. Refusing is the only safe answer: two concurrent plans\nwould interleave engine commands against one environment, and DATA-FLOW §9.3's staleness\ncheck would be comparing against a set the other plan is busy changing.",
+          "type": "string"
+        },
+        {
+          "const": "PD-RES-004",
+          "description": "A removal was asked for that the reverse-dependency guard refused (DATA-FLOW §5).\n\nIts own code rather than a reused one. The CLI printed `PD-PKG-002` here, which means \"no\nmatching distribution\" — the opposite of the truth: every package involved exists, and\nthat is precisely why the removal is being refused. A user grepping their logs for a typo\nwould have found this instead.\n\nNot raised when the guard merely *finds* dependents. That is a report the caller shows and\nthe user answers; the code appears only when execution is attempted anyway without the\nuser having accepted the breakage.",
+          "type": "string"
+        },
+        {
+          "const": "PD-BLD-001",
+          "description": "MSVC build tools required but absent.",
+          "type": "string"
+        },
+        {
+          "const": "PD-BLD-002",
+          "description": "Build backend failed (`pyproject.toml` error, `metadata-generation-failed`).",
+          "type": "string"
+        },
+        {
+          "const": "PD-BLD-003",
+          "description": "Generic sdist wheel-build failure.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-001",
+          "description": "No matching distribution, and metadata shows a requires-python mismatch.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-002",
+          "description": "No matching distribution: name or version typo, or the release is gone.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-003",
+          "description": "The requested release was yanked.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PKG-004",
+          "description": "Downloaded artifact failed hash verification.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-001",
+          "description": "Timeout, connection aborted, or DNS failure.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-002",
+          "description": "TLS/SSL verification failed — typically proxy or AV interception.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-010",
+          "description": "PEP 691 index refresh failed; the stale index stays searchable.",
+          "type": "string"
+        },
+        {
+          "const": "PD-NET-011",
+          "description": "Code Health tools-venv bootstrap could not reach PyPI.",
+          "type": "string"
+        },
+        {
+          "const": "PD-PRM-001",
+          "description": "`PermissionError` writing site-packages (admin-owned Python).",
+          "type": "string"
+        },
+        {
+          "const": "PD-PRM-002",
+          "description": "File locked by a running process (`WinError 32`).",
+          "type": "string"
+        },
+        {
+          "const": "PD-PRM-003",
+          "description": "A source file in the user's project cannot be written.\n\n**Not `PD-PRM-001`.** That one is scoped to site-packages and its catalogued action is\n\"use a venv\", which is nonsense advice for a read-only `util.py` — the same class of wrong\nanswer P3 removed when a corrupted `ruff.exe` reported `PD-ENG-001`, \"install the engine\".\n\nRaised by PipDock **before anything is written**, never classified from stderr: ruff can\nfail to write a file and still exit 1, which `is_findings_exit` accepts as a clean run, so\na stderr-matched code would arrive after a fix had already reported success.",
+          "type": "string"
+        },
+        {
+          "const": "PD-SNP-001",
+          "description": "Snapshot write failed before execution. **The plan is aborted; nothing runs.**",
+          "type": "string"
+        },
+        {
+          "const": "PD-SNP-002",
+          "description": "A release needed to restore a snapshot is no longer available on PyPI.",
+          "type": "string"
+        },
+        {
+          "const": "PD-SYS-001",
+          "description": "`MAX_PATH` exceeded without the long-path opt-in.",
+          "type": "string"
+        },
+        {
+          "const": "PD-SYS-002",
+          "description": "Disk full.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-001",
+          "description": "A Code Health tool is missing from the tools venv.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-002",
+          "description": "A Code Health tool exited non-zero.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-003",
+          "description": "A Code Health tool exceeded its watchdog timeout; partial report shown.",
+          "type": "string"
+        },
+        {
+          "const": "PD-HLT-004",
+          "description": "`python -m venv` failed while building the tools environment.\n\n**Raised by PipDock, not classified from engine stderr.** Its own code rather than a reused\none: `PD-NET-011` is `Area::Net`, so `run::exit_for` would map a broken interpreter to exit\n6 and a script retrying on network failure would loop forever; `PD-HLT-001` tells the user\nto re-sync, which is the operation that just failed; and a Python built without `venv` is\nnot `PD-INT-001`'s \"a PipDock bug\".",
+          "type": "string"
+        },
+        {
+          "const": "PD-INT-001",
+          "description": "A PipDock bug: panic or unexpected state.",
+          "type": "string"
+        }
+      ]
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    },
+    "ToolProblem": {
+      "description": "One tool that was asked to run and did not finish.\n\nDeliberately `PdError`-shaped so the UI can hand it straight to `PdErrorRow` rather than\ninventing a second error presentation for the same catalog codes.",
+      "properties": {
+        "code": {
+          "$ref": "#/$defs/Code",
+          "description": "The catalog code, so the row is localized from the same table as every other error."
+        },
+        "message": {
+          "description": "Developer-facing detail. Never shown as-is (I18N §1).",
+          "type": "string"
+        },
+        "stderrTail": {
+          "description": "Tail of the tool's stderr, capped as ERROR-CATALOG §3 caps every other one.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "tool": {
+          "description": "Which tool: `deptry`, `vulture` or `ruff`.",
+          "type": "string"
+        }
+      },
+      "required": [
+        "tool",
+        "code",
+        "message"
+      ],
+      "type": "object"
+    },
+    "Version": {
+      "description": "A version string as the engine reported it. Never reshaped or localized (I18N §2).",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "What a Security-tab run produced.\n\nShaped like [`crate::health::HealthReport`] deliberately: a `problems` list rather than an\nearly return, so a failed audit still *returns a report* and the screen renders one error row\ninstead of nothing at all. That shape is what makes a partial result expressible.",
+  "properties": {
+    "advisories": {
+      "default": [],
+      "description": "Deduplicated and ordered by [`sort_advisories`].",
+      "items": {
+        "$ref": "#/$defs/Advisory"
+      },
+      "type": "array"
+    },
+    "cancelled": {
+      "default": false,
+      "description": "The user stopped it.\n\nA **state, not an error**, which is the shape `ExecutionSummary.cancelled` established: the\nuser asking a run to stop is not a tool failure, so nothing lands in `problems` and no\ncatalog code is minted for something that went right. It matters here in a way it did not\nfor Code Health, whose runs are 1.3 s — an audit is 18-68 s, which is long enough that\nstopping one is an ordinary thing to want.",
+      "type": "boolean"
+    },
+    "env": {
+      "description": "`canonical_interpreter` of the environment audited. Data, never localized (I18N §2).",
+      "type": "string"
+    },
+    "packages": {
+      "description": "Distributions the freeze document listed.\n\n**Separate from `advisories.len()`**, because \"audited 145 packages and found nothing\" and\n\"audited nothing\" are different answers. A screen that cannot tell them apart tells P4's\nlie — *no issues found* before anything has run.",
+      "format": "uint",
+      "minimum": 0,
+      "type": "integer"
+    },
+    "problems": {
+      "description": "Why the run contributed nothing. Empty means it completed.",
+      "items": {
+        "$ref": "#/$defs/ToolProblem"
+      },
+      "type": "array"
+    },
+    "ranAt": {
+      "description": "When the run finished, RFC 3339.",
+      "type": "string"
+    },
+    "toolVersion": {
+      "description": "pip-audit's version, out of the audit venv's manifest. Empty if it has never synced.",
+      "type": "string"
+    }
+  },
+  "required": [
+    "env",
+    "ranAt",
+    "toolVersion",
+    "packages"
+  ],
+  "title": "AuditReport",
+  "type": "object"
+}

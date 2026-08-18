@@ -16,6 +16,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event'
 import { open, save } from '@tauri-apps/plugin-dialog'
 
 import type {
+  AuditReport,
   Decision,
   Dist,
   Freshness,
@@ -78,6 +79,8 @@ export const COMMANDS = [
   'snapshot_rollback_preview',
   'snapshot_rollback',
   'health_run',
+  'audit_run',
+  'audit_cancel',
   'health_dirty',
   'health_fix',
   'health_save_report',
@@ -94,7 +97,12 @@ export const COMMANDS = [
 export type Command = (typeof COMMANDS)[number]
 
 /** Tauri event channels, per ARCHITECTURE §7. */
-export const EVENTS = ['plan-progress', 'scan-progress', 'health-progress'] as const
+export const EVENTS = [
+  'plan-progress',
+  'scan-progress',
+  'health-progress',
+  'audit-progress',
+] as const
 
 export type EventName = (typeof EVENTS)[number]
 
@@ -449,6 +457,20 @@ export const healthRun = (env: PyEnv, project: string): Promise<HealthReport> =>
   invoke('health_run', { env, project })
 
 /**
+ * Audit one environment against the PyPI advisory database (PRD P1-1).
+ *
+ * Takes only the environment: the freeze document is Rust's to produce, because which engine is
+ * configured changes what is in it — pip includes pip and setuptools, uv does not.
+ *
+ * Slow by nature. 18-68 s measured, dominated by a one-off advisory-database fetch rather than by
+ * the package count, which is why `auditCancel` exists at all and `health_run` has no equivalent.
+ */
+export const auditRun = (env: PyEnv): Promise<AuditReport> => invoke('audit_run', { env })
+
+/** Stop a running audit; resolves false when there was nothing to stop. */
+export const auditCancel = (): Promise<boolean> => invoke('audit_cancel')
+
+/**
  * Write the report beside `path`, as Markdown and JSON. Returns the two paths written.
  *
  * The webview has no filesystem permission at all: `dialog:allow-save` only lets it *ask* for a
@@ -566,5 +588,13 @@ export const onHealthProgress = (
   handler: (event: ProgressEvent) => void,
 ): Promise<UnlistenFn> =>
   listen<ProgressEvent>('health-progress', (event) => {
+    handler(event.payload)
+  })
+
+/** The same payload again, on the Security tab's own channel. */
+export const onAuditProgress = (
+  handler: (event: ProgressEvent) => void,
+): Promise<UnlistenFn> =>
+  listen<ProgressEvent>('audit-progress', (event) => {
     handler(event.payload)
   })

@@ -238,6 +238,9 @@ enum Command {
         fix: bool,
     },
 
+    /// Check the environment against the PyPI advisory database.
+    Audit,
+
     /// Upgrade pip inside the selected environment.
     PipUpgrade,
 
@@ -386,6 +389,7 @@ async fn main() -> ExitCode {
         }
         Command::Schema { type_name } => run::schema(type_name),
         Command::Env(EnvCommand::Use { path }) => run::env_use(&cli.global, path).await,
+        Command::Audit => run::audit(&cli.global).await,
         Command::PipUpgrade => run::pip_upgrade(&cli.global).await,
         Command::Snapshot(SnapshotCommand::Rollback { id }) => {
             run::snapshot_rollback(&cli.global, id).await

@@ -424,6 +424,18 @@ pub struct AppState {
     /// the user's consent against a report **the server** is holding — the same shape `ack_ok`
     /// checks a `GuardAck` against the guard that produced it. Typed now so P5 does not redo it.
     pub health: Sessions<HealthSession>,
+
+    /// The Security tab's slot — PRD P1-1.
+    ///
+    /// `Sessions<()>` because nothing is parked: an audit produces a report and hands it straight
+    /// back, with no second call that consumes it the way `health_fix` consumes a `HealthSession`.
+    /// What it is here for is the **token**, which lives beside the slot rather than in it so
+    /// `audit_cancel` can reach a run the slot no longer owns.
+    ///
+    /// Its own slot rather than `health`'s, for the reason that one is not `sessions`: an audit
+    /// touches no environment, so refusing it while Code Health runs would be a lock with no
+    /// invariant behind it.
+    pub audit: Sessions<()>,
     /// Engine output from the current plan, for the bug-report deep link.
     pub log: std::sync::Arc<LogRing>,
 }
@@ -442,6 +454,7 @@ impl AppState {
             index: std::sync::Mutex::new(IndexSlot::Cold),
             sessions: Sessions::default(),
             health: Sessions::default(),
+            audit: Sessions::default(),
             log: std::sync::Arc::new(LogRing::default()),
         })
     }

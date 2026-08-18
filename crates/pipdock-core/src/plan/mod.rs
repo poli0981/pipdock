@@ -304,6 +304,7 @@ pub fn json_schema(type_name: &str) -> Result<serde_json::Value> {
         // into its own TS declaration, so `DeptryIssue` and the rest arrive without being listed.
         // Registering them separately would emit each twice.
         "HealthReport" => crate::health::HealthReport,
+        "AuditReport" => crate::audit::AuditReport,
         "FixReport" => crate::health::fix::FixReport,
     }
 }
@@ -339,6 +340,7 @@ pub const SCHEMA_TYPES: &[&str] = &[
     "Intent",
     "Code",
     "HealthReport",
+    "AuditReport",
     "FixReport",
 ];
 
