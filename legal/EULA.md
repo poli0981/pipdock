@@ -8,7 +8,7 @@ PipDock is free software, licensed under the **GNU General Public License, versi
 
 ## 2. What PipDock does (acknowledgment)
 
-PipDock installs, upgrades, and removes packages in Python environments **at your direction**, by invoking third-party package managers (pip, uv) and analysis tools (deptry, vulture, ruff; pip-audit is planned and is not invoked in version 1.0). These operations modify software environments on your computer and can affect the behavior of your projects. You are responsible for reviewing each preview and confirmation the application presents before applying changes.
+PipDock installs, upgrades, and removes packages in Python environments **at your direction**, by invoking third-party package managers (pip, uv) and analysis tools (deptry, vulture, ruff, and pip-audit for the Security tab). These operations modify software environments on your computer and can affect the behavior of your projects. You are responsible for reviewing each preview and confirmation the application presents before applying changes.
 
 ## 3. No warranty
 

@@ -45,7 +45,7 @@ These run as independent programs from your system or from PipDock's isolated to
 | deptry | MIT | Code Health — dependency issues |
 | vulture | MIT | Code Health — dead code |
 | ruff | MIT | Code Health — lint/format |
-| pip-audit | Apache-2.0 | Security tab — **not invoked in 1.0**; listed because the tab is planned and this row is where it will belong |
+| pip-audit | Apache-2.0 | Security tab — known advisories against installed packages. Installed into its own environment, separate from the three above |
 | CPython | PSF License | the environments themselves |
 
 ## C. Services

@@ -36,7 +36,8 @@ pipdock update [--all | <pkg...>]
 pipdock uninstall <pkg...> [--force]     # guard names each dependent and its constraint; --force overrides
 pipdock pin add|remove <pkg> [--reason "…"] | pin list
 pipdock snapshot list | create | diff <id> | rollback <id|latest>
-pipdock doctor                           # engine check + env sanity + (P1) audit summary
+pipdock doctor                           # engine check + env sanity
+pipdock audit                            # known advisories in the selected environment; exit 1 on findings
 pipdock health [--path <dir>] [--tool deptry|vulture|ruff] [--fix]   # --fix = ruff only, prompts
                                                                     # --yes: proceeds on a clean tree,
                                                                     # REFUSES on a dirty one (exit 2)
