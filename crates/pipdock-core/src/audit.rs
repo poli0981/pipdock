@@ -256,6 +256,15 @@ pub struct AuditReport {
     /// Why the run contributed nothing. Empty means it completed.
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub problems: Vec<ToolProblem>,
+    /// The user stopped it.
+    ///
+    /// A **state, not an error**, which is the shape `ExecutionSummary.cancelled` established: the
+    /// user asking a run to stop is not a tool failure, so nothing lands in `problems` and no
+    /// catalog code is minted for something that went right. It matters here in a way it did not
+    /// for Code Health, whose runs are 1.3 s — an audit is 18-68 s, which is long enough that
+    /// stopping one is an ordinary thing to want.
+    #[serde(default)]
+    pub cancelled: bool,
 }
 
 impl AuditReport {
@@ -293,17 +302,24 @@ pub async fn run(
         packages: 0,
         advisories: Vec::new(),
         problems: Vec::new(),
+        cancelled: false,
     };
 
     let step = sink.at(sink.step);
     let name = PkgName::parse(TOOL)?;
     step.started(Some(name.clone()), ExecMode::Isolated);
 
-    match audit_once(audit_dir, freeze).await {
+    match audit_once(audit_dir, freeze, sink).await {
         Ok(audited) => {
             report.packages = audited.packages;
             report.advisories = audited.advisories;
             step.finished(Some(name), ExecMode::Isolated, StepStatus::Ok);
+        }
+        // **Skipped, not Failed**, and no problem row — S1's rule that a step killed by us is not
+        // a step that went wrong, applied to the one operation long enough for anyone to kill.
+        Err(e) if is_cancellation(&e) => {
+            report.cancelled = true;
+            step.finished(Some(name), ExecMode::Isolated, StepStatus::Skipped);
         }
         Err(e) => {
             report.problems.push(ToolProblem {
@@ -325,7 +341,7 @@ pub async fn run(
 /// # Errors
 /// `PD-HLT-001` when the audit venv has no pip-audit, `PD-HLT-003` on its watchdog, `PD-HLT-002`
 /// when stdout is not the promised document.
-async fn audit_once(audit_dir: &Path, freeze: &str) -> Result<Audited> {
+async fn audit_once(audit_dir: &Path, freeze: &str, sink: &ProgressSink) -> Result<Audited> {
     let exe = tool_exe(audit_dir, TOOL);
     if !exe.is_file() {
         return Err(PdError::new(
@@ -343,6 +359,7 @@ async fn audit_once(audit_dir: &Path, freeze: &str) -> Result<Audited> {
     let out = Command::new(&exe)
         .args(argv(&freeze_path))
         .timeout(AUDIT_TIMEOUT)
+        .cancel(sink.cancel.clone())
         .run()
         .await
         .map_err(watchdog);
@@ -373,6 +390,16 @@ fn argv(freeze: &Path) -> Vec<String> {
         "-f".to_owned(),
         "json".to_owned(),
     ]
+}
+
+/// Did the user stop it, or did it break?
+///
+/// `exec` reports both through `Code::IntUnexpected`, distinguished only by the message it built
+/// (`exec::Command::stopped`). Reading the message is unlovely, and it is what P4 warned about
+/// when it recorded that wiring the token alone would render *"PipDock hit an internal error"* for
+/// a cancel — the mapping has to be done, not merely enabled.
+fn is_cancellation(e: &PdError) -> bool {
+    e.code == Code::IntUnexpected && e.message.starts_with("cancelled:")
 }
 
 /// Translate `exec`'s vocabulary into this path's.
@@ -614,5 +641,48 @@ mod tests {
         assert_eq!(report.packages, 1);
         assert_eq!(report.advisories.len(), 8, "the fixture's count, live");
         assert!(report.advisories.iter().all(|a| a.url.is_some()));
+    }
+
+    /// Cancelling one, against the real tool, because nothing smaller can.
+    ///
+    /// `audit_once` checks the executable exists before it spawns anything, so a fake directory
+    /// returns `PD-HLT-001` and never reaches the token — the cancel path is only observable with
+    /// a tool that actually runs. Same opt-in as above.
+    #[tokio::test]
+    #[ignore = "needs a synced audit venv; run with --ignored and PIPDOCK_AUDIT_DIR"]
+    async fn a_cancelled_run_is_cancelled_rather_than_failed() {
+        let Ok(dir) = std::env::var("PIPDOCK_AUDIT_DIR") else {
+            panic!("set PIPDOCK_AUDIT_DIR to a directory holding a synced audit venv");
+        };
+        let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+        let token = tokio_util::sync::CancellationToken::new();
+        let sink = ProgressSink::new(tx, AUDIT_STEPS, token.clone());
+
+        // Cancelled while the advisory fetch is in flight — the 18-68 s window this feature exists
+        // to make interruptible.
+        let stopper = tokio::spawn(async move {
+            tokio::time::sleep(std::time::Duration::from_millis(1500)).await;
+            token.cancel();
+        });
+        let report = run(
+            std::path::Path::new(&dir),
+            &a_python_env(),
+            "urllib3==2.0.0
+",
+            &sink,
+        )
+        .await
+        .expect("a cancelled run still returns a report");
+        stopper.await.expect("stopper");
+
+        // The whole point of P4's warning: a cancel must not read as `PipDock hit an internal
+        // error`, which is what `PD-INT-001` renders as.
+        assert!(report.cancelled, "a stopped run says so");
+        assert!(
+            report.problems.is_empty(),
+            "a cancel is not a failure: {:?}",
+            report.problems
+        );
+        assert!(report.advisories.is_empty());
     }
 }
