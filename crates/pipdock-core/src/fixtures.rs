@@ -329,6 +329,34 @@ fn codes() -> Vec<crate::errors::Code> {
 /// | `DEP002` `httpx` | unused but not installed here — the same code, no button |
 /// | `DEP001` `yaml` | a module name that is not a distribution (`PyYAML`), **and** the wrong code for the button twice over |
 /// | `DEP003` `numpy` | two locations, so the location list is not always a singleton |
+/// What `audit_run` returns for the SP-4 environment — PRD P1-1.
+///
+/// **Computed from the committed capture by the real parser**, never written out. Slice 0 is the
+/// reason and it is not a general principle here but a specific one: dedup and the fixable-first
+/// order are exactly what the Security screen renders, both live in `audit.rs`, and a hand-written
+/// list would let a test assert the right rows while the application produced different ones. That
+/// is the shape the doubled blocker sentence shipped in.
+///
+/// `target-env.json` rather than `urllib3-2.0.0.json` because a screen has to group by package and
+/// one package cannot show that. Two is what the real environment has: **sixteen rows collapsing
+/// to thirteen advisories**, five of them against pip itself — which is `Engine::freeze` passing
+/// `--all`, and a fact the screen should not hide.
+fn audit_report() -> crate::audit::AuditReport {
+    const CAPTURE: &str = include_str!("../tests/fixtures/audit/target-env.json");
+
+    let audited = crate::audit::parse(CAPTURE)
+        .unwrap_or_else(|e| panic!("the committed pip-audit capture must parse: {e:?}"));
+    crate::audit::AuditReport {
+        env: r"c:\proj\.venv\scripts\python.exe".to_owned(),
+        ran_at: "2026-08-18T09:00:00Z".to_owned(),
+        tool_version: "2.10.1".to_owned(),
+        packages: audited.packages,
+        advisories: audited.advisories,
+        problems: Vec::new(),
+        cancelled: false,
+    }
+}
+
 fn health_report() -> crate::health::HealthReport {
     use crate::health::{
         DeptryIssue, FixApplicability, HealthReport, RuffFinding, RuffFindings, SourceLocation,
@@ -550,6 +578,7 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("snapshot_list.json", render(&snapshot_list())?),
         ("rollback_preview.json", render(&rollback_preview())?),
         ("health_report.json", render(&health_report())?),
+        ("audit_report.json", render(&audit_report())?),
         ("health_partial.json", render(&health_partial())?),
         ("codes.json", render(&codes())?),
     ])

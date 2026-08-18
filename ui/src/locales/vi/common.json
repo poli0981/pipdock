@@ -294,6 +294,23 @@
     "fixConfirm": "Sửa",
     "fixConfirmDirty": "Vẫn sửa"
   },
+  "security": {
+    "run": "Quét bảo mật",
+    "running": "Đang đối chiếu với cơ sở dữ liệu lỗ hổng…",
+    "cancelled": "Đã dừng giữa chừng, nên kết quả bên dưới chưa đầy đủ.",
+    "checkedAt": "Đã kiểm tra {{at}} bằng pip-audit {{version}}",
+    "noEnv": "Hãy chọn một môi trường trước.",
+    "notRunYet": "Chưa quét môi trường này lần nào.",
+    "notRunYetHint": "Lần chạy đầu sẽ dựng môi trường công cụ riêng, mất khoảng một phút.",
+    "clean_other": "Không có lỗ hổng đã biết trong {{count}} gói.",
+    "cleanHint": "Đã kiểm tra bằng pip-audit {{version}} với dữ liệu lỗ hổng của PyPI.",
+    "summary_other": "{{count}} lỗ hổng trên {{packages}} trong tổng số {{total}} gói.",
+    "more_other": "Còn {{count}} lỗ hổng nữa chưa hiển thị.",
+    "noFix": "chưa có bản vá",
+    "fixedIn": "vá ở {{versions}}",
+    "osv": "Trang OSV",
+    "linkFailed": "Không mở được liên kết đó."
+  },
   "uninstall": {
     "title": "Gỡ gói",
     "titleBreaks": "Thao tác gỡ này làm hỏng gói khác",

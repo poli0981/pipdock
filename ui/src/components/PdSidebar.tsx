@@ -3,8 +3,15 @@ import { useTranslation } from 'react-i18next'
 import { NAV_KEYS, type NavKey } from '@/components/nav'
 import { PANEL_PHASES, useEnvStore, usePlanStore, useUiStore } from '@/stores'
 
-/** Tabs whose screens land in a later milestone. Kept in place, not hidden. */
-const NOT_YET: readonly NavKey[] = ['security']
+/**
+ * Tabs whose screens land in a later milestone. Kept in place, not hidden.
+ *
+ * **Empty since P1-1**, which gave `security` its screen — it was the last entry. Kept rather than
+ * deleted because the mechanism is the interesting part: a tab without a screen stays visible and
+ * focusable at reduced opacity, since hiding one would renumber every `Ctrl+N` after it and make
+ * the user relearn the map twice.
+ */
+const NOT_YET: readonly NavKey[] = []
 
 /**
  * The sidebar — UI-SPEC §3 and §8.

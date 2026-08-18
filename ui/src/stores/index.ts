@@ -688,6 +688,14 @@ export {
   type TabState,
 } from '@/stores/health'
 
+// The Security tab, in its own file for the same reason as Code Health.
+export {
+  freshAudit,
+  useSecurityStore,
+  type SecurityPhase,
+  type SecurityState,
+} from '@/stores/security'
+
 // Search and the dock bay, in their own file for the same reason as the plan store.
 export {
   SEARCH_DEBOUNCE_MS,
