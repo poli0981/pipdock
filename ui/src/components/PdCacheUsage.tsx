@@ -25,7 +25,7 @@ import { formatBytes } from '@/screens/rows'
 import { asPdError, useSettingsStore } from '@/stores'
 
 /** The rows that can be cleared, in the order they are offered. */
-const CLEARABLE: readonly CacheTarget[] = ['snapshots', 'tools']
+const CLEARABLE: readonly CacheTarget[] = ['snapshots', 'tools', 'audit']
 
 export function PdCacheUsage() {
   const { t } = useTranslation()
@@ -63,8 +63,11 @@ export function PdCacheUsage() {
     }
   }, [])
 
+  // A lookup rather than a ternary chain: the chain's last branch was a hand-maintained negation
+  // of every case above it, so adding `audit` as a third target would have silently reported the
+  // tools venv's size on the audit row.
   const entryOf = (target: CacheTarget) =>
-    target === 'snapshots' ? usage?.snapshots : usage?.tools
+    ({ snapshots: usage?.snapshots, tools: usage?.tools, audit: usage?.audit })[target]
 
   const doClear = async (target: CacheTarget) => {
     setBusy(true)

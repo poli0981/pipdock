@@ -41,6 +41,13 @@ pub enum Target {
     /// The isolated environment Code Health runs deptry, vulture and ruff from. Rebuilt on the
     /// next run, or by `pipdock tools sync`.
     Tools,
+    /// The isolated environment the Security tab runs pip-audit from. Rebuilt on the next audit.
+    ///
+    /// A **separate** target rather than part of [`Self::Tools`], because it is a separate venv:
+    /// P1-1 kept pip-audit out of Code Health's so that its `msgpack` dependency cannot fail the
+    /// whole sync. Two directories on disk are two rows here, or "clear the cache" would leave one
+    /// of them behind while reporting it gone.
+    Audit,
 }
 
 /// One line of the cache report.
@@ -71,6 +78,8 @@ pub struct Usage {
     pub snapshots: Entry,
     /// The Code Health tools environment.
     pub tools: Entry,
+    /// The Security tab's pip-audit environment (PRD P1-1).
+    pub audit: Entry,
     /// How many snapshot documents there are, across every environment.
     pub snapshot_count: usize,
 }
@@ -79,7 +88,7 @@ impl Usage {
     /// Everything PipDock has written, including the parts that cannot be cleared.
     #[must_use]
     pub fn total_bytes(&self) -> u64 {
-        self.database.bytes + self.snapshots.bytes + self.tools.bytes
+        self.database.bytes + self.snapshots.bytes + self.tools.bytes + self.audit.bytes
     }
 }
 
@@ -140,6 +149,7 @@ fn path_of(app_data: &Path, target: Target) -> PathBuf {
     match target {
         Target::Snapshots => app_data.join(crate::snapshot::SNAPSHOT_DIR),
         Target::Tools => crate::health::tools_dir(app_data),
+        Target::Audit => crate::health::audit_dir(app_data),
     }
 }
 
@@ -156,6 +166,7 @@ pub fn usage(app_data: &Path) -> Result<Usage> {
         snapshot_count: count_snapshots(&snapshots),
         snapshots: entry_at(snapshots),
         tools: entry_at(crate::health::tools_dir(app_data)),
+        audit: entry_at(crate::health::audit_dir(app_data)),
     })
 }
 
@@ -217,6 +228,37 @@ pub fn clear(app_data: &Path, target: Target) -> Result<u64> {
 
 #[cfg(test)]
 mod tests {
+    /// Every `Entry` on a `Usage` must reach `total_bytes`.
+    ///
+    /// Written because it did not. `audit` was added as a fourth row, reported on screen, and left
+    /// out of the sum — so the total silently under-reported by a whole venv while every existing
+    /// test passed. The assertion is on distinct powers of two so a *missing* term is visible in
+    /// the failure rather than merely a wrong number.
+    #[test]
+    fn every_entry_reaches_the_total() {
+        use super::{Entry, Usage};
+
+        let at = |bytes: u64| Entry {
+            bytes,
+            path: String::new(),
+            exists: true,
+        };
+        let usage = Usage {
+            root: String::new(),
+            database: at(1),
+            snapshots: at(2),
+            tools: at(4),
+            audit: at(8),
+            snapshot_count: 0,
+        };
+
+        assert_eq!(
+            usage.total_bytes(),
+            15,
+            "a missing term shows up as its own bit"
+        );
+    }
+
     use super::*;
 
     fn temp() -> PathBuf {

@@ -134,10 +134,13 @@ export interface BrokenDependent {
 /** Something the user can be offered a *Clear* button for. */
 export type CacheTarget =
   | 'snapshots'
-  | 'tools';
+  | 'tools'
+  | 'audit';
 
 /** What PipDock is using, by artefact. */
 export interface CacheUsage {
+  /** The Security tab's pip-audit environment (PRD P1-1). */
+  audit: Entry;
   /** `index.db` — the package index, settings, pins and the consent record. **Not clearable.** */
   database: Entry;
   /** The data root everything below lives in. */

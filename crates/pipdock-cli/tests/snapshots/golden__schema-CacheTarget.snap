@@ -15,6 +15,11 @@ expression: out
       "const": "tools",
       "description": "The isolated environment Code Health runs deptry, vulture and ruff from. Rebuilt on the\nnext run, or by `pipdock tools sync`.",
       "type": "string"
+    },
+    {
+      "const": "audit",
+      "description": "The isolated environment the Security tab runs pip-audit from. Rebuilt on the next audit.\n\nA **separate** target rather than part of [`Self::Tools`], because it is a separate venv:\nP1-1 kept pip-audit out of Code Health's so that its `msgpack` dependency cannot fail the\nwhole sync. Two directories on disk are two rows here, or \"clear the cache\" would leave one\nof them behind while reporting it gone.",
+      "type": "string"
     }
   ],
   "title": "Target"

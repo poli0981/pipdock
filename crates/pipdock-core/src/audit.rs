@@ -426,6 +426,75 @@ fn watchdog(e: PdError) -> PdError {
     e
 }
 
+/// The report as Markdown, for `audit_save_report`.
+///
+/// In core rather than in the command for `health::markdown`'s reason: a future `--format md`
+/// should reuse it rather than grow a second renderer that drifts. English-only, like the CLI —
+/// this is a document the user saves and sends on, not a screen.
+///
+/// **No severity column**, because there is no severity. What replaces it is the thing that
+/// changes what a reader can do: whether anything fixes it.
+#[must_use]
+pub fn markdown(report: &AuditReport) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    let _ = writeln!(out, "# Security audit\n");
+    let _ = writeln!(out, "- Environment: `{}`", report.env);
+    let _ = writeln!(out, "- Checked: {}", report.ran_at);
+    let _ = writeln!(out, "- pip-audit: {}", report.tool_version);
+    let _ = writeln!(out, "- Packages audited: {}", report.packages);
+    let _ = writeln!(out, "- Advisories: {}", report.advisories.len());
+    if report.cancelled {
+        let _ = writeln!(
+            out,
+            "\n> Stopped before it finished, so this is incomplete."
+        );
+    }
+    for problem in &report.problems {
+        let _ = writeln!(out, "\n> **{}** {}", problem.code, problem.message);
+    }
+
+    // Stated once, at the top, rather than implied: the source is what a reader has to know to
+    // judge an absence of findings, and DISCLAIMER §4 makes the same point to the same person.
+    let _ = writeln!(
+        out,
+        "\nAdvisories come from PyPI's advisory data, by way of pip-audit. An advisory database \
+         records what has been reported; it is not a guarantee that a package is safe. PipDock \
+         assigns no severity, because pip-audit publishes none."
+    );
+
+    if report.advisories.is_empty() {
+        let _ = writeln!(out, "\nNo known advisories.");
+        return out;
+    }
+
+    let mut current = String::new();
+    for a in &report.advisories {
+        let pkg = a.pkg.to_string();
+        if pkg != current {
+            let _ = writeln!(out, "\n## {pkg} {}\n", a.version);
+            current = pkg;
+        }
+        let fix = if a.fix_versions.is_empty() {
+            "no fix available".to_owned()
+        } else {
+            format!("fixed in {}", a.fix_versions.join(", "))
+        };
+        let _ = writeln!(out, "### {} — {fix}\n", a.id);
+        if !a.aliases.is_empty() {
+            let _ = writeln!(out, "Also known as: {}\n", a.aliases.join(", "));
+        }
+        if let Some(url) = &a.url {
+            let _ = writeln!(out, "<{url}>\n");
+        }
+        if !a.description.is_empty() {
+            let _ = writeln!(out, "{}\n", a.description);
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
