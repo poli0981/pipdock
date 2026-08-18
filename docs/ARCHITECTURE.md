@@ -116,6 +116,8 @@ This table is the surface. A command that is not listed here does not exist; add
 | `env_scan` | `EnvRow[]` | Discover environments, streaming `scan-progress`. A probe failure is reported on its own row, never fatal to the scan. Carries `pipVersion` and `healthProject`, both read before the probe loop so the store guard is never held across a probe. |
 | `env_add_manual` | `EnvRow` | Persist an interpreter chosen through *Browse…*. |
 | `env_probe` | `EnvRow` | Probe one interpreter without persisting it. Takes an optional `source`: absent means *Browse…*, and a **refresh must pass the row's own**, or the row comes back relabelled `manual`. Fills every field `env_scan` does, because `upgradePip` replaces the row wholesale. |
+| `env_export` | `string` | Write the environment's `Engine::freeze` document to a user-chosen path and return it (PRD P1-3). Byte for byte, with no formatter: a freeze *is* a requirements file, and a constraints file is the same body under a different name. Rust-side for `health_save_report`'s reason — `dialog:allow-save` asks for a path and grants no `fs`. |
+| `requirements_read` | `ParsedRequirements` | Read a `requirements.txt` into install specs **and whatever it could not use**. The skipped lines are the point: an include or an editable install means the file asks for something PipDock will not do, and the user has to see that before a preview claims to represent their file. |
 | `pkg_list` | `Dist[]` | Installed distributions, read from `probe.py` rather than the engine — see §4 and DATA-FLOW §7. |
 | `pkg_outdated` | `OutdatedDist[]` | Outdated distributions, via the configured engine. |
 | `index_search` | `Hit[]` | Fuzzy search over the in-memory name index. |
@@ -130,6 +132,7 @@ This table is the surface. A command that is not listed here does not exist; add
 | `pin_list` | `Pin[]` | Pins for an environment. |
 | `pin_add` | `()` | Add or replace a pin. |
 | `pin_remove` | `bool` | Remove a pin; reports whether one existed. |
+| `pin_suggestions` | `PinSuggestion[]` | Packages worth pinning, by in-force reverse-dependency count (PRD P1-2). **One probe per call**, which is why UI-SPEC §4 puts this on the Pins screen rather than a sidebar badge — the cost is paid only by someone who opened the tab. |
 | `snapshot_list` | `SnapshotMeta[]` | Snapshots for an environment, newest first. Takes the `env_hash`, not a `PyEnv`: snapshots outlive the interpreter that made them, and an environment whose Python is gone still has a history worth showing. |
 | `snapshot_create` | `SnapshotMeta` | Take a snapshot on demand, outside any plan. |
 | `snapshot_diff` | `Diff` | The environment against a snapshot. Claims no session — browsing a timeline must not start a flow. |
@@ -143,6 +146,8 @@ This table is the surface. A command that is not listed here does not exist; add
 | `pip_upgrade` | `StepResult` | Upgrade pip itself in the selected environment. **Not `ExecutionSummary`** — there is no plan, no phase and no per-package counts, and inventing them would be four lies for one step. Carries no versions either (`from`/`to` are always absent): the caller re-probes, which it must do anyway to refresh the row. |
 | `settings_get` | `Settings` | Read stored settings. |
 | `settings_set` | `Settings` | Persist settings, returning what was actually stored rather than what was sent. |
+| `cache_usage` | `Usage` | What PipDock has written to its own data directory (PRD P1-4). Never fails as a whole; an unreadable path reports zero bytes. |
+| `cache_clear` | `number` | Delete one cache target, resolving to the bytes freed. Takes a `Target` **enum, never a path** — `cache::clear` is the only thing that turns one into a directory. `index.db` is deliberately not a target: it holds settings, pins and the consent record as well as the package index, and *clear the cache* must never take a user's pins. |
 | `legal_consent_get` | `ConsentState` | Whether the legal gate can be skipped for this build's documents. |
 | `legal_consent_set` | `Consent` | Record acceptance. |
 | `logs_tail` | `string[]` | Tail of the in-memory log ring buffer, for the console drawer. |

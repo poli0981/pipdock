@@ -751,8 +751,11 @@ than done at 1.0:
   actually done — a hand-maintained inventory of the *direct* dependencies, reconciled against the
   manifests at each release. Making it true is the item. Doing it at 1.0 would have meant
   complicating `release.yml` on the first run it had ever had.
-- **Re-capture the screenshots** once anything visible changes; the seven in `screenshot/` show an
-  eight-entry sidebar.
+- **Re-capture the screenshots** once anything visible changes. `screenshot/` holds **eight**;
+  seven of them predate the About tab and show an **eight**-entry sidebar, while `about.png` shows
+  nine and a *This build* panel reading `1.0.0`. So every one of them is now stale in at least one
+  way, and the count is worth stating because the sentence here used to read as though there were
+  seven files.
 
 Also worth doing when the Security tab lands: `capabilities/external-links.json` will need an OSV
 host, because DISCLAIMER §4 and SECURITY §6 both say findings link to the OSV entry and the current

@@ -166,7 +166,7 @@ Things worth knowing before you change any of it:
 
 - **`cargo test` fails when `ui/src/ipc/generated.ts` is stale.** Fix with
   `cargo run -p xtask -- bindings`; the failure names that command and the first differing line.
-- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 58 snapshots) are the CLI's output
+- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 64 snapshots at 1.1.0) are the CLI's output
   contract.** A diff there is a real behaviour change — re-bless deliberately, never reflexively.
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no
