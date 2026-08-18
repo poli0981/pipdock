@@ -369,7 +369,7 @@ fn health_report() -> crate::health::HealthReport {
         ran_at: "2026-08-13T09:00:00Z".to_owned(),
         tool_versions: [
             ("deptry".to_owned(), "0.25.1".to_owned()),
-            ("ruff".to_owned(), "0.16.2".to_owned()),
+            ("ruff".to_owned(), "0.16.3".to_owned()),
             ("vulture".to_owned(), "2.16".to_owned()),
         ]
         .into_iter()
