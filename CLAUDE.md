@@ -182,6 +182,25 @@ Things worth knowing before you change any of it:
   run showed *Back to packages* twice and every suite stayed green. Found by a human using the
   installed build. When adding a component test, ask what renders it.
 
+- **A hand-written fixture that matches the docs while the code does not is worse than none.**
+  `fixtures.rs` says so in its own module doc, and `guard_report()` is computed for that reason —
+  but the plan fixture's blockers were hand-written to the shape `plan::Blocker`'s doc describes
+  while `graph::blockers_for` had drifted to building an English sentence. So `PdPreviewDiff`
+  asserted the *right* sentence and proved nothing, the preview shipped reading `scipy requires
+  scipy 1.11.4 requires numpy <1.28.0,>=1.21.6` from S3 to 1.1.0, and no suite could see it. If a
+  fixture's value can be computed by the function that produces it in production, compute it.
+
+- **A sentence assembled in Rust is a sentence the other head assembles again.** That was the
+  mechanism above: the CLI prints `Blocker.constraint` alone, so building the phrase in core made
+  the *CLI* look right and left the GUI to wrap it in `plan.blocker` a second time. Invariant 4 is
+  not only about translation — a joined string cannot be un-joined by a catalog. Structured fields,
+  one composition per head, as `BrokenDependent`/`PdUninstallDialog` have always done.
+
+- **Never `sed -i` anything under `tests/fixtures/`.** Git Bash's sed rewrites in text mode and
+  strips every CR, which is exactly what `.gitattributes`' `-text` exists to prevent; one command
+  flattened ten engine fixtures and reported 160 changed lines where one was intended. Use a
+  binary-mode read/write and assert the CRLF count per file.
+
 - **A parser that is correct for trusted input is a hole for untrusted input.**
   `graph::Requirement::parse` splits the name at the first space, so `this is not a requirement`
   parses as package `this` with constraint `is not a requirement` — exactly right for

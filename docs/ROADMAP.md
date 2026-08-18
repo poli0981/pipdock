@@ -810,6 +810,62 @@ a different feature wearing the same word. The PRD row now says so rather than r
 `capabilities/external-links.json` — DISCLAIMER §4 and SECURITY §6 both say findings link there,
 and the allowlist would reject it silently.
 
+### Slice 0 — preflight before the Security tab — **done 2026-08-18**
+
+Three commits. Nothing here is a feature; all three are things `main` was already carrying, found
+while surveying what is left of Post-1.0 (P1-1 Security tab, P1-6 dependency graph, P1-7 scheduled
+check). Two of the three had to happen before a 39th command could land anyway.
+
+| | What landed |
+|---|---|
+| **Fixtures** | `redact()` covers pip's `[notice] A new release of pip is available:` version pair; nine pip fixtures re-blessed; one byte re-blessed in uv's `build-backend-failure` |
+| **Core + UI** | `plan::Blocker` becomes `by` / `version` / bare requirement; `run.rs` gains `blocker_line`; `PdConflictRow` composes; `fixtures::numpy_blockers` is **computed**; `PdConflictRow.test.tsx` is new |
+| **Docs** | ARCHITECTURE §7's five missing rows, a fourth drift test that reads the table, two stale counts |
+
+**The drift gate could not have stayed green.** pip's upgrade notice states the version that is on
+PyPI *today*, so it moves with every pip release — and `redact()` stripped the disposable venv path
+out of the line *below* it while leaving this one alone. pip 26.2.1 shipped on 2026-08-17 and the
+weekly re-capture failed across all nine pip fixtures carrying the line. The same shape as the five
+faults in *L2's first runs*: a gate that fires for a reason unrelated to engine behaviour means
+nothing, and this one was going to fire every Monday.
+
+**The preview named the dependent twice, and had since S3.** It rendered `scipy requires scipy
+1.11.4 requires numpy <1.28.0,>=1.21.6`, because `graph::blockers_for` built an English sentence
+into `Blocker.constraint` while also setting `by`, and `PdConflictRow` passed both to
+`plan.blocker`, whose template is `{{by}} requires {{constraint}}`. Hard invariant 4 the wrong way
+round — and the reason it was written that way is instructive: the **CLI** prints that field alone,
+so the one head it looked right in was the one with no catalog. Each head composes now, exactly as
+`BrokenDependent` and `PdUninstallDialog` already did.
+
+**Why every suite was green, which is the part worth keeping.** `PdPreviewDiff.test.tsx` *did*
+assert this sentence, and asserted the **correct** one — because the fixture's blockers were
+hand-written to the shape `Blocker`'s own doc describes, while the producer had drifted away from
+it. `fixtures.rs` says in its own module doc that hand-writing the JSON "would defeat the
+guarantee", and `guard_report()` is computed for precisely that reason; the plan fixture's blockers
+were the single exception, and the bug lived in it. They are computed now — which is also why there
+are two of them: `pandas 2.1.4` and `scipy 1.11.4` both exclude 2.5.1, and only one had ever been
+written down. **A hand-written fixture that agrees with the documentation while the code disagrees
+with both is worse than no fixture**: it makes a test that asserts the right thing prove the wrong
+one.
+
+**Three process notes.**
+
+1. **`sed -i` under Git Bash rewrites in text mode and strips CR.** It flattened every CRLF in ten
+   engine fixtures in one command — exactly the byte-exactness `.gitattributes`' `-text` exists to
+   protect, and `git diff --stat` reported 160 changed lines where one was intended. Anything
+   touching `tests/fixtures/**/*.txt` has to go through a binary-mode read/write, asserting the
+   CRLF count per file.
+2. **ARCHITECTURE §7 now has a test.** Its opening sentence has claimed since M2 that a command not
+   in the table does not exist; the three drift tests never read it, and `every_registered_command_
+   is_declared`'s failure message claimed §7 coverage it did not have. *A spec sentence is not a
+   test* — the fourth time this exact lesson has been recorded here, and the first time on a
+   sentence about the document itself.
+3. **A count was called stale that was not.** ROADMAP's screenshot note says "the seven in
+   `screenshot/` show an eight-entry sidebar". `screenshot/` holds eight files, so a reader counting
+   files concludes the sentence is wrong. Opening two of the images settles it: seven predate the
+   About tab and do show eight entries, and `about.png` shows nine. Reworded rather than
+   "corrected", because correcting it would have introduced the error.
+
 ### Four items decomposed, easiest first
 
 Surveyed 2026-08-14 against the real tree. Ordered by how much already exists, not by value — each
