@@ -1,6 +1,6 @@
 {
   "name": "pipdock",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "private": true,
   "description": "A friendly dock for your Python environments — bulk inspect, install, update and clean up Python packages.",
   "license": "GPL-3.0-only",
