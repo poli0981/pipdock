@@ -145,6 +145,56 @@ mod tests {
             .collect()
     }
 
+    /// The commands ARCHITECTURE §7's table documents.
+    ///
+    /// §7 opens with *"A command that is not listed here does not exist; adding one means amending
+    /// this section in the same commit"*, and the whole 1.1.0 P1 wave broke that rule — five
+    /// commands landed that the table never gained. The three tests below police `lib.rs`,
+    /// `COMMANDS` and `NOT_YET`; not one of them read the document making the promise, and the
+    /// assertion message of the second even claimed it did. Parsed rather than duplicated, for the
+    /// reason [`registered`] gives.
+    fn documented() -> Vec<String> {
+        let src = include_str!("../../docs/ARCHITECTURE.md");
+        let start = src
+            .find("| Command | Returns | Purpose |")
+            .expect("ARCHITECTURE §7's command table exists");
+        src[start..]
+            .lines()
+            .skip(2)
+            .take_while(|l| l.starts_with("| `"))
+            .filter_map(|l| l.strip_prefix("| `"))
+            .filter_map(|l| l.split(0x60 as char).next())
+            .map(str::to_owned)
+            .collect()
+    }
+
+    #[test]
+    fn every_command_is_in_the_architecture_table() {
+        // Both directions, because a table row for a command nobody registered is the same lie as
+        // a command nobody documented — it just fails later, when someone builds against it.
+        let documented = documented();
+        let mut expected = registered();
+        expected.extend(super::NOT_YET.iter().map(|(n, _)| (*n).to_owned()));
+
+        let undocumented: Vec<&String> = expected
+            .iter()
+            .filter(|c| !documented.contains(c))
+            .collect();
+        assert!(
+            undocumented.is_empty(),
+            "registered or owed but absent from ARCHITECTURE §7: {undocumented:?}"
+        );
+
+        let ghosts: Vec<&String> = documented
+            .iter()
+            .filter(|c| !expected.contains(c))
+            .collect();
+        assert!(
+            ghosts.is_empty(),
+            "ARCHITECTURE §7 documents commands that do not exist: {ghosts:?}"
+        );
+    }
+
     #[test]
     fn every_declared_command_is_registered_or_owed() {
         // The failure this catches: `COMMANDS` listed 32 names while 19 were registered, so a
@@ -179,7 +229,7 @@ mod tests {
             .collect();
         assert!(
             undeclared.is_empty(),
-            "registered but missing from COMMANDS and ARCHITECTURE §7: {undeclared:?}"
+            "registered but missing from COMMANDS: {undeclared:?}"
         );
     }
 
