@@ -516,18 +516,40 @@ mod tests {
     ///
     /// Polling for the condition keeps the assertions exactly as strict while removing the
     /// timing guess: a tree that never dies still fails, it just takes the timeout to say so.
+    /// Poll until `want` holds, or give up and report the last answer we actually got.
+    ///
+    /// Sixty seconds rather than twenty, and the number is not a guess about the *fixture* — it is
+    /// about the **poll**. Each iteration spawns PowerShell, so twenty seconds of wall clock was
+    /// only a handful of samples on a busy runner rather than the two hundred the 100 ms sleep
+    /// suggests. A failed query is never counted as an observation: it retries, and if none ever
+    /// succeeds the test says so instead of concluding from a number nobody measured.
     async fn wait_for(marker: &str, want: impl Fn(usize) -> bool) -> usize {
-        let deadline = std::time::Instant::now() + Duration::from_secs(20);
+        let deadline = std::time::Instant::now() + Duration::from_secs(60);
+        let mut last = None;
         loop {
-            let n = grandchildren_alive(marker);
-            if want(n) || std::time::Instant::now() >= deadline {
-                return n;
+            if let Some(n) = grandchildren_alive(marker) {
+                last = Some(n);
+                if want(n) {
+                    return n;
+                }
+            }
+            if std::time::Instant::now() >= deadline {
+                return last.expect("the process query never gave a usable answer");
             }
             tokio::time::sleep(Duration::from_millis(100)).await;
         }
     }
 
-    fn grandchildren_alive(marker: &str) -> usize {
+    /// How many `PING.EXE` grandchildren carry the marker, or `None` when the query itself failed.
+    ///
+    /// **`None` is not zero**, and conflating the two is what made this pair of tests flaky in
+    /// both directions. Each call spawns PowerShell and a CIM query, which costs seconds on a
+    /// loaded runner; `.unwrap_or(0)` turned a slow or failed invocation into a confident "no
+    /// processes". At setup that reads as *the fixture never started* — which is how `main` went
+    /// red at `bee85dc` on a change that touched nothing here. At teardown it is worse, because
+    /// the assertion there wants zero: a failed query would have **passed** the test over a
+    /// process tree that was still alive.
+    fn grandchildren_alive(marker: &str) -> Option<usize> {
         let out = std::process::Command::new("powershell")
             .args([
                 "-NoProfile",
@@ -538,11 +560,11 @@ mod tests {
                 ),
             ])
             .output()
-            .expect("powershell runs");
-        String::from_utf8_lossy(&out.stdout)
-            .trim()
-            .parse()
-            .unwrap_or(0)
+            .ok()?;
+        if !out.status.success() {
+            return None;
+        }
+        String::from_utf8_lossy(&out.stdout).trim().parse().ok()
     }
 
     #[tokio::test]
