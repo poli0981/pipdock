@@ -38,7 +38,13 @@
         "latest": "2.5.1",
         "blockers": [
           {
+            "by": "pandas",
+            "version": "2.1.4",
+            "constraint": "numpy<2,>=1.26.0"
+          },
+          {
             "by": "scipy",
+            "version": "1.11.4",
             "constraint": "numpy<1.28.0,>=1.21.6"
           }
         ]

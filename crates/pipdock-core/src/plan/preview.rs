@@ -268,7 +268,7 @@ mod tests {
         assert!(
             held.blockers[0]
                 .constraint
-                .contains("httpcore >=0.15.0,<0.16.0")
+                .contains("httpcore>=0.15.0,<0.16.0")
         );
         assert!(!report.is_clean(), "a held-back package needs a decision");
     }

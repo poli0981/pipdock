@@ -77,7 +77,14 @@ export function PdConflictRow({
           <li key={`${b.by ?? ''}-${b.constraint}-${String(i)}`} className="text-data text-text-dim">
             {b.by == null
               ? b.constraint
-              : t('plan.blocker', { by: b.by, constraint: b.constraint })}
+              : t('plan.blocker', {
+                  // Assembled here, from three fields, for the same reason `PdUninstallDialog`
+                  // assembles the guard's: a sentence joined in Rust cannot be un-joined by a
+                  // catalog. Until Slice 0 `constraint` arrived as a whole English phrase and
+                  // this template wrapped it again, naming the dependent twice.
+                  by: b.version == null ? b.by : `${b.by} ${b.version}`,
+                  constraint: b.constraint,
+                })}
           </li>
         ))}
       </ul>

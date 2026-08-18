@@ -120,7 +120,7 @@ fn pin_list() -> Vec<Pin> {
 /// subject. `Downgrade` in particular: it is the variant UI-SPEC had no section for, and a
 /// compatible resolve produces it routinely.
 fn flow_step() -> crate::flow::FlowStep {
-    use crate::plan::{Blocker, Change, ChangeKind, HeldBack, ImpossibleDetail, ResolutionReport};
+    use crate::plan::{Change, ChangeKind, HeldBack, ImpossibleDetail, ResolutionReport};
 
     let pkg = |n: &str| PkgName::parse(n).unwrap_or_else(|e| panic!("fixture name {n:?}: {e:?}"));
     let change = |name: &str, from: Option<&str>, to: &str, kind: ChangeKind| Change {
@@ -144,10 +144,7 @@ fn flow_step() -> crate::flow::FlowStep {
                 pkg: pkg("numpy"),
                 resolved: Version("1.26.4".to_owned()),
                 latest: Version("2.5.1".to_owned()),
-                blockers: vec![Blocker {
-                    by: Some(pkg("scipy")),
-                    constraint: "numpy<1.28.0,>=1.21.6".to_owned(),
-                }],
+                blockers: numpy_blockers(),
             }],
             impossible: Some(ImpossibleDetail {
                 explanation: "no version of oldlib is compatible with python 3.12".to_owned(),
@@ -198,6 +195,25 @@ fn execution_summary() -> crate::plan::ExecutionSummary {
         counts,
         cancelled: true,
     }
+}
+
+/// Why `numpy` cannot go to `latest`, from the same scenario.
+///
+/// **Computed, not written**, for the reason [`guard_report`] gives and for one more, learned the
+/// expensive way. The hand-written version of this list carried a `constraint` of
+/// `"numpy<1.28.0,>=1.21.6"` — the shape [`crate::plan::Blocker`]'s own doc describes — while
+/// `blockers_for` had drifted to emitting a whole English sentence. So `PdPreviewDiff` asserted a
+/// row the application could not actually render, `PdConflictRow` wrapped the real value in
+/// `plan.blocker` and named the dependent twice, and every suite stayed green. Slice 0.
+///
+/// Two blockers come back rather than the one that was written here: `scipy` and `pandas` both
+/// declare specifiers that exclude 2.5.1, which is the same fact about the same rows that makes
+/// this set worth using for the guard.
+fn numpy_blockers() -> Vec<crate::plan::Blocker> {
+    let target = crate::compat::PyVersion::parse("2.5.1")
+        .unwrap_or_else(|e| panic!("fixture version \"2.5.1\": {e:?}"));
+    let numpy = PkgName::parse("numpy").unwrap_or_else(|e| panic!("fixture name \"numpy\": {e:?}"));
+    crate::graph::ReverseDeps::build_for(&pkg_list(), "3.12.4").blockers_for(&numpy, &target)
 }
 
 /// What `uninstall_guard` returns for removing `numpy` from the same scenario.

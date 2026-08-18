@@ -94,7 +94,7 @@ describe('the 3-way conflict control', () => {
     // PRD G2: conflicts are explained in one sentence a user can act on.
     setup()
     expect(
-      within(rowFor('numpy')).getByText('scipy requires numpy<1.28.0,>=1.21.6'),
+      within(rowFor('numpy')).getByText('scipy 1.11.4 requires numpy<1.28.0,>=1.21.6'),
     ).toBeInTheDocument()
   })
 
@@ -106,7 +106,9 @@ describe('the 3-way conflict control', () => {
     expect(onChoose).not.toHaveBeenCalled()
 
     const dialog = within(rowFor('numpy')).getByRole('alertdialog')
-    expect(within(dialog).getByText(/breaks scipy/)).toBeInTheDocument()
+    // Both dependents that exclude 2.5.1, from the computed fixture — so this also covers
+    // the plural branch of `forceWarning`, which nothing else does.
+    expect(within(dialog).getByText(/breaks pandas, scipy/)).toBeInTheDocument()
 
     fireEvent.click(within(dialog).getByRole('button', { name: 'Force latest' }))
     expect(onChoose).toHaveBeenCalledWith('numpy', 'force-latest')

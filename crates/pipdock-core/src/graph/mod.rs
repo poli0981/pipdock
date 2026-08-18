@@ -269,13 +269,13 @@ impl ReverseDeps {
                 continue;
             }
             if !satisfies(&req.constraint, target) {
-                let named = match self.versions.get(dependent) {
-                    Some(v) => format!("{dependent} {v}"),
-                    None => dependent.to_string(),
-                };
+                // Three fields, no phrasing: `by` and `version` name the culprit and
+                // `constraint` is the requirement it declared, exactly as `breaking_dependents`
+                // fills `BrokenDependent`. Each head writes its own sentence.
                 out.push(Blocker {
                     by: Some(dependent.clone()),
-                    constraint: format!("{named} requires {} {}", pkg, req.constraint),
+                    version: self.versions.get(dependent).cloned(),
+                    constraint: format!("{pkg}{}", req.constraint),
                 });
             }
         }
@@ -613,11 +613,12 @@ mod tests {
             1,
             "anyio permits 1.0.9 and must not be named"
         );
+        // Three fields, no phrasing (hard invariant 4). The CLI joins them with "requires" and
+        // the GUI interpolates `plan.blocker`; a sentence built here is one both heads then have
+        // to un-build, which is how the preview came to name the dependent twice.
         assert_eq!(blockers[0].by.as_ref(), Some(&pkg("httpx")));
-        assert_eq!(
-            blockers[0].constraint,
-            "httpx 0.23.0 requires httpcore >=0.15.0,<0.16.0"
-        );
+        assert_eq!(blockers[0].version.as_deref(), Some("0.23.0"));
+        assert_eq!(blockers[0].constraint, "httpcore>=0.15.0,<0.16.0");
     }
 
     #[test]
@@ -649,12 +650,15 @@ mod tests {
 
         let g = ReverseDeps::build_for(&dists, "3.12.10");
         let found = g.blockers_for(&pkg("numpy"), &latest);
-        let named: Vec<&str> = found.iter().map(|b| b.constraint.trim()).collect();
+        let named: Vec<(Option<&str>, &str)> = found
+            .iter()
+            .map(|b| (b.version.as_deref(), b.constraint.trim()))
+            .collect();
         assert_eq!(
             named,
             [
-                "pandas 2.1.4 requires numpy <2,>=1.26.0",
-                "statsmodels 0.14.1 requires numpy <2,>=1.18",
+                (Some("2.1.4"), "numpy<2,>=1.26.0"),
+                (Some("0.14.1"), "numpy<2,>=1.18"),
             ],
             "only the branches in force on 3.12 may be named"
         );

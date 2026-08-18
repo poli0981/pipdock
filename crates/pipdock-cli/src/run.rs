@@ -649,6 +649,22 @@ fn decide(
     out
 }
 
+/// One blocker, as a sentence.
+///
+/// Assembled here because this head is English-only (PRD P0-14) and `plan::Blocker` carries data
+/// rather than phrasing (hard invariant 4). The GUI builds the same sentence from `plan.blocker`
+/// in its own catalogs; the shape mirrors the guard's, which composes `BrokenDependent` the same
+/// way a few hundred lines below.
+///
+/// No culprit means no culprit: ARCHITECTURE §3 says show the constraint rather than guess.
+fn blocker_line(b: &plan::Blocker) -> String {
+    match (&b.by, &b.version) {
+        (Some(by), Some(v)) => format!("{by} {v} requires {}", b.constraint),
+        (Some(by), None) => format!("{by} requires {}", b.constraint),
+        (None, _) => b.constraint.clone(),
+    }
+}
+
 /// The per-package prompt from CLI-SPEC §4.
 fn prompt_decision(held: &plan::HeldBack) -> plan::Decision {
     use std::io::Write as _;
@@ -658,7 +674,7 @@ fn prompt_decision(held: &plan::HeldBack) -> plan::Decision {
         held.pkg, held.resolved, held.latest
     );
     for blocker in &held.blockers {
-        println!("  — {}", blocker.constraint);
+        println!("  — {}", blocker_line(blocker));
     }
     print!("  [C]ompatible (default)   [S]kip   [F]orce latest: ");
     let _ = std::io::stdout().flush();
@@ -716,7 +732,7 @@ fn print_preview(opts: &GlobalOpts, report: &plan::ResolutionReport) {
         for h in &report.held_back {
             println!("  {:<32} {} (latest {})", h.pkg, h.resolved, h.latest);
             for b in &h.blockers {
-                println!("      {}", b.constraint);
+                println!("      {}", blocker_line(b));
             }
             if h.blockers.is_empty() {
                 // ARCHITECTURE §3: no culprit is invented, and the row says so plainly rather
