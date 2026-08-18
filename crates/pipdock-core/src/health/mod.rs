@@ -68,10 +68,26 @@ pub const TOOLS_REQUIREMENTS: &str = include_str!(concat!(
 /// contains `msgpack`, which publishes **no** universal fallback at all and would therefore hard-
 /// fail under `--only-binary=:all:` on a new CPython.
 ///
-/// Kept in the ledger so Dependabot keeps bumping it; excluded here. `pins` fails the build's test
-/// suite if a name below stops resolving, so a Dependabot rename is a `cargo test` failure rather
-/// than a `PD-HLT-001` on a user's machine.
+/// Kept in the ledger so Dependabot keeps bumping it; excluded here. `pins_for` fails the build's
+/// test suite if a name below stops resolving, so a Dependabot rename is a `cargo test` failure
+/// rather than a `PD-HLT-001` on a user's machine.
+///
+/// **P1-1 did not move it in here**, and the reason is the second paragraph above rather than the
+/// first. Once the Security tab exists, "a feature they cannot reach" stops being true — but the
+/// msgpack risk does not, and `--only-binary=:all:` is load-bearing (see [`install_pins`]). A
+/// fourth entry here would mean a CPython with no `msgpack` wheel fails the **whole** sync and
+/// takes Code Health down with a feature that has nothing to do with it. So pip-audit gets
+/// [`AUDIT_TOOLS`] and a venv of its own, and the blast radius of that wheel stays inside the tab
+/// that needs it.
 pub const HEALTH_TOOLS: &[&str] = &["deptry", "vulture", "ruff"];
+
+/// The tools installed into the **audit** venv (PRD P1-1).
+///
+/// Its own set, and its own directory ([`audit_dir`]), for the reason [`HEALTH_TOOLS`] gives: these
+/// two venvs fail independently on purpose. Everything else — the manifest, the pin hash, the
+/// requirements rendering, `needs_sync`, `sync_tools_venv` — is shared and takes the tool list as
+/// an argument, so there is one bootstrap implementation rather than two that drift.
+pub const AUDIT_TOOLS: &[&str] = &["pip-audit"];
 
 /// The oldest interpreter that may host the tools venv.
 ///
@@ -110,18 +126,27 @@ pub fn is_findings_exit(tool: &str, code: Option<i32>) -> bool {
 /// How many steps a sync reports: one venv, one install, one verification per tool.
 ///
 /// Public because the caller builds the [`ProgressSink`], and a sink whose `total` disagrees with
-/// what actually runs is a progress bar that stops at four fifths.
-pub const SYNC_STEPS: usize = 2 + HEALTH_TOOLS.len();
+/// what actually runs is a progress bar that stops at four fifths. Takes the tool list rather than
+/// reading [`HEALTH_TOOLS`], because the audit venv installs one tool and would otherwise report a
+/// five-step sync that runs three.
+#[must_use]
+pub const fn sync_steps(tools: &[&str]) -> usize {
+    2 + tools.len()
+}
 
 /// The pin set to install, parsed out of the shipped ledger and sorted by normalized name.
 ///
+/// Takes the tool list rather than assuming [`HEALTH_TOOLS`]: the two venvs render, hash and
+/// install different subsets of one ledger, and a function that guessed which would be the single
+/// place they could silently swap.
+///
 /// # Errors
 /// `PD-PKG-002` when the ledger is malformed, names a version that is not shaped like one, or does
-/// not contain every entry of [`HEALTH_TOOLS`]. All three are release-time mistakes, which is why
-/// they surface as a failing test rather than as a runtime error path.
-pub fn pins() -> Result<Vec<PinnedSpec>> {
+/// not contain every entry of `tools`. All three are release-time mistakes, which is why they
+/// surface as a failing test rather than as a runtime error path.
+pub fn pins_for(tools: &[&str]) -> Result<Vec<PinnedSpec>> {
     let ledger = parse_ledger(TOOLS_REQUIREMENTS)?;
-    HEALTH_TOOLS
+    tools
         .iter()
         .map(|tool| {
             let name = PkgName::parse(tool)?;
@@ -170,9 +195,10 @@ pub fn pins_hash(pins: &[PinnedSpec]) -> String {
 
 /// The requirements file written into the tools directory, and the bytes the hash covers.
 ///
-/// A **rendering**, not a copy of [`TOOLS_REQUIREMENTS`]. That is what keeps the excluded `pip-audit`
-/// pin, the ledger's comments and whatever line endings the build machine checked out from reaching
-/// either the hash or the user's disk. Always LF-terminated.
+/// A **rendering**, not a copy of [`TOOLS_REQUIREMENTS`]. That is what keeps the *other* venv's
+/// pins, the ledger's comments and whatever line endings the build machine checked out from
+/// reaching either the hash or the user's disk. Always LF-terminated. Rendering per set is also
+/// what makes the two hashes independent, so a `pip-audit` bump does not re-sync Code Health.
 #[must_use]
 pub fn requirements_body(pins: &[PinnedSpec]) -> String {
     pins.iter().fold(String::new(), |mut acc, pin| {
@@ -201,6 +227,16 @@ const OS_SHARING_VIOLATION: i32 = 32;
 #[must_use]
 pub fn tools_dir(app_data: &Path) -> PathBuf {
     app_data.join("tools")
+}
+
+/// `<app_data>\audit` — the Security tab's venv (PRD P1-1).
+///
+/// A sibling of [`tools_dir`] rather than a directory inside it, so that clearing one is not
+/// silently clearing the other: `cache::Target` resolves each separately, and CODE-HEALTH-SPEC
+/// §2's layout describes `tools\` as Code Health's own.
+#[must_use]
+pub fn audit_dir(app_data: &Path) -> PathBuf {
+    app_data.join("audit")
 }
 
 /// `<tools_dir>\.venv\Scripts\python.exe`.
@@ -313,8 +349,8 @@ pub fn read_manifest(tools_dir: &Path) -> Option<ToolsManifest> {
 /// # Errors
 /// `PD-PKG-002` when the shipped ledger is malformed — a build-time mistake, surfaced here because
 /// this is the first thing every caller does.
-pub fn needs_sync(tools_dir: &Path) -> Result<SyncNeed> {
-    let want = pins_hash(&pins()?);
+pub fn needs_sync(tools_dir: &Path, tools: &[&str]) -> Result<SyncNeed> {
+    let want = pins_hash(&pins_for(tools)?);
 
     let Some(manifest) = read_manifest(tools_dir) else {
         return Ok(SyncNeed::NeverSynced);
@@ -328,7 +364,7 @@ pub fn needs_sync(tools_dir: &Path) -> Result<SyncNeed> {
     if !venv_python(tools_dir).is_file() {
         return Ok(SyncNeed::InterpreterGone);
     }
-    for tool in HEALTH_TOOLS {
+    for tool in tools {
         if !tool_exe(tools_dir, tool).is_file() {
             return Ok(SyncNeed::ToolMissing {
                 tool: (*tool).to_owned(),
@@ -413,7 +449,9 @@ fn validated_version(raw: &str) -> Result<Version> {
 ///   `envs::scan()`, which spawns four subprocesses; a sync is not the place to hide a
 ///   machine-wide sweep, and passing it lets `--python` force a specific interpreter.
 /// * `sink` carries the [`CancellationToken`](tokio_util::sync::CancellationToken), so a bootstrap
-///   stops through the same path as everything else. Build it with [`SYNC_STEPS`].
+///   stops through the same path as everything else. Build it with [`sync_steps`].
+/// * `tool_set` is [`HEALTH_TOOLS`] or [`AUDIT_TOOLS`], and has to match the directory: the two
+///   venvs are separate so that one tool's wheel availability cannot break the other's feature.
 ///
 /// Returns the manifest it wrote, because the caller prints the tool versions and P3's
 /// `HealthReport.toolVersions` (CODE-HEALTH-SPEC §5) is exactly this map.
@@ -427,9 +465,10 @@ fn validated_version(raw: &str) -> Result<Version> {
 pub async fn sync_tools_venv(
     tools_dir: &Path,
     base_python: &Path,
+    tool_set: &[&str],
     sink: &ProgressSink,
 ) -> Result<ToolsManifest> {
-    let pins = pins()?;
+    let pins = pins_for(tool_set)?;
     let venv = tools_dir.join(".venv");
     let requirements = tools_dir.join(REQUIREMENTS_FILE);
     let manifest_path = tools_dir.join(MANIFEST_FILE);
@@ -443,8 +482,8 @@ pub async fn sync_tools_venv(
     // gone, a torn sync reads as `NeverSynced` and the next run redoes the whole thing.
     let _ = std::fs::remove_file(&manifest_path);
 
-    // A rendering of the ledger, not a copy: this is where the excluded `pip-audit` pin, the
-    // comments, and whatever line endings the build machine checked out stop.
+    // A rendering of the ledger, not a copy: this is where the *other* venv's pins, the comments,
+    // and whatever line endings the build machine checked out stop.
     std::fs::write(&requirements, requirements_body(&pins))
         .map_err(|e| fs_failure("write the tools requirements", &e))?;
 
@@ -462,7 +501,7 @@ pub async fn sync_tools_venv(
     remove_venv(&venv)?;
     create_venv(base_python, &venv, &sink.at(0)).await?;
     install_pins(&venv, &requirements, &sink.at(1)).await?;
-    let tools = verify_tools(tools_dir, sink).await?;
+    let tools = verify_tools(tools_dir, tool_set, sink).await?;
 
     let python = venv_python(tools_dir);
     let manifest = ToolsManifest {
@@ -618,10 +657,14 @@ async fn install_pins(venv: &Path, requirements: &Path, sink: &ProgressSink) -> 
 /// Per-tool and sequential, so `ExecMode::Isolated` is the honest phase. The install exiting zero
 /// is not proof the console scripts exist: this is the check `PD-HLT-001`'s shipped copy assumes
 /// somebody performs.
-async fn verify_tools(tools_dir: &Path, sink: &ProgressSink) -> Result<BTreeMap<String, String>> {
+async fn verify_tools(
+    tools_dir: &Path,
+    tool_set: &[&str],
+    sink: &ProgressSink,
+) -> Result<BTreeMap<String, String>> {
     let mut versions = BTreeMap::new();
 
-    for (i, tool) in HEALTH_TOOLS.iter().enumerate() {
+    for (i, tool) in tool_set.iter().enumerate() {
         let step = sink.at(2 + i);
         let name = PkgName::parse(tool)?;
         step.started(Some(name.clone()), ExecMode::Isolated);
@@ -822,23 +865,39 @@ mod tests {
     /// The gate that turns a Dependabot rename into a `cargo test` failure rather than a
     /// `PD-HLT-001` on a user's machine.
     #[test]
-    fn the_ledger_parses_to_exactly_the_three_health_tools() {
-        let pins = pins().expect("the shipped ledger must parse");
+    fn the_ledger_parses_into_two_disjoint_venvs() {
+        let health: Vec<_> = pins_for(HEALTH_TOOLS)
+            .expect("the shipped ledger must parse")
+            .iter()
+            .map(|p| p.name.to_string())
+            .collect();
+        assert_eq!(health, ["deptry", "ruff", "vulture"], "sorted by name");
 
-        let names: Vec<_> = pins.iter().map(|p| p.name.to_string()).collect();
-        assert_eq!(names, ["deptry", "ruff", "vulture"], "sorted by name");
+        // Until P1-1 this asserted that pip-audit reached **no** venv. It has one of its own now,
+        // so the invariant that actually matters is that the two sets are *disjoint*: a CPython
+        // with no `msgpack` wheel has to be able to fail the Security tab without taking Code
+        // Health down with it, and that holds only while nothing is installed into both.
+        let audit: Vec<_> = pins_for(AUDIT_TOOLS)
+            .expect("the shipped ledger must parse")
+            .iter()
+            .map(|p| p.name.to_string())
+            .collect();
+        assert_eq!(audit, ["pip-audit"]);
+        assert!(
+            !health.iter().any(|n| audit.contains(n)),
+            "the two venvs must install disjoint sets — see HEALTH_TOOLS"
+        );
 
-        // The ledger carries pip-audit for the post-1.0 Security tab. It must not be installed.
-        assert!(
-            !names.iter().any(|n| n == "pip-audit"),
-            "pip-audit is in the ledger but must not reach the tools venv — see HEALTH_TOOLS"
-        );
-        assert!(
-            parse_ledger(TOOLS_REQUIREMENTS)
-                .expect("ledger parses")
-                .contains_key(&PkgName::parse("pip-audit").expect("valid name")),
-            "pip-audit must stay in the ledger so Dependabot keeps bumping it"
-        );
+        // Both halves stay in one ledger, which is what keeps Dependabot bumping them together
+        // and what makes a rename a `cargo test` failure rather than a `PD-HLT-001` on a user's
+        // machine.
+        let ledger = parse_ledger(TOOLS_REQUIREMENTS).expect("ledger parses");
+        for tool in HEALTH_TOOLS.iter().chain(AUDIT_TOOLS) {
+            assert!(
+                ledger.contains_key(&PkgName::parse(tool).expect("valid name")),
+                "{tool} must stay in the ledger so Dependabot keeps bumping it"
+            );
+        }
     }
 
     /// The CRLF trap, made into a gate.
@@ -896,12 +955,32 @@ mod tests {
 
     #[test]
     fn the_written_requirements_are_lf_and_carry_only_the_health_tools() {
-        let body = requirements_body(&pins().expect("ledger parses"));
+        let body = requirements_body(&pins_for(HEALTH_TOOLS).expect("ledger parses"));
 
         assert!(!body.contains('\r'), "always LF on disk");
         assert!(!body.contains('#'), "a rendering, not a copy");
-        assert!(!body.contains("pip-audit"));
+        assert!(
+            !body.contains("pip-audit"),
+            "a rendering of this set, not the ledger"
+        );
         assert_eq!(body.lines().count(), HEALTH_TOOLS.len());
+
+        // And the other direction, which is the half that would have installed nothing at all:
+        // rendering the audit set must produce pip-audit and none of Code Health's.
+        let audit = requirements_body(&pins_for(AUDIT_TOOLS).expect("ledger parses"));
+        assert!(audit.starts_with("pip-audit=="), "{audit:?}");
+        assert_eq!(audit.lines().count(), AUDIT_TOOLS.len());
+        for tool in HEALTH_TOOLS {
+            assert!(
+                !audit.contains(tool),
+                "{tool} must not reach the audit venv"
+            );
+        }
+        assert_ne!(
+            pins_hash(&pins_for(HEALTH_TOOLS).expect("ledger parses")),
+            pins_hash(&pins_for(AUDIT_TOOLS).expect("ledger parses")),
+            "independent hashes are what stop a pip-audit bump re-syncing Code Health"
+        );
         assert!(body.ends_with('\n'));
     }
 
@@ -912,10 +991,14 @@ mod tests {
         let dir = scratch("never");
 
         assert_eq!(
-            needs_sync(&dir).expect("ledger parses"),
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
             SyncNeed::NeverSynced
         );
-        assert!(needs_sync(&dir).expect("ledger parses").is_needed());
+        assert!(
+            needs_sync(&dir, HEALTH_TOOLS)
+                .expect("ledger parses")
+                .is_needed()
+        );
     }
 
     #[test]
@@ -926,7 +1009,7 @@ mod tests {
         std::fs::write(dir.join(MANIFEST_FILE), "{ not json").expect("write");
 
         assert_eq!(
-            needs_sync(&dir).expect("ledger parses"),
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
             SyncNeed::NeverSynced
         );
     }
@@ -935,10 +1018,20 @@ mod tests {
     fn a_matching_manifest_with_every_tool_present_is_fresh() {
         let dir = scratch("fresh");
         write_venv(&dir, HEALTH_TOOLS);
-        write_manifest(&dir, &pins_hash(&pins().expect("ledger parses")));
+        write_manifest(
+            &dir,
+            &pins_hash(&pins_for(HEALTH_TOOLS).expect("ledger parses")),
+        );
 
-        assert_eq!(needs_sync(&dir).expect("ledger parses"), SyncNeed::Fresh);
-        assert!(!needs_sync(&dir).expect("ledger parses").is_needed());
+        assert_eq!(
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
+            SyncNeed::Fresh
+        );
+        assert!(
+            !needs_sync(&dir, HEALTH_TOOLS)
+                .expect("ledger parses")
+                .is_needed()
+        );
     }
 
     /// The case a hash comparison alone would call `Fresh`, and the one PD-HLT-001 is about.
@@ -946,10 +1039,13 @@ mod tests {
     fn a_quarantined_tool_is_detected_even_though_the_hash_still_matches() {
         let dir = scratch("quarantined");
         write_venv(&dir, &["deptry", "vulture"]); // ruff.exe never written
-        write_manifest(&dir, &pins_hash(&pins().expect("ledger parses")));
+        write_manifest(
+            &dir,
+            &pins_hash(&pins_for(HEALTH_TOOLS).expect("ledger parses")),
+        );
 
         assert_eq!(
-            needs_sync(&dir).expect("ledger parses"),
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
             SyncNeed::ToolMissing {
                 tool: "ruff".to_owned()
             }
@@ -988,9 +1084,9 @@ mod tests {
         write_venv(&dir, HEALTH_TOOLS);
         write_manifest(&dir, &"0".repeat(64));
 
-        let want = pins_hash(&pins().expect("ledger parses"));
+        let want = pins_hash(&pins_for(HEALTH_TOOLS).expect("ledger parses"));
         assert_eq!(
-            needs_sync(&dir).expect("ledger parses"),
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
             SyncNeed::PinsChanged {
                 from: "0".repeat(64),
                 to: want,
@@ -1003,10 +1099,13 @@ mod tests {
         let dir = scratch("gone");
         write_venv(&dir, HEALTH_TOOLS);
         std::fs::remove_file(venv_python(&dir)).expect("remove python");
-        write_manifest(&dir, &pins_hash(&pins().expect("ledger parses")));
+        write_manifest(
+            &dir,
+            &pins_hash(&pins_for(HEALTH_TOOLS).expect("ledger parses")),
+        );
 
         assert_eq!(
-            needs_sync(&dir).expect("ledger parses"),
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
             SyncNeed::InterpreterGone
         );
     }
@@ -1024,7 +1123,7 @@ mod tests {
         // about serialization — and it failed on `main`, because that PR's CI predates the health
         // module. What is being pinned here is that the tools map survives the round trip, not
         // which version is in it.
-        let pinned = pins()
+        let pinned = pins_for(HEALTH_TOOLS)
             .expect("ledger parses")
             .into_iter()
             .find(|p| p.name.to_string() == "ruff")
@@ -1108,8 +1207,11 @@ mod tests {
     #[test]
     fn the_step_count_matches_what_the_sync_actually_reports() {
         // A sink whose total disagrees with what runs is a progress bar that stops at four fifths.
-        assert_eq!(SYNC_STEPS, 2 + HEALTH_TOOLS.len());
-        assert_eq!(SYNC_STEPS, 5);
+        assert_eq!(sync_steps(HEALTH_TOOLS), 2 + HEALTH_TOOLS.len());
+        assert_eq!(sync_steps(HEALTH_TOOLS), 5);
+        // The audit venv installs one tool, so a shared constant would have promised five
+        // steps and run three.
+        assert_eq!(sync_steps(AUDIT_TOOLS), 3);
     }
 
     #[test]
@@ -1221,16 +1323,21 @@ mod tests {
             }
             seen
         });
-        let sink = ProgressSink::new(tx, SYNC_STEPS, Default::default());
+        let sink = ProgressSink::new(tx, sync_steps(HEALTH_TOOLS), Default::default());
 
-        let manifest = sync_tools_venv(&dir, &python, &sink)
+        let manifest = sync_tools_venv(&dir, &python, HEALTH_TOOLS, &sink)
             .await
             .expect("bootstrap succeeds");
         drop(sink);
 
         assert_eq!(manifest.tools.len(), HEALTH_TOOLS.len());
-        assert_eq!(needs_sync(&dir).expect("ledger parses"), SyncNeed::Fresh);
+        assert_eq!(
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
+            SyncNeed::Fresh
+        );
         // The exclusion, checked where it actually matters rather than only in the rendering.
+        // Against a real bootstrap rather than a constructed manifest: this is the venv Code
+        // Health runs out of, and pip-audit belongs to the other one.
         assert!(!manifest.pins.iter().any(|p| p.starts_with("pip-audit")));
 
         let seen = events.await.expect("collector");
@@ -1255,20 +1362,27 @@ mod tests {
             .expect("this machine has a Python 3.10+");
         let sink = || {
             let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
-            ProgressSink::new(tx, SYNC_STEPS, CancellationToken::new())
+            ProgressSink::new(tx, sync_steps(HEALTH_TOOLS), CancellationToken::new())
         };
 
-        sync_tools_venv(&dir, &python, &sink())
+        sync_tools_venv(&dir, &python, HEALTH_TOOLS, &sink())
             .await
             .expect("first bootstrap succeeds");
         std::fs::remove_file(tool_exe(&dir, "ruff")).expect("quarantine ruff");
-        assert!(needs_sync(&dir).expect("ledger parses").is_needed());
+        assert!(
+            needs_sync(&dir, HEALTH_TOOLS)
+                .expect("ledger parses")
+                .is_needed()
+        );
 
-        sync_tools_venv(&dir, &python, &sink())
+        sync_tools_venv(&dir, &python, HEALTH_TOOLS, &sink())
             .await
             .expect("a re-sync must repair it, not fail on it");
 
-        assert_eq!(needs_sync(&dir).expect("ledger parses"), SyncNeed::Fresh);
+        assert_eq!(
+            needs_sync(&dir, HEALTH_TOOLS).expect("ledger parses"),
+            SyncNeed::Fresh
+        );
     }
 
     /// A scratch directory of our own, cleaned on entry. Matches `store`'s idiom rather than
@@ -1291,7 +1405,7 @@ mod tests {
     }
 
     fn write_manifest(tools_dir: &Path, hash: &str) {
-        let installed = pins().expect("ledger parses");
+        let installed = pins_for(HEALTH_TOOLS).expect("ledger parses");
         let manifest = ToolsManifest {
             pins_hash: hash.to_owned(),
             pins: installed.iter().map(PinnedSpec::to_requirement).collect(),
