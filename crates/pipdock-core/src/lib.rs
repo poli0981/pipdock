@@ -23,6 +23,7 @@
 
 #![cfg_attr(test, allow(clippy::unwrap_used, clippy::expect_used))]
 
+pub mod audit;
 pub mod bindings;
 pub mod cache;
 pub mod compat;
