@@ -323,6 +323,26 @@
     "fixConfirm": "Fix",
     "fixConfirmDirty": "Fix anyway"
   },
+  "security": {
+    "run": "Run audit",
+    "running": "Checking against the advisory database…",
+    "cancelled": "Stopped before it finished, so what follows is incomplete.",
+    "checkedAt": "Checked {{at}} with pip-audit {{version}}",
+    "noEnv": "Select an environment first.",
+    "notRunYet": "No audit has run for this environment.",
+    "notRunYetHint": "The first run builds its own tool environment, which takes about a minute.",
+    "clean_one": "No known advisories against {{count}} package.",
+    "clean_other": "No known advisories against {{count}} packages.",
+    "cleanHint": "Checked with pip-audit {{version}} against PyPI's advisory data.",
+    "summary_one": "{{count}} advisory across {{packages}} of {{total}} packages.",
+    "summary_other": "{{count}} advisories across {{packages}} of {{total}} packages.",
+    "more_one": "{{count}} more advisory is not shown.",
+    "more_other": "{{count}} more advisories are not shown.",
+    "noFix": "no fix",
+    "fixedIn": "fixed in {{versions}}",
+    "osv": "OSV entry",
+    "linkFailed": "That link could not be opened."
+  },
   "uninstall": {
     "title": "Remove packages",
     "titleBreaks": "This removal breaks other packages",

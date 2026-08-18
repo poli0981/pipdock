@@ -59,8 +59,8 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
 
   const actions: Action[] = useMemo(
     () => [
-      // The nine tabs. `security` has no screen and renders a placeholder, which is honest — the
-      // sidebar shows it for the same reason.
+      // The nine tabs, every one of which now has a screen: `security` was the last placeholder
+      // and P1-1 filled it.
       ...NAV_KEYS.map((key) => ({
         id: `nav:${key}`,
         label: t(`nav.${key}`),

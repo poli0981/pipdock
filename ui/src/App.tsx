@@ -16,6 +16,7 @@ import { PdPackages } from '@/screens/PdPackages'
 import { PdPins } from '@/screens/PdPins'
 import { PdPlanPanel } from '@/screens/PdPlanPanel'
 import { PdSearch } from '@/screens/PdSearch'
+import { PdSecurity } from '@/screens/PdSecurity'
 import { PdSettings } from '@/screens/PdSettings'
 import { PANEL_PHASES } from '@/stores/plan'
 import { useEnvStore, useLegalStore, usePlanStore, useUiStore } from '@/stores'
@@ -32,6 +33,7 @@ const SCREENS: Partial<Record<NavKey, React.ReactNode>> = {
   search: <PdSearch />,
   pins: <PdPins />,
   health: <PdHealth />,
+  security: <PdSecurity />,
   settings: <PdSettings />,
   about: <PdAbout />,
 }
