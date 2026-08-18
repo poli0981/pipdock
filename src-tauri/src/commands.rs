@@ -1010,8 +1010,13 @@ pub async fn health_run(
     let opts = health::RunOptions::default();
 
     let outcome = async {
-        let sync_needed = health::needs_sync(&tools_dir)?.is_needed();
-        let total = health::run_steps(&opts) + if sync_needed { health::SYNC_STEPS } else { 0 };
+        let sync_needed = health::needs_sync(&tools_dir, health::HEALTH_TOOLS)?.is_needed();
+        let total = health::run_steps(&opts)
+            + if sync_needed {
+                health::sync_steps(health::HEALTH_TOOLS)
+            } else {
+                0
+            };
 
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         forward_progress(&app, "health-progress", rx);
@@ -1019,14 +1024,18 @@ pub async fn health_run(
 
         if sync_needed {
             let (python, _) = health::choose_tools_python(&envs::scan().await).await?;
-            health::sync_tools_venv(&tools_dir, &python, &sink).await?;
+            health::sync_tools_venv(&tools_dir, &python, health::HEALTH_TOOLS, &sink).await?;
         }
         health::run_tools(
             &tools_dir,
             &project,
             &env,
             &opts,
-            &sink.at(if sync_needed { health::SYNC_STEPS } else { 0 }),
+            &sink.at(if sync_needed {
+                health::sync_steps(health::HEALTH_TOOLS)
+            } else {
+                0
+            }),
         )
         .await
     }

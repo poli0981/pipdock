@@ -316,7 +316,7 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
     // is optional, and a fresh install exiting 1 because it has not built a tools venv yet would
     // make `doctor` useless as a health check for everything else.
     let tools = health::tools_dir(&app_data_dir());
-    let tools_need = health::needs_sync(&tools);
+    let tools_need = health::needs_sync(&tools, health::HEALTH_TOOLS);
 
     if opts.json {
         println!(
@@ -820,7 +820,7 @@ pub async fn tools_sync(opts: &GlobalOpts, force: bool, python: Option<&Path>) -
     let dir = health::tools_dir(&app_data_dir());
 
     if !force {
-        let need = health::needs_sync(&dir)?;
+        let need = health::needs_sync(&dir, health::HEALTH_TOOLS)?;
         if !need.is_needed() {
             if opts.json {
                 println!(
@@ -865,8 +865,12 @@ pub async fn tools_sync(opts: &GlobalOpts, force: bool, python: Option<&Path>) -
     // handler, and the flows build their own tokens for the GUI's `plan_cancel` to reach. Killing
     // the process still tears the tree down — `exec::TreeGuard`'s job object closes with the last
     // handle — which is verified rather than assumed: a killed sync leaves no orphan pip.
-    let sink = engine::ProgressSink::new(tx, health::SYNC_STEPS, CancellationToken::new());
-    let manifest = health::sync_tools_venv(&dir, &base, &sink).await;
+    let sink = engine::ProgressSink::new(
+        tx,
+        health::sync_steps(health::HEALTH_TOOLS),
+        CancellationToken::new(),
+    );
+    let manifest = health::sync_tools_venv(&dir, &base, health::HEALTH_TOOLS, &sink).await;
     drop(sink);
     let _ = pump.await;
     let manifest = manifest?;
@@ -930,7 +934,7 @@ pub async fn health(
     };
 
     let tools_dir = health::tools_dir(&app_data);
-    let sync_needed = health::needs_sync(&tools_dir)?.is_needed();
+    let sync_needed = health::needs_sync(&tools_dir, health::HEALTH_TOOLS)?.is_needed();
     let run_opts = health::RunOptions {
         tools: tools.iter().map(|t| t.as_str().to_owned()).collect(),
         ..health::RunOptions::default()
@@ -938,7 +942,12 @@ pub async fn health(
 
     // The total is decided **before** the first event. A progress bar cannot learn its own total
     // halfway, and whether a sync is owed is exactly the thing that changes it.
-    let total = health::run_steps(&run_opts) + if sync_needed { health::SYNC_STEPS } else { 0 };
+    let total = health::run_steps(&run_opts)
+        + if sync_needed {
+            health::sync_steps(health::HEALTH_TOOLS)
+        } else {
+            0
+        };
     let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<ProgressEvent>();
     let quiet = opts.quiet;
     let pump = tokio::spawn(async move {
@@ -956,14 +965,18 @@ pub async fn health(
                 println!("building the Code Health tools environment (first run)…");
             }
             let (python, _) = health::choose_tools_python(&envs::scan().await).await?;
-            health::sync_tools_venv(&tools_dir, &python, &sink).await?;
+            health::sync_tools_venv(&tools_dir, &python, health::HEALTH_TOOLS, &sink).await?;
         }
         health::run_tools(
             &tools_dir,
             &project,
             &env,
             &run_opts,
-            &sink.at(if sync_needed { health::SYNC_STEPS } else { 0 }),
+            &sink.at(if sync_needed {
+                health::sync_steps(health::HEALTH_TOOLS)
+            } else {
+                0
+            }),
         )
         .await
     }
@@ -1189,7 +1202,7 @@ fn print_health(opts: &GlobalOpts, report: &health::HealthReport) {
 /// `PD-PKG-002` when the shipped pin ledger is malformed — a build-time mistake.
 pub async fn tools_status(opts: &GlobalOpts) -> Result<Exit> {
     let dir = health::tools_dir(&app_data_dir());
-    let need = health::needs_sync(&dir)?;
+    let need = health::needs_sync(&dir, health::HEALTH_TOOLS)?;
     let manifest = health::read_manifest(&dir);
 
     if opts.json {
