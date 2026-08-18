@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.1.0. M1, M2, Phase 3, Phase 4 and the P1 wave are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette. What is left of Post-1.0 is the Security tab, the dependency-graph view and the scheduled check — see `docs/ROADMAP.md`.
+Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.2.0. M1, M2, Phase 3, Phase 4, the P1 wave and the Security tab are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette; 1.2.0 added the Security tab (PRD P1-1), which was the last major P1 item. **What is left of Post-1.0 is two things** — the dependency-graph view (P1-6) and the scheduled check (P1-7) — and neither is near P1-1's readiness; see `docs/ROADMAP.md`.
 
 ## Read the docs before changing anything
 
@@ -141,6 +141,28 @@ Three rules from S2/S3 that bind everything after them:
   so folding the timeline into `NO_PACKAGES` meant a rescan wiped a freshly-loaded timeline whenever
   the package slice happened to be stale. After a rollback that is exactly the case. A shared reset
   constant is only correct for fields with a shared key.
+
+- **A spec can promise a field that has never existed.** SECURITY §6 asked for a *severity* per
+  finding and PRD P1-1 for "severity-sorted"; pip-audit publishes no severity under **either**
+  vulnerability service, and never has. §6 also said pip-audit runs from the Code Health tools venv,
+  which the code had refused since P2 with three tests enforcing the refusal. Both were found by
+  *running the pinned tool and reading its JSON*, not by reading the specs against each other. When
+  a spec sentence describes an external tool, the tool is the authority — and the correction belongs
+  in the spec, not in a workaround that invents the missing field.
+
+- **A watchdog is a unit, not a number.** `audit::run` inherited Code Health's 120 s `TOOL_TIMEOUT`
+  and hit it on the first real run, reporting `PD-HLT-003` for a tool that was working. Code Health
+  is a linter walking a source tree; an audit is a network fetch. Measured: **68 s cold** for one
+  package, 20.0 s warm for *twelve* — twelve cost 1.4 s more than one, so the cost is a one-off
+  database fetch and package count is not the risk. The same measurement reopened cancellation,
+  which P4 had deferred on Code Health's 1.3 s. **A borrowed constant carries its original units
+  with it.**
+
+- **Adding a field to a struct that is summed is a bug the suite will not see.** `Target::Audit`
+  gave `cache::Usage` a fourth entry and `total_bytes` still added three — every cache test passed
+  and the number on screen was wrong with nothing to say so. The guard asserts on distinct powers
+  of two so a missing term appears as its own bit rather than as a plausible total. Same shape as
+  the `entryOf` ternary whose last branch was a hand-maintained negation of every case above it.
 
 - **A dialog is not an enforcement point.** DATA-FLOW §5's three options are what the user *sees*;
   what stops a removal is `GuardAck` inside `UninstallFlow::execute`, beside `SnapshotProof`. The

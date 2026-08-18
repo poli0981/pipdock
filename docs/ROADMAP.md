@@ -740,7 +740,7 @@ Three things it settled that outlive it:
 
 ## Post-1.0 (P1 wave)
 
-Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
+Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. **Five of the seven have shipped** — four in 1.1.0 and the Security tab in 1.2.0; the graph view and the scheduled check remain. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
 
 **About shipped early, in Phase 4** — see above. Two smaller items were added to this wave rather
 than done at 1.0:
@@ -757,9 +757,10 @@ than done at 1.0:
   way, and the count is worth stating because the sentence here used to read as though there were
   seven files.
 
-Also worth doing when the Security tab lands: `capabilities/external-links.json` will need an OSV
-host, because DISCLAIMER §4 and SECURITY §6 both say findings link to the OSV entry and the current
-allowlist would reject it — silently, which is the failure mode SECURITY §4 exists to name.
+~~Also worth doing when the Security tab lands: an OSV host in
+`capabilities/external-links.json`.~~ **Done in P1-1**, along with the prose §4 requires — and the
+entry records what makes it different from `docs.astral.sh`: `advisory_url` *builds* the URL from a
+validated id, so the tool chooses the id and never the destination.
 
 ### The P1 wave, closed — 1.1.0, 2026-08-14
 
@@ -865,6 +866,102 @@ one.
    files concludes the sentence is wrong. Opening two of the images settles it: seven predate the
    About tab and do show eight entries, and `about.png` shows nine. Reworded rather than
    "corrected", because correcting it would have introduced the error.
+
+### Post-1.0 · P1-1 — the Security tab — **done 2026-08-18**
+
+Eight commits, and **1.2.0**. The last major P1 item; PRD P1-1 has been on the list since the PRD
+was written and had a spike behind it from Phase 0.
+
+| | What landed |
+|---|---|
+| **Core** | `health::pins_for`/`sync_steps`/`needs_sync`/`sync_tools_venv` take a tool list; `AUDIT_TOOLS`, `audit_dir`; the whole `audit` module — `Advisory`, `AuditReport`, `parse`, `dedupe`, `sort_advisories`, `advisory_url`, `run`, `markdown`; `cache::Target::Audit` |
+| **Bridge** | `audit_run`, `audit_cancel`, `audit_save_report`; `AppState.audit` as `Sessions<()>`; the `audit-progress` channel |
+| **CLI** | `pipdock audit`, exit 1 on findings |
+| **UI** | `PdSecurity`, `PdAuditReport`, `useSecurityStore` — and `PdSidebar`'s `NOT_YET` is **empty** for the first time |
+| **Fixtures** | the pip-audit capture SP-4 asked for in Phase 0 and never got, plus a **computed** `audit_report.json` |
+| **Docs & legal** | PRD P1-1, SECURITY §4/§6, UI-SPEC §4/§5/§6, CLI-SPEC §3, CODE-HEALTH-SPEC §2, `capabilities/external-links.json`, and three `legal/` documents |
+
+**Three decisions the owner closed before any code**, each of which would have been expensive to
+reverse:
+
+1. **pip-audit gets its own venv.** `HEALTH_TOOLS` gave two reasons for excluding it and only one
+   survives the tab existing — "a feature they cannot reach" stops being true, but `msgpack` still
+   publishes no universal wheel, and `--only-binary=:all:` is load-bearing. A fourth entry in
+   Code Health's venv would let a new CPython take Code Health down with the Security tab.
+2. **The default PyPI vulnerability service, linking out to OSV.** This is what keeps
+   `legal/PRIVACY-POLICY.md` §3's "exactly one destination" **true**, and measuring showed it costs
+   nothing: the same environment under `--vulnerability-service osv` returns the *same eight*
+   advisories, set difference empty in both directions. The 10-vs-16 row difference is pure
+   duplication.
+3. **The specs get corrected rather than the tool worked around** — see below.
+
+**Two spec claims were not stale but unimplementable.** SECURITY §6 said pip-audit "runs from the
+tools venv"; the code had refused that since P2 with three tests enforcing the refusal. And §6 and
+PRD P1-1 both promised a **severity** — "(CVE/GHSA id, severity, fixed-in)", "severity-sorted" —
+against a field pip-audit has never had under *either* service. A finding carries `id`,
+`fix_versions`, `aliases` and `description`, full stop. The order that shipped is package →
+fixable → id, which is the one distinction that changes what a user can do; a severity derived
+from the id's year or the prose would be a number PipDock invented, shown beside real ones.
+
+**SP-4's exit criterion is finally met.** It asked for "command line + JSON fixture pinned" in
+Phase 0. The command line was pinned in prose; the fixture never was, so every claim about
+pip-audit's output had gone unchecked for a year of development. Both are committed now, with
+provenance.
+
+**Four things found by running, none of them visible in a diff.**
+
+1. **The watchdog was a linter's.** Written against Code Health's 120 s `TOOL_TIMEOUT`, the first
+   real run hit it and reported `PD-HLT-003` for a tool that was working. Measured afterwards:
+   **68 s cold** for one package, 18.6 s warm for one, **20.0 s warm for twelve**. Twelve cost
+   1.4 s more than one, so the cost is a one-off advisory-database fetch and a 352-package
+   environment is not the risk — a cold fetch on a slow link is. `AUDIT_TIMEOUT` is 600 s,
+   matching `exec::DEFAULT_TIMEOUT`.
+2. **That number reopened cancellation.** P4 deferred it for Code Health on a measurement of
+   **1.3 s**; 18-68 s is a different answer to the same question. Wired *and* mapped, because P4
+   also recorded that wiring the token alone renders a cancel as "PipDock hit an internal error" —
+   `exec` reports a cancel and a crash through the same `IntUnexpected`. `AuditReport.cancelled` is
+   a state, the step ends `Skipped`, and nothing lands in `problems`.
+3. **The screen lied while running.** Mid-run the body read *"No audit has run for this
+   environment"* — while an audit was running. The report is cleared before the command, so `shown`
+   is legitimately null during a run and the un-run empty state rendered on that basis. That is
+   P4's "no issues found before anything had run" **inverted**: a true-looking sentence derived
+   from a state the screen had not loaded. Found by clicking Run against a deliberately slow
+   bridge; no test saw it, because every other test renders this screen settled.
+4. **`total_bytes` under-reported by a whole venv.** Adding `Target::Audit` gave `Usage` a fourth
+   entry and the sum still added three — with every existing cache test passing. A wrong total with
+   nothing to say so is worse than a missing row, so the guard now asserts on distinct powers of
+   two: a missing term shows up as its own bit rather than as a plausible number.
+
+**The engine changes what is audited, and the tab does not hide it.** `Engine::freeze` passes
+`--all` on pip and uv has no such flag, so auditing the SP-4 environment reports **five advisories
+in pip 25.0.1 itself** alongside urllib3's eight. A uv-engine audit of the same environment sees
+fewer packages.
+
+**Verified by running, at every level.** `pipdock audit` cold against a real vulnerable environment
+with an isolated `LOCALAPPDATA`: the audit venv bootstrapped, wrote its manifest, reported 13
+advisories across 2 packages, `--json` emitted one camelCase document, exit **1**. The second run
+did no bootstrap, which is `needs_sync` returning `Fresh` for `AUDIT_TOOLS`. The runner and the
+cancel path were each run against the real tool (`--ignored`, `PIPDOCK_AUDIT_DIR`) and each
+mutation-checked. The screen was driven in the browser against a stubbed bridge: `audit_run`
+crosses **once**, all three listens precede it, both package groups render, and Cancel reaches
+`audit_cancel`.
+
+**The legal gate re-shows once** for every existing user. `legal/EULA.md`,
+`THIRD-PARTY-NOTICES.md` and `DISCLAIMER.md` all described pip-audit as planned-and-not-invoked,
+and all three are in `build.rs`'s `DOCUMENTS`. That is the mechanism working, and it was decided
+before the work rather than discovered after it.
+
+**Still owner-verifiable only**, because the stubbed bridge cannot reach them: the save dialog, and
+clicking an OSV link to confirm the widened allowlist actually opens — which is the one failure
+mode that is *silent*, and the reason SECURITY §4 requires the widening in prose.
+
+**Deliberately not done:** no `pipdock audit --fix`, and no auto-upgrade from a finding. SECURITY §6
+has always said audit never applies anything; "update to fixed version" is the ordinary Update flow,
+reached by the user.
+
+**What is left of Post-1.0 is two items**: the dependency-graph view (PRD P1-6) and the scheduled
+check (PRD P1-7). Both were surveyed on 2026-08-18 and neither is close to P1-1's readiness — see
+the analysis above for what blocks each.
 
 ### Four items decomposed, easiest first
 
