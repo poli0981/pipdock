@@ -371,6 +371,19 @@ def redact(text: str, work: Path) -> str:
     # every run and wildly different between a dev machine and a CI runner.
     text = re.sub(r"(?m)^\s*-+\s+[^\r\n]*?eta [0-9:]+[ \t]*$", "     <PROGRESS>", text)
 
+    # pip's self-upgrade notice names the version that is on PyPI *today* — "[notice] A new
+    # release of pip is available: 25.0.1 -> 26.1.2" — which is a statement about the index,
+    # not about anything the engine did. It moves with every pip release: on 2026-08-17 pip
+    # 26.2.1 shipped and the drift gate failed across all nine pip fixtures carrying this line.
+    # The installed half goes too, because `capture-provenance.json` already records the exact
+    # pip and a runner whose bundled pip moves would otherwise re-break this the same way.
+    # Safe to drop for the usual reason: no `CLASSIFIERS` entry reads a version out of stderr.
+    text = re.sub(
+        r"(A new release of pip is available: )\d[\w.+!-]*( -> )\d[\w.+!-]*",
+        r"\1<VERSION>\2<VERSION>",
+        text,
+    )
+
     # uv times every phase — "Resolved 3 packages in 775ms", "Checked 8 packages in 1ms". The
     # counts are signal and stay; the durations are never the same twice. Safe to drop: the uv
     # adapter only tests `text.contains("Resolved ")` and reads the +/- lines (engine/parse.rs).

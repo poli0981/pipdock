@@ -1,5 +1,5 @@
 ERROR: Could not find a version that satisfies the requirement pipdock-no-such-package-9f3a2b (from versions: none)
 
-[notice] A new release of pip is available: 25.0.1 -> 26.1.2
+[notice] A new release of pip is available: <VERSION> -> <VERSION>
 [notice] To update, run: <WORK>\venv\Scripts\python.exe -m pip install --upgrade pip
 ERROR: No matching distribution found for pipdock-no-such-package-9f3a2b
