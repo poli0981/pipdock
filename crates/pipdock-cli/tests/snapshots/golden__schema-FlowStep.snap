@@ -19,8 +19,15 @@ expression: out
           "description": "The package imposing the constraint, absent when attribution is ambiguous."
         },
         "constraint": {
-          "description": "The constraint text, e.g. `\"requests<2.31\"`.",
+          "description": "The requirement holding the package back, e.g. `\"requests<2.31\"`.\n\n**Data, not a sentence** — hard invariant 4. Until Slice 0 this carried\n`\"scipy 1.11.4 requires numpy <1.28.0,>=1.21.6\"`, a phrase assembled in Rust, which the\nGUI then wrapped in `\"{{by}} requires {{constraint}}\"` and rendered naming the dependent\n**twice**. Only the CLI looked right, because it prints this field alone. The shape here\nnow matches `BrokenDependent.constraint`, which the guard dialog has always composed\ncorrectly.",
           "type": "string"
+        },
+        "version": {
+          "description": "The installed version of [`Self::by`], when the probe knew it.\n\nSplit out for the same reason [`crate::graph::BrokenDependent`] splits it: the two heads\nphrase this differently — the CLI writes `scipy 1.11.4 requires …` itself, the GUI\ninterpolates `plan.blocker` — and neither can un-join a string Rust joined for it.",
+          "type": [
+            "string",
+            "null"
+          ]
         }
       },
       "required": [

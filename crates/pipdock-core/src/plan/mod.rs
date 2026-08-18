@@ -86,7 +86,21 @@ pub struct Blocker {
     /// The package imposing the constraint, absent when attribution is ambiguous.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub by: Option<PkgName>,
-    /// The constraint text, e.g. `"requests<2.31"`.
+    /// The installed version of [`Self::by`], when the probe knew it.
+    ///
+    /// Split out for the same reason [`crate::graph::BrokenDependent`] splits it: the two heads
+    /// phrase this differently — the CLI writes `scipy 1.11.4 requires …` itself, the GUI
+    /// interpolates `plan.blocker` — and neither can un-join a string Rust joined for it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The requirement holding the package back, e.g. `"requests<2.31"`.
+    ///
+    /// **Data, not a sentence** — hard invariant 4. Until Slice 0 this carried
+    /// `"scipy 1.11.4 requires numpy <1.28.0,>=1.21.6"`, a phrase assembled in Rust, which the
+    /// GUI then wrapped in `"{{by}} requires {{constraint}}"` and rendered naming the dependent
+    /// **twice**. Only the CLI looked right, because it prints this field alone. The shape here
+    /// now matches `BrokenDependent.constraint`, which the guard dialog has always composed
+    /// correctly.
     pub constraint: String,
 }
 
@@ -915,6 +929,7 @@ mod tests {
             latest: Version("2.32.3".into()),
             blockers: vec![Blocker {
                 by: Some(PkgName::parse("apiclient").unwrap()),
+                version: None,
                 constraint: "requests<2.31".into(),
             }],
         };
