@@ -739,7 +739,7 @@ mod tests {
 
     #[test]
     fn every_documented_code_has_exactly_one_variant() {
-        // Rust has 33; docs/ERROR-CATALOG.md tabulates 30, because it folds PD-HLT-001..004 into
+        // Rust has 34; docs/ERROR-CATALOG.md tabulates 31, because it folds PD-HLT-001..004 into
         // one row. Pin the number so the next person adding a code has to notice the docs exist.
         assert_eq!(Code::ALL.len(), 34);
         let wire: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
