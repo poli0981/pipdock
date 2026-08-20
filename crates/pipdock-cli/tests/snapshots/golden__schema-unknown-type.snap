@@ -2,4 +2,4 @@
 source: crates/pipdock-cli/tests/golden.rs
 expression: "stderr_of(&[\"schema\", \"NoSuchType\"])"
 ---
-error[PD-PKG-002]: unknown type "NoSuchType"; known types: Dist, OutdatedDist, PyEnv, CheckReport, StepResult, PlanRequest, ResolutionReport, ExecutionSummary, Pin, PinSuggestion, ParsedRequirements, CacheUsage, CacheTarget, GuardReport, Diff, SnapshotMeta, EngineInfo, RollbackPlan, RollbackPreview, Hit, PackageMeta, Freshness, RefreshReport, ProgressEvent, FlowStep, Decision, Intent, Code, HealthReport, AuditReport, FixReport
+error[PD-PKG-002]: unknown type "NoSuchType"; known types: Dist, OutdatedDist, PyEnv, CheckReport, StepResult, PlanRequest, ResolutionReport, ExecutionSummary, Pin, PinSuggestion, ParsedRequirements, CacheUsage, CacheTarget, GuardReport, DepsGraph, Diff, SnapshotMeta, EngineInfo, RollbackPlan, RollbackPreview, Hit, PackageMeta, Freshness, RefreshReport, ProgressEvent, FlowStep, Decision, Intent, Code, HealthReport, AuditReport, FixReport
