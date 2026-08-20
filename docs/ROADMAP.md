@@ -959,9 +959,110 @@ mode that is *silent*, and the reason SECURITY §4 requires the widening in pros
 has always said audit never applies anything; "update to fixed version" is the ordinary Update flow,
 reached by the user.
 
-**What is left of Post-1.0 is two items**: the dependency-graph view (PRD P1-6) and the scheduled
-check (PRD P1-7). Both were surveyed on 2026-08-18 and neither is close to P1-1's readiness — see
-the analysis above for what blocks each.
+**What is left of Post-1.0 is one item**: the scheduled check (PRD P1-7). The dependency view
+shipped as 1.3.0; its record is below.
+
+*This paragraph used to point at "the analysis above" for what blocked each of two items. There was
+no such analysis anywhere in this document* — the survey existed only outside the repository, and
+the sentence had been repeated into `CLAUDE.md`. What actually separated P1-1 from the other two was
+that it had a Phase-0 spike behind it (SP-4) and they did not; P1-6 has one now, in the shape of
+measurements taken before the screen was designed. The P1-7 half of the missing survey is below, so
+that the pointer finally has something to point at.
+
+#### What blocks P1-7 — the scheduled check
+
+Nine words of PRD, and **every prerequisite is absent.** Counted against the tree on 2026-08-20:
+
+- **No toast.** `ui/src/components/` has none. UI-SPEC states a policy for a mechanism that has
+  never been built.
+- **No plugin.** `src-tauri/Cargo.toml` carries no notification, autostart or tray dependency, and
+  each would need a capability entry with SECURITY §4's prose justification.
+- **Nothing runs on a timer.** One `tokio::spawn` in the whole Tauri crate, plan-scoped, and zero
+  occurrences of `tokio::time::interval` or `setInterval` in either head.
+- **No surface can report a background failure.** `⚠ n` counts mounted `PdErrorRow`s, the `LogRing`
+  is cleared per plan, `logs_tail` is still one of the two `NOT_YET` entries, and the console toggle
+  is disabled while idle. A check that failed at 03:00 has nowhere to say so.
+
+It is also the item whose users are already served: the PRD's automation persona wants the **CLI in
+an external scheduler**, and `docs/CLI-SPEC.md` already ships the Task Scheduler recipe — zero code,
+zero dependencies, zero legal edit, no toast. Whoever picks this up should first say what the GUI
+version gives that the recipe does not, because the honest answer may be "a notification", and that
+is one plugin and a permanent background process for one line of text.
+
+### Post-1.0 · P1-6 — the dependency view — **done 2026-08-20**
+
+Six commits, and **1.3.0**. PRD P1-6 was twelve words and had no UI-SPEC screen, no §6 component,
+no nav slot, no CLI command and no decomposition here.
+
+| | What landed |
+|---|---|
+| **Preflight** | ARCHITECTURE §7's `audit_run` row regains its trailing pipe; `the_architecture_table_is_well_formed`; `catalog.rs`'s stale 33/30 comment; CLAUDE.md's three-named-as-four schema list |
+| **Core** | `ReverseDeps.forward`; `requires_of`, `edges_to`, `unsatisfied`, `reach`, `view`; `DepEdge`, `DepsNode`, `DepsGraph`; nine tests plus an opt-in live one |
+| **Wire** | `DepsGraph` in `schema_for!`, `SCHEMA_TYPES` and `golden.rs`'s own copy. 32 types, 67 goldens |
+| **Bridge** | `deps_graph` — `pin_suggestions`' shape, not `audit_run`'s. `NOT_YET` unchanged at two |
+| **UI** | `PdDeps` (a mode of the package screen), `PdDepsFocus`, `stores/deps.ts`, a third row button, both catalogues |
+| **Docs** | UI-SPEC §4/§5/§6, ARCHITECTURE §4, PRD P1-6, this section |
+
+**The measurements decided the design, and they were taken first.** Against `C:\Python314` — 352
+packages, the scale fixture — and a 29-package venv, by running `probe.py` directly:
+
+| | 352-pkg | 29-pkg |
+|---|---|---|
+| Depth-1 neighbourhood | median **7**, p90 25, max 151 | median 2, max 11 |
+| Depth-2 neighbourhood | median **172**, p90 209 | max 25 |
+| Over 60 nodes at depth 2 | **212 of 352** | 0 of 29 |
+| Transitive reverse closure | median 20, p90 111, max 178 | — |
+| Distinct paths to a root, `setuptools` | **>2000** | — |
+
+So: **depth 1 is drawable and depth 2 is a hairball**, and paths cannot be enumerated at all. The
+view is drawn at depth 1, depth is navigated by re-centring, and the transitive question is answered
+by two numbers. A graph library would have been the eleventh runtime dependency, a
+`THIRD-PARTY-NOTICES.md` edit that re-shows the legal gate, an npm-audit surface and a CSP argument
+— and would not have made 172 nodes readable. **Zero new dependencies.**
+
+**Rust's answer differed from the prototype's, which is the argument for where this lives.** The
+throwaway Python that took the measurements skipped only extra-gated edges. Rust, evaluating
+`python_version` as well, reports **1858** in-force edges rather than 1893 — and **one** unsatisfied
+requirement rather than seven. The other six are backports gated on a Python this environment is
+not. Counting raw `Requires-Dist` names would have shipped a healthy environment described as
+broken.
+
+**Measured in `--release`** on that environment: probe 605 ms, graph build **1.8 ms**, whole-view
+computation **43 ms**, payload **249 KB**. Having `reach` walk `forward` itself takes the view to
+31.4 ms — 11 ms, or **1.8% of a probe the user is already waiting for**, in exchange for a second
+copy of the in-force-and-installed rule. Declined; the number is in `reach`'s doc so it is not
+re-litigated.
+
+**UI-SPEC §4 was corrected rather than followed.** It said the third row action would fold
+pin/uninstall/details into a `⋮` menu "with the budget intact". It does not: a menu makes uninstall
+four clicks where §5's table records three, hand-counted, for the second most destructive action in
+the app. Four is under the ceiling of five, which is precisely why the ceiling alone would have
+allowed it — **a ceiling is not a ratchet, and a table of measured counts is.** Three inline buttons
+cost nothing, because the row is the only tab stop and its controls are a roving sequence.
+
+**Three defects found by mutation rather than by writing tests.** A column helper keyed on copy
+matched nothing once the heading pluralised — "2 packages *require* this", not "requires" — and the
+test passed by finding the singular case. A name-only comparison of the dependents column survived
+a mutation that dropped the version and the specifier from every row. And the App-level test's
+first draft asserted against a **licence agreement**: `App` calls `checkConsent()` on mount and
+`useLegalStore.check` fails closed, so `accepted: true` in the store is undone a tick later and the
+gate replaces the whole shell. The store had reached `phase: 'ready'` with the graph in hand the
+entire time. That is the browser recipe's own warning, met in its jsdom form.
+
+**The invalidation this slice was warned about, and hit.** `freshGraph` keys on `envHash`, which a
+mutation does not change, so an install would have left last-hour's edges on screen looking correct.
+`App.tsx` resets the slice in `onFinished`. Health and Security guard and never reset because
+nothing they read is altered by an install; edges are exactly what an install alters.
+
+**Deliberately not done.** No `pipdock deps` — the P1-A..D precedent, and the core functions are in
+`graph/` so a subcommand is later trivial. No tree widget: re-centring already navigates depth. No
+node-link diagram at any depth. No graph for packages that are not installed — there is no
+`Requires-Dist` to read.
+
+**Still owner-verifiable only.** The browser pane could not reach `localhost` in this session, so
+the live drive was replaced by an App-level test against a logging bridge. That reaches everything
+except the Rust side of the command and the real window; `deps_graph`'s argument name is the usual
+runtime-only risk, and it is the same `{ env }` shape `pkg_list` has shipped since M2.
 
 ### Four items decomposed, easiest first
 
