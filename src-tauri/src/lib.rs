@@ -251,4 +251,26 @@ mod tests {
             "NOT_YET lists commands that exist: {stale:?}"
         );
     }
+
+    #[test]
+    fn the_architecture_table_is_well_formed() {
+        // [`documented`] strips only the *leading* pipe, so a row missing its trailing one
+        // parses fine and renders wrong. `audit_run` shipped that way in 1.2.0 and no gate
+        // could see it: the command was registered, declared and documented, and the only
+        // thing broken was the markdown. Assert the shape as well as the contents.
+        let src = include_str!("../../docs/ARCHITECTURE.md");
+        let start = src
+            .find("| Command | Returns | Purpose |")
+            .expect("ARCHITECTURE §7's command table exists");
+        let ragged: Vec<&str> = src[start..]
+            .lines()
+            .skip(2)
+            .take_while(|l| l.starts_with("| `"))
+            .filter(|l| !l.trim_end().ends_with('|'))
+            .collect();
+        assert!(
+            ragged.is_empty(),
+            "ARCHITECTURE §7 rows missing a trailing pipe: {ragged:?}"
+        );
+    }
 }
