@@ -268,6 +268,74 @@ export type DeclaredSource =
   | { kind: 'none' };
 
 /**
+ * One edge of the dependency graph, seen from a focused package.
+ *
+ * `pkg` is always the **other end** of the edge and `constraint` always the specifier written on
+ * it, so one type serves both directions: in a dependents column `pkg` is who requires the focus,
+ * in a dependencies column it is what the focus requires. `version` is that package's installed
+ * version.
+ *
+ * Three fields identical to [`BrokenDependent`], and deliberately a separate type. That one is
+ * about *breakage* — its doc is written for the uninstall dialog and its `Ord` exists for the
+ * dedup in [`ReverseDeps::breaking_dependents`] — so reusing it here would have a dependencies
+ * column claim every dependency is a broken dependent. The `From` impl below is the bridge, and
+ * [`ReverseDeps::edges_to`] goes through it precisely so the two cannot drift.
+ *
+ * `constraint` is the **bare specifier tail** — `"<2,>=1.26.0"`, never `"numpy<2,>=1.26.0"` — for
+ * [`BrokenDependent`]'s reason. The other half of the sentence is the focused package, which the
+ * caller already has; Rust emits data and each head writes its own sentence (I18N §1). An empty
+ * string means unconstrained, which is a different statement from "no edge" and the view says so.
+ */
+export interface DepEdge {
+  /** The version specifier written on the edge. Empty when unconstrained. */
+  constraint: string;
+  /** The package at the other end of the edge. */
+  pkg: PkgName;
+  /** Its installed version, when the graph knows it. */
+  version?: string | null;
+}
+
+/**
+ * The in-force dependency graph of one environment (PRD P1-6).
+ *
+ * Keyed by package name, one entry per installed distribution. Produced by
+ * [`ReverseDeps::view`]; see its doc for why this crosses the bridge whole rather than a package
+ * at a time, and why nothing here is capped.
+ */
+export interface DepsGraph {
+  /** Every installed package, including those with no edges in either direction. */
+  nodes: Record<string, DepsNode>;
+}
+
+/**
+ * Everything a focus view needs about one installed package.
+ *
+ * `impact` and `reach` are the pair the view exists for. Every other question PipDock answers
+ * about the graph is single-hop — the uninstall guard, blocker attribution and pin auto-suggest
+ * all look one edge out — so the only thing a dependency view adds over shipped behaviour is
+ * **transitive** reach, and it is a number rather than a picture because the picture does not
+ * survive the scale: measured on the 352-package fixture, a depth-2 neighbourhood is a median of
+ * 172 nodes and exceeds 60 for 212 of 352 packages.
+ */
+export interface DepsNode {
+  /** Installed packages this one requires, in force. */
+  dependencies: DepEdge[];
+  /** Installed packages that require this one, with the constraint each declared. */
+  dependents: DepEdge[];
+  /**
+   * How many packages would be left broken if this one went, transitively. The size of
+   * [`ReverseDeps::removal_closure`] without the package itself.
+   */
+  impact: number;
+  /** How many installed packages this one pulls in, transitively. */
+  reach: number;
+  /** In-force requirements with nothing installed to satisfy them. */
+  unsatisfied?: PkgName[];
+  /** The package's own installed version. */
+  version?: string | null;
+}
+
+/**
  * One deptry violation, grouped by the dependency it is about.
  *
  * **deptry emits a flat list**, one object per `(code, module, location)`:

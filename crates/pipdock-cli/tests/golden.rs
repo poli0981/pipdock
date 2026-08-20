@@ -46,6 +46,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "CacheUsage",
     "CacheTarget",
     "GuardReport",
+    "DepsGraph",
     "Diff",
     "SnapshotMeta",
     "EngineInfo",

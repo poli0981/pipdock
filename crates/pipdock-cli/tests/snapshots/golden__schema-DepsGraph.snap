@@ -1,0 +1,105 @@
+---
+source: crates/pipdock-cli/tests/golden.rs
+expression: out
+---
+{
+  "$defs": {
+    "DepEdge": {
+      "description": "One edge of the dependency graph, seen from a focused package.\n\n`pkg` is always the **other end** of the edge and `constraint` always the specifier written on\nit, so one type serves both directions: in a dependents column `pkg` is who requires the focus,\nin a dependencies column it is what the focus requires. `version` is that package's installed\nversion.\n\nThree fields identical to [`BrokenDependent`], and deliberately a separate type. That one is\nabout *breakage* — its doc is written for the uninstall dialog and its `Ord` exists for the\ndedup in [`ReverseDeps::breaking_dependents`] — so reusing it here would have a dependencies\ncolumn claim every dependency is a broken dependent. The `From` impl below is the bridge, and\n[`ReverseDeps::edges_to`] goes through it precisely so the two cannot drift.\n\n`constraint` is the **bare specifier tail** — `\"<2,>=1.26.0\"`, never `\"numpy<2,>=1.26.0\"` — for\n[`BrokenDependent`]'s reason. The other half of the sentence is the focused package, which the\ncaller already has; Rust emits data and each head writes its own sentence (I18N §1). An empty\nstring means unconstrained, which is a different statement from \"no edge\" and the view says so.",
+      "properties": {
+        "constraint": {
+          "description": "The version specifier written on the edge. Empty when unconstrained.",
+          "type": "string"
+        },
+        "pkg": {
+          "$ref": "#/$defs/PkgName",
+          "description": "The package at the other end of the edge."
+        },
+        "version": {
+          "description": "Its installed version, when the graph knows it.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "pkg",
+        "constraint"
+      ],
+      "type": "object"
+    },
+    "DepsNode": {
+      "description": "Everything a focus view needs about one installed package.\n\n`impact` and `reach` are the pair the view exists for. Every other question PipDock answers\nabout the graph is single-hop — the uninstall guard, blocker attribution and pin auto-suggest\nall look one edge out — so the only thing a dependency view adds over shipped behaviour is\n**transitive** reach, and it is a number rather than a picture because the picture does not\nsurvive the scale: measured on the 352-package fixture, a depth-2 neighbourhood is a median of\n172 nodes and exceeds 60 for 212 of 352 packages.",
+      "properties": {
+        "dependencies": {
+          "description": "Installed packages this one requires, in force.",
+          "items": {
+            "$ref": "#/$defs/DepEdge"
+          },
+          "type": "array"
+        },
+        "dependents": {
+          "description": "Installed packages that require this one, with the constraint each declared.",
+          "items": {
+            "$ref": "#/$defs/DepEdge"
+          },
+          "type": "array"
+        },
+        "impact": {
+          "description": "How many packages would be left broken if this one went, transitively. The size of\n[`ReverseDeps::removal_closure`] without the package itself.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "reach": {
+          "description": "How many installed packages this one pulls in, transitively.",
+          "format": "uint",
+          "minimum": 0,
+          "type": "integer"
+        },
+        "unsatisfied": {
+          "description": "In-force requirements with nothing installed to satisfy them.",
+          "items": {
+            "$ref": "#/$defs/PkgName"
+          },
+          "type": "array"
+        },
+        "version": {
+          "description": "The package's own installed version.",
+          "type": [
+            "string",
+            "null"
+          ]
+        }
+      },
+      "required": [
+        "dependents",
+        "dependencies",
+        "impact",
+        "reach"
+      ],
+      "type": "object"
+    },
+    "PkgName": {
+      "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
+      "type": "string"
+    }
+  },
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "description": "The in-force dependency graph of one environment (PRD P1-6).\n\nKeyed by package name, one entry per installed distribution. Produced by\n[`ReverseDeps::view`]; see its doc for why this crosses the bridge whole rather than a package\nat a time, and why nothing here is capped.",
+  "properties": {
+    "nodes": {
+      "additionalProperties": {
+        "$ref": "#/$defs/DepsNode"
+      },
+      "description": "Every installed package, including those with no edges in either direction.",
+      "type": "object"
+    }
+  },
+  "required": [
+    "nodes"
+  ],
+  "title": "DepsGraph",
+  "type": "object"
+}
