@@ -84,7 +84,11 @@ Rust cannot cheaply read a foreign env's installed metadata. PipDock embeds a si
 
 `hidden_user_site` is non-null only when `-I` is actually hiding packages from the listing — see SECURITY §2 for the decision and the UI note it drives.
 
-From `requires_dist` the core builds the **reverse-dependency graph** used by: held-back attribution, uninstall guard, and pin auto-suggest. The helper is written to a temp file per invocation and never installed into the env. Compatibility floor: Python 3.10 (uses `importlib.metadata` only).
+From `requires_dist` the core builds the **reverse-dependency graph** used by: held-back attribution, uninstall guard, pin auto-suggest, and the dependency view (P1-6). The helper is written to a temp file per invocation and never installed into the env. Compatibility floor: Python 3.10 (uses `importlib.metadata` only).
+
+`ReverseDeps` holds **both directions** as of 1.3.0. The first three consumers each look exactly one edge out and only ever asked "who depends on this", so the forward map was never needed; the dependency view asks the other question. Both are built in the same pass from the same parse and filtered by the same `Requirement::applies_in`, and `edges_to` is a projection of `breaking_dependents` rather than a second walk — so the dependents column and the uninstall guard are the same set **by construction**. Two features applying two edge rules is the failure this module exists to prevent, and a second traversal is how it would happen.
+
+**The graph crosses the bridge whole, once per environment** (`deps_graph` → `DepsGraph`), not a package at a time. The view re-centres on a click, so a per-package command would pay the probe again for each one; measured in `--release` on a 352-package environment, the probe is 605 ms while building the graph is 1.8 ms and computing every node's transitive counts is 43 ms, for a 249 KB payload. Nothing about which edges are in force is recomputed in the frontend — marker evaluation and extra-gating live in `graph/markers.rs`, and a JavaScript reimplementation would drift from the guard the user is warned by.
 
 ## 5. Index & metadata
 

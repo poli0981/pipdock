@@ -75,10 +75,21 @@ empty panel would be the same empty gesture the plain-text version was. The **co
 
 **Environments.** Auto-discovered list (source chip: registry / py launcher / uv / manual) with python version and package count; PEP 668 envs carry a red `MANAGED` chip and a disabled state explaining PD-ENV-002. Actions: *Browse…*, *Rescan*, star-as-default.
 
-**Installed.** Virtualized table: name (mono) · version · latest · size · chips. When the env's `hidden_user_site` is non-null (non-venv system Pythons only — see SECURITY §2), an inline `--color-info` note above the table says user-account packages are not listed and names the path; it is informational, never a block, and never appears for a venv. Up-to-date rows use `--color-text-dim` (owner's "dimmed" requirement); outdated rows show an `UPDATE` badge; pinned rows a 🔒 `--color-info` chip. Row actions: pin/unpin and uninstall, as two inline buttons rather than a `⋮` menu. A menu would
-spend one click opening and one choosing, leaving one of §5's three for a confirm that has to name
-what breaks; "details" has no panel to open yet, and when it does all three fold into a menu with the
-budget intact. Neither button is a tab stop — the row is (see §8). Multi-select via checkboxes; bulk action bar appears on selection.
+**Installed.** Virtualized table: name (mono) · version · latest · size · chips. When the env's `hidden_user_site` is non-null (non-venv system Pythons only — see SECURITY §2), an inline `--color-info` note above the table says user-account packages are not listed and names the path; it is informational, never a block, and never appears for a venv. Up-to-date rows use `--color-text-dim` (owner's "dimmed" requirement); outdated rows show an `UPDATE` badge; pinned rows a 🔒 `--color-info` chip. Row actions: pin/unpin, uninstall, and **details**, as three inline buttons rather than a `⋮`
+menu. A menu would spend one click opening and one choosing, leaving one of §5's three for a confirm
+that has to name what breaks.
+
+**This paragraph used to say the opposite**, and the correction is worth keeping rather than
+overwriting. It said "details" had no panel to open yet, "and when it does all three fold into a
+menu with the budget intact". P1-6 built the panel and the fold was wrong: it makes uninstall
+`Installed → ⋮ → ✕ → Remove`, four clicks where §5's table records **three**, hand-counted, for the
+second most destructive action in the application. Four is under the ceiling of 5, which is exactly
+why the budget alone would have waved it through — a ceiling is not a ratchet, and a table of
+measured counts is. The third button costs nothing instead: the row is the only tab stop (§8), so
+its controls are a roving sequence rather than tab stops, and a third is one more arrow step, not
+200 more stops. Ordered non-destructive first — details, pin, remove.
+
+No button is a tab stop — the row is (see §8). Multi-select via checkboxes; bulk action bar appears on selection.
 
 **Updates.** Same table filtered to outdated, badge count in sidebar. Header: *Select all* (excludes pinned; shows "3 pinned excluded"), *Update selected*. After resolve → **Preview panel** replaces the table: grouped sections — *Will upgrade* (A `1.2 → 2.0`), *Will downgrade*, *Will install*, *New dependencies*, *Needs decision* (held-back in `--color-warn` with one-line blocker sentence; impossible in `--color-danger`). Each needs-decision row hosts a segmented control: **Keep compatible · Skip · Force latest** (Force opens an inline confirm naming what breaks). Footer: `Confirm (n changes)` / `Back`.
 
@@ -115,6 +126,30 @@ listing pins and it does that either way, so an error row about an advisory woul
 thing on it. Counts come from `graph::dependent_count`, which counts in-force edges only: the same
 set the uninstall guard warns about, because a user pinning on one rule and being warned on another
 is the failure worth designing against.
+
+**Dependencies** (surfaced under Installed → row → details): the focused package between two
+columns — what requires it, and what it requires — each row carrying the specifier written on that
+edge, and each clickable to re-centre. Below them, the two transitive counts: how many packages a
+removal would leave with a missing dependency, and how many the package pulls in itself. A
+requirement that nothing installed satisfies is called out; nothing else in PipDock reports one.
+
+**Drawn at depth 1, and depth is navigated rather than drawn.** Measured on the 352-package fixture
+before the screen was designed: a depth-1 neighbourhood is a median of **7** nodes and a p90 of 25,
+while depth 2 is a median of **172** and exceeds 60 nodes for **212 of 352 packages**. No layout
+algorithm makes 172 nodes legible, so the node-link diagram PRD P1-6's wording suggests would have
+cost an eleventh runtime dependency, a `THIRD-PARTY-NOTICES.md` edit that re-shows the legal gate,
+and a CSP argument — `tauri.conf.json` sets no `script-src`, so anything reaching for `eval` is
+refused — to buy a picture nobody could read. Paths are not offered at all: `setuptools` has more
+than **2000** distinct paths to a root in that environment, so "why is this here" has no
+path-shaped answer at this scale, and the honest answer is a count.
+
+Like Snapshots, it is a **mode** rather than a tab, for the reason below: `NAV_KEYS` is already
+nine, and a Dependencies entry would have to sit beside Installed to read as related — an insert.
+
+Columns are capped at `DEPS_ROWS_SHOWN` with the overflow counted from the **full** set, the
+`SUGGESTIONS_SHOWN` rule for its reason: `setuptools` has 150 dependents, and a column of 150 is a
+second package list. Nothing is carried by colour — §8's `forced-colors` block collapses `warn`,
+`danger` and `info` to `CanvasText`, so every specifier is present as text.
 
 **Snapshots** (surfaced under Environments → env detail): timeline of snapshots with trigger label, diff viewer (added/removed/changed in mono), `Rollback…` with its own preview per DATA-FLOW §8.
 
@@ -179,6 +214,7 @@ app lands. Counted by hand in the running app, never inferred from the markup.
 | Run Code Health | **3** | Health → Run (folder persisted) → view (**4** the first time in a project: Health → *Choose folder…* → the OS dialog, which is not PipDock's click → Run → view. The folder is remembered per environment from then on.) |
 | Fix ruff findings | **3** | ruff tab → *Fix N…* → *Fix* (from a report already on screen; **5** from the landing screen with a folder remembered, which is the owner's ceiling). Cancel holds default focus, so `Enter` without `Tab` cancels. |
 | Run a security audit | **2** | Security → *Run audit*. Counted in the running app against a stubbed bridge. The first run also builds the audit environment, which is a wait rather than a click. |
+| See what depends on a package | **2** | Installed → row `⇄` (Installed is not the landing screen, so its tab click counts). Re-centring on a neighbour is one more click and no fetch — the graph is one value per environment. |
 | Upgrade pip | **2** | *Upgrade pip* → *Upgrade* (Environments is the landing screen, so no tab click). The button appears only when pip is below the 22.2 planner floor — the case the ordinary Updates path cannot fix, because the planner it needs will not run. |
 
 ### Shell rules established by the first installed build (2026-08-13)
@@ -220,6 +256,8 @@ modal §7's destructive confirms need), `PdUninstallDialog` (§5's three options
 🔒 chip, shared by the table and the Pins screen), `PdRollbackPreview` (DATA-FLOW §8's preview,
 including its `PD-SNP-002` list) and `PdAuditReport` (P1-1's advisory list). Three more shipped in
 1.1.0 and are named nowhere in this section: `PdCacheUsage`, `PdPalette` and `PdRequirements`.
+`PdDepsFocus` (1.3.0, PRD P1-6's focus view) makes **ten** off-list components; it is written here
+in the same breath as the count so the two cannot drift apart again.
 
 ## 7. States & feedback
 
