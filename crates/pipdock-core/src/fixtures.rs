@@ -229,6 +229,20 @@ fn guard_report() -> crate::graph::GuardReport {
     ])
 }
 
+/// What `deps_graph` returns for the same scenario — PRD P1-6.
+///
+/// **Computed, not written**, for [`guard_report`]'s reason and with [`numpy_blockers`]'s lesson
+/// behind it. Hand-writing this map would let the graph's rules — marker evaluation, the
+/// extra-only exclusion, the dedup, the split between a dependency and an unsatisfied requirement
+/// — drift away from what `PdDepsFocus` is tested against, and the drift would be invisible
+/// because the test would still assert something plausible.
+///
+/// The SP-5 tangle is the right set for it: `numpy` has two dependents declaring two different
+/// specifiers, which is the case both columns exist to show.
+fn deps_graph() -> crate::graph::DepsGraph {
+    crate::graph::ReverseDeps::build_for(&pkg_list(), "3.12.4").view()
+}
+
 /// What `snapshot_list` returns: one of each trigger, newest first.
 ///
 /// All three on purpose. A `Rollback` entry *restoring* the `Plan` entry above it is the shape
@@ -575,6 +589,7 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("flow_step.json", render(&flow_step())?),
         ("execution_summary.json", render(&execution_summary())?),
         ("guard_report.json", render(&guard_report())?),
+        ("deps_graph.json", render(&deps_graph())?),
         ("snapshot_list.json", render(&snapshot_list())?),
         ("rollback_preview.json", render(&rollback_preview())?),
         ("health_report.json", render(&health_report())?),

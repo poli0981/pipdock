@@ -96,6 +96,7 @@
     "actions": {
       "pin": "Ghim gói này",
       "unpin": "Bỏ ghim",
+      "details": "Xem phụ thuộc",
       "uninstall": "Gỡ gói này",
       "updateSelected": "Cập nhật các gói đã chọn",
       "clearSelection": "Bỏ chọn"
@@ -112,6 +113,21 @@
     "noEnvironmentHint": "Hãy chọn một môi trường ở màn hình Môi trường.",
     "outdatedFailed": "Không kiểm tra được cập nhật, nên chưa gói nào được gắn nhãn.",
     "orphanOutdated_other": "{{count}} gói có bản cập nhật nhưng không có trong danh sách này."
+  },
+  "deps": {
+    "title": "Ph\u1ee5 thu\u1ed9c",
+    "back": "Quay l\u1ea1i danh s\u00e1ch g\u00f3i",
+    "loading": "\u0110ang \u0111\u1ecdc ph\u1ee5 thu\u1ed9c c\u1ee7a m\u00f4i tr\u01b0\u1eddng n\u00e0y\u2026",
+    "dependents_other": "{{count}} g\u00f3i c\u1ea7n g\u00f3i n\u00e0y",
+    "dependencies_other": "C\u1ea7n {{count}} g\u00f3i",
+    "more_other": "C\u00f2n {{count}} m\u1ee5c kh\u00f4ng hi\u1ec3n th\u1ecb",
+    "none": "Kh\u00f4ng c\u00f3 g\u00ec \u1edf \u0111\u00e2y",
+    "unconstrained": "(phi\u00ean b\u1ea3n b\u1ea5t k\u1ef3)",
+    "focusOn": "Xem {{pkg}}",
+    "impact_other": "G\u1ee1 g\u00f3i n\u00e0y s\u1ebd l\u00e0m {{count}} g\u00f3i thi\u1ebfu ph\u1ee5 thu\u1ed9c.",
+    "reach_other": "G\u00f3i n\u00e0y k\u00e9o theo {{count}} g\u00f3i kh\u00e1c.",
+    "unsatisfied_other": "{{count}} y\u00eau c\u1ea7u kh\u00f4ng c\u00f3 g\u00f3i n\u00e0o \u0111\u00e1p \u1ee9ng: {{packages}}",
+    "unknownPackage": "{{pkg}} kh\u00f4ng c\u00f3 trong danh s\u00e1ch c\u1ee7a m\u00f4i tr\u01b0\u1eddng n\u00e0y."
   },
   "plan": {
     "section": {

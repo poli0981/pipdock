@@ -19,7 +19,7 @@ import { PdSearch } from '@/screens/PdSearch'
 import { PdSecurity } from '@/screens/PdSecurity'
 import { PdSettings } from '@/screens/PdSettings'
 import { PANEL_PHASES } from '@/stores/plan'
-import { useEnvStore, useLegalStore, usePlanStore, useUiStore } from '@/stores'
+import { useDepsStore, useEnvStore, useLegalStore, usePlanStore, useUiStore } from '@/stores'
 
 /**
  * Which screen each tab shows. A lookup rather than a ternary chain: the chain's last branch was a
@@ -66,6 +66,7 @@ export function App() {
   const widen = usePlanStore((s) => s.widen)
   const confirmUninstall = usePlanStore((s) => s.confirmUninstall)
   const resetPlan = usePlanStore((s) => s.reset)
+  const resetDeps = useDepsStore((s) => s.reset)
   const guardOpen = planPhase === 'guard' && guard !== null
   const mainRef = useRef<HTMLElement>(null)
   // Shell state, like `nav` — but local, because nothing outside this component reads it.
@@ -181,6 +182,12 @@ export function App() {
                 // panel is stale the moment the run finishes. `force`, because `snapshotsFor`
                 // still matches and would suppress the refetch.
                 void loadSnapshots(true)
+                // The graph is stale too, and this is the one slice whose freshness guard cannot
+                // see it: `freshGraph` keys on `envHash`, which a mutation does not change. Health
+                // and Security guard and never reset because nothing they read is altered by an
+                // install; edges are exactly what an install alters. Cleared rather than
+                // refetched, so the probe is paid again only if the view is opened again.
+                resetDeps()
               }}
             />
           ) : (SCREENS[nav] ?? (

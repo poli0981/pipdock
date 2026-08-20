@@ -16,9 +16,10 @@ import { useTranslation } from 'react-i18next'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdPackageTable } from '@/components/PdPackageTable'
+import { PdDeps } from '@/screens/PdDeps'
 import { outdatedOnly, selectableForUpdate } from '@/screens/rows'
 import { useEnvPackages } from '@/screens/useEnvPackages'
-import { useEnvStore, usePlanStore } from '@/stores'
+import { useDepsStore, useEnvStore, usePlanStore } from '@/stores'
 
 interface PdPackagesProps {
   mode: 'installed' | 'updates'
@@ -38,6 +39,10 @@ export function PdPackages({ mode }: PdPackagesProps) {
   const outdatedStatus = useEnvStore((s) => s.outdatedStatus)
   const outdatedError = useEnvStore((s) => s.outdatedError)
   const selection = useEnvStore((s) => s.selection)
+  // UI-SPEC §4's "details", which had no panel to open until P1-6. A *mode* of this screen rather
+  // than a tab, exactly as Snapshots is a mode of Environments — see `PdDeps` for why.
+  const depsFocus = useDepsStore((s) => s.focus)
+  const openDeps = useDepsStore((s) => s.open)
   const toggle = useEnvStore((s) => s.toggle)
   const selectAll = useEnvStore((s) => s.selectAll)
   const clearSelection = useEnvStore((s) => s.clearSelection)
@@ -72,6 +77,11 @@ export function PdPackages({ mode }: PdPackagesProps) {
   )
 
   useEnvPackages()
+
+  // Before the `selected === null` branch below: the dependency view reads the same environment
+  // and renders its own "no environment" case, and putting it after would flash the table's empty
+  // state over a view the user had open.
+  if (depsFocus !== null) return <PdDeps />
 
   const visible = mode === 'updates' ? outdatedOnly(packages) : packages
   const { selectable, pinnedExcluded } = selectableForUpdate(visible)
@@ -204,6 +214,7 @@ export function PdPackages({ mode }: PdPackagesProps) {
             onToggle={toggle}
             onPinToggle={pinToggle}
             onUninstall={uninstall}
+            onDetails={openDeps}
             onSelectAll={() => {
               selectAll(selectable)
             }}

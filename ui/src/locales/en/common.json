@@ -97,6 +97,7 @@
     "actions": {
       "pin": "Pin this package",
       "unpin": "Remove this pin",
+      "details": "Show dependencies",
       "uninstall": "Remove this package",
       "updateSelected": "Update selected",
       "clearSelection": "Clear"
@@ -116,6 +117,27 @@
     "outdatedFailed": "Could not check for updates, so nothing is badged.",
     "orphanOutdated_one": "{{count}} package has an update but is not in this listing.",
     "orphanOutdated_other": "{{count}} packages have updates but are not in this listing."
+  },
+  "deps": {
+    "title": "Dependencies",
+    "back": "Back to packages",
+    "loading": "Reading this environment's dependencies\u2026",
+    "dependents_one": "{{count}} package requires this",
+    "dependents_other": "{{count}} packages require this",
+    "dependencies_one": "Requires {{count}} package",
+    "dependencies_other": "Requires {{count}} packages",
+    "more_one": "{{count}} more not shown",
+    "more_other": "{{count}} more not shown",
+    "none": "Nothing here",
+    "unconstrained": "(any version)",
+    "focusOn": "Show {{pkg}}",
+    "impact_one": "Removing this would leave {{count}} package with a missing dependency.",
+    "impact_other": "Removing this would leave {{count}} packages with a missing dependency.",
+    "reach_one": "It pulls in {{count}} package of its own.",
+    "reach_other": "It pulls in {{count}} packages of its own.",
+    "unsatisfied_one": "{{count}} requirement has nothing installed to satisfy it: {{packages}}",
+    "unsatisfied_other": "{{count}} requirements have nothing installed to satisfy them: {{packages}}",
+    "unknownPackage": "{{pkg}} is not in this environment's listing."
   },
   "plan": {
     "section": {

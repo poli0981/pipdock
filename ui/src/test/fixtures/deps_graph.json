@@ -1,0 +1,75 @@
+{
+  "nodes": {
+    "certifi": {
+      "version": "2024.2.2",
+      "dependents": [],
+      "dependencies": [],
+      "impact": 0,
+      "reach": 0
+    },
+    "editable-lib": {
+      "version": "0.3.0",
+      "dependents": [],
+      "dependencies": [],
+      "impact": 0,
+      "reach": 0
+    },
+    "numpy": {
+      "version": "1.26.4",
+      "dependents": [
+        {
+          "pkg": "pandas",
+          "version": "2.1.4",
+          "constraint": "<2,>=1.26.0"
+        },
+        {
+          "pkg": "scipy",
+          "version": "1.11.4",
+          "constraint": "<1.28.0,>=1.21.6"
+        }
+      ],
+      "dependencies": [],
+      "impact": 2,
+      "reach": 0
+    },
+    "pandas": {
+      "version": "2.1.4",
+      "dependents": [],
+      "dependencies": [
+        {
+          "pkg": "numpy",
+          "version": "1.26.4",
+          "constraint": "<2,>=1.26.0"
+        }
+      ],
+      "impact": 0,
+      "reach": 1,
+      "unsatisfied": [
+        "python-dateutil"
+      ]
+    },
+    "requests": {
+      "version": "2.28.0",
+      "dependents": [],
+      "dependencies": [],
+      "impact": 0,
+      "reach": 0,
+      "unsatisfied": [
+        "urllib3"
+      ]
+    },
+    "scipy": {
+      "version": "1.11.4",
+      "dependents": [],
+      "dependencies": [
+        {
+          "pkg": "numpy",
+          "version": "1.26.4",
+          "constraint": "<1.28.0,>=1.21.6"
+        }
+      ],
+      "impact": 0,
+      "reach": 1
+    }
+  }
+}

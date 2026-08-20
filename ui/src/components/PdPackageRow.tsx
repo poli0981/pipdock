@@ -29,6 +29,8 @@ interface PdPackageRowProps {
   onToggle: (name: string) => void
   onPinToggle: (name: string) => void
   onUninstall: (name: string) => void
+  /** Open the dependency view focused on this package — UI-SPEC §4's "details" (PRD P1-6). */
+  onDetails: (name: string) => void
   /** The virtualizer's absolute positioning. */
   style: React.CSSProperties
 }
@@ -41,6 +43,7 @@ function Row({
   onToggle,
   onPinToggle,
   onUninstall,
+  onDetails,
   style,
 }: PdPackageRowProps) {
   const { t, i18n } = useTranslation()
@@ -144,13 +147,31 @@ function Row({
       </span>
 
       {/* UI-SPEC §5's 3-click uninstall: this is the first click, *Remove* in the dialog is the
-          third. Two inline buttons rather than the `⋮` menu §4 describes — a menu would spend the
-          first click opening it and the second choosing, leaving one for a confirm that has to
-          name what breaks, and §4's third entry ("details") has no panel to open yet. When it
-          does, these fold into the menu and the budget still holds.
+          third.
 
-          Neither is a tab stop: the row is (see onKeyDown). Two hundred rows times three stops is
-          not traversal. They stay clickable and stay announced. */}
+          §4 used to say the third action would fold all three into a `⋮` menu. **It does not**,
+          and that is a deliberate correction rather than an oversight. A menu spends one click
+          opening and one choosing, so uninstall would become Installed → ⋮ → ✕ → *Remove*: four
+          clicks where §5's table records three, hand-counted, for the second most destructive
+          thing in the app. The ceiling is 5 and 4 would still be under it, which is exactly why
+          the budget alone would have let this through.
+
+          A third inline button costs nothing instead. The row is the only tab stop (see
+          onKeyDown), so the controls are a roving sequence rather than tab stops — a third one
+          adds a left/right step, not 200 more stops. Ordered non-destructive first: details, pin,
+          remove. */}
+      <button
+        type="button"
+        tabIndex={-1}
+        onClick={() => {
+          onDetails(row.name)
+        }}
+        aria-label={t('packages.actions.details')}
+        title={t('packages.actions.details')}
+        className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
+      >
+        {'⇄'}
+      </button>
       <button
         type="button"
         tabIndex={-1}
