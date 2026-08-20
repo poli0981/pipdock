@@ -696,6 +696,15 @@ export {
   type SecurityState,
 } from '@/stores/security'
 
+// The dependency view, in its own file for the same reason as Code Health.
+export {
+  freshGraph,
+  nodeOf,
+  useDepsStore,
+  type DepsPhase,
+  type DepsState,
+} from '@/stores/deps'
+
 // Search and the dock bay, in their own file for the same reason as the plan store.
 export {
   SEARCH_DEBOUNCE_MS,

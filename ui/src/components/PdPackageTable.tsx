@@ -26,6 +26,8 @@ interface PdPackageTableProps {
   onToggle: (name: string) => void
   onPinToggle: (name: string) => void
   onUninstall: (name: string) => void
+  /** Open the dependency view focused on a package — PRD P1-6. */
+  onDetails: (name: string) => void
   /**
    * Select every selectable row in the **current filtered set**, not just the rendered window.
    *
@@ -48,6 +50,7 @@ export function PdPackageTable({
   onToggle,
   onPinToggle,
   onUninstall,
+  onDetails,
   onSelectAll,
   initialRect,
 }: PdPackageTableProps) {
@@ -127,6 +130,7 @@ export function PdPackageTable({
                 onToggle={onToggle}
                 onPinToggle={onPinToggle}
                 onUninstall={onUninstall}
+                onDetails={onDetails}
                 style={{
                   height: `${String(ROW_HEIGHT)}px`,
                   transform: `translateY(${String(item.start)}px)`,

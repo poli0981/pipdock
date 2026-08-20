@@ -33,6 +33,7 @@ function setup(overrides: Partial<Parameters<typeof PdPackageTable>[0]> = {}) {
     onToggle: vi.fn(),
     onPinToggle: vi.fn(),
     onUninstall: vi.fn(),
+    onDetails: vi.fn(),
     onSelectAll: vi.fn(),
     initialRect: { width: 1280, height: 600 },
     ...overrides,
