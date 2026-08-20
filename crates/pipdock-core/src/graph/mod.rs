@@ -111,6 +111,13 @@ fn is_specifier_start(c: char) -> bool {
 pub struct ReverseDeps {
     /// `dependency -> [(dependent, the requirement it declared)]`.
     edges: BTreeMap<PkgName, Vec<(PkgName, Requirement)>>,
+    /// `dependent -> [the requirements it declared]` — the same edges the other way up.
+    ///
+    /// Held rather than derived because deriving it means scanning every value of `edges` for
+    /// one package, which is O(edges) per lookup where this is O(1); the whole-graph view asks
+    /// once per installed package. Built in the same pass, from the same parse, filtered by the
+    /// same rule — a second traversal is how the two directions would come to disagree.
+    forward: BTreeMap<PkgName, Vec<Requirement>>,
     /// Installed versions, so attribution can name `apiclient 1.4` rather than bare `apiclient`.
     versions: BTreeMap<PkgName, String>,
     /// The interpreter these requirements are read against, when known. `None` disables marker
@@ -135,6 +142,7 @@ impl ReverseDeps {
     #[must_use]
     pub fn build(dists: &[Dist]) -> Self {
         let mut edges: BTreeMap<PkgName, Vec<(PkgName, Requirement)>> = BTreeMap::new();
+        let mut forward: BTreeMap<PkgName, Vec<Requirement>> = BTreeMap::new();
         let mut versions = BTreeMap::new();
 
         for dist in dists {
@@ -148,6 +156,10 @@ impl ReverseDeps {
                 if req.name == dist.name {
                     continue;
                 }
+                forward
+                    .entry(dist.name.clone())
+                    .or_default()
+                    .push(req.clone());
                 edges
                     .entry(req.name.clone())
                     .or_default()
@@ -157,6 +169,7 @@ impl ReverseDeps {
 
         Self {
             edges,
+            forward,
             versions,
             env: None,
         }
@@ -312,6 +325,132 @@ impl ReverseDeps {
         seen.into_iter().collect()
     }
 
+    /// What `pkg` requires: in force, and installed.
+    ///
+    /// The forward mirror of [`Self::dependents_of`]. The two must filter by one rule or a focus
+    /// view's two columns describe the same edge differently, so both go through
+    /// [`Requirement::applies_in`] — which is also why neither can be recomputed in the frontend.
+    /// That restriction is not about phrasing (I18N §1); it is that PEP 508 marker evaluation and
+    /// the extra-gating rule live in [`markers`], and a second implementation would drift from the
+    /// guard the user is warned by.
+    ///
+    /// Requirements that are in force but **not installed** are excluded here and reported by
+    /// [`Self::unsatisfied`] instead. Two disjoint sets whose union is the in-force requirement
+    /// list, so no row has to carry an "is it actually there?" flag the reader must then interpret.
+    #[must_use]
+    pub fn requires_of(&self, pkg: &PkgName) -> Vec<DepEdge> {
+        let mut out: BTreeSet<DepEdge> = BTreeSet::new();
+        for req in self.forward.get(pkg).into_iter().flatten() {
+            if !req.applies_in(self.env.as_ref()) {
+                continue;
+            }
+            if let Some(version) = self.versions.get(&req.name) {
+                out.insert(DepEdge {
+                    pkg: req.name.clone(),
+                    version: Some(version.clone()),
+                    constraint: req.constraint.clone(),
+                });
+            }
+        }
+        out.into_iter().collect()
+    }
+
+    /// Who requires `pkg`, each with the constraint it declared.
+    ///
+    /// Deliberately a projection of [`Self::breaking_dependents`] rather than a second walk of
+    /// `edges`: the dependents column and the uninstall guard are then the same set by
+    /// construction, and cannot come to disagree about which edges count. That is the failure
+    /// this module exists to prevent — `ReverseDeps::build`'s doc records the last time two
+    /// features nearly applied two edge rules.
+    #[must_use]
+    pub fn edges_to(&self, pkg: &PkgName) -> Vec<DepEdge> {
+        self.breaking_dependents(pkg)
+            .into_iter()
+            .map(DepEdge::from)
+            .collect()
+    }
+
+    /// In-force requirements of `pkg` that no installed distribution satisfies.
+    ///
+    /// Nothing else in PipDock reports this. It is the one thing a dependency view can say that
+    /// the package list cannot, and it is only trustworthy because the markers are evaluated:
+    /// counting raw `Requires-Dist` names would report every `python_version < "3.11"` backport
+    /// as missing on 3.12 and make a healthy environment look broken.
+    #[must_use]
+    pub fn unsatisfied(&self, pkg: &PkgName) -> Vec<PkgName> {
+        let mut out: BTreeSet<PkgName> = BTreeSet::new();
+        for req in self.forward.get(pkg).into_iter().flatten() {
+            if req.applies_in(self.env.as_ref()) && !self.versions.contains_key(&req.name) {
+                out.insert(req.name.clone());
+            }
+        }
+        out.into_iter().collect()
+    }
+
+    /// How many installed packages `pkg` pulls in, transitively, excluding itself.
+    ///
+    /// The forward mirror of [`Self::removal_closure`], and cycle-safe for its reason: a package
+    /// enters the frontier at most once. `pkg` itself is never counted, so a dependency cycle
+    /// through it reports the same number an acyclic graph would.
+    ///
+    /// Goes through [`Self::requires_of`] rather than walking `forward` itself, and that was
+    /// measured rather than assumed. Walking `forward` directly takes the whole-graph
+    /// [`Self::view`] from **42.4 ms to 31.4 ms** on the 352-package fixture in `--release` — 11 ms
+    /// against a probe that costs 605 ms, so **1.8% of an operation the user waits for**, bought
+    /// with a second copy of the in-force-and-installed rule. This module exists because two
+    /// features applying two edge rules is the failure worth designing against; a 1.8% saving does
+    /// not buy that risk back.
+    #[must_use]
+    pub fn reach(&self, pkg: &PkgName) -> usize {
+        let mut seen: BTreeSet<PkgName> = BTreeSet::new();
+        let mut frontier = vec![pkg.clone()];
+        while let Some(current) = frontier.pop() {
+            for edge in self.requires_of(&current) {
+                if edge.pkg != *pkg && seen.insert(edge.pkg.clone()) {
+                    frontier.push(edge.pkg);
+                }
+            }
+        }
+        seen.len()
+    }
+
+    /// The whole graph, precomputed once per environment (PRD P1-6).
+    ///
+    /// **One value rather than one call per package**, because the alternative pays a 605 ms
+    /// probe on every re-centring click. Everything a focus view needs is decided here, in Rust,
+    /// with markers evaluated; the frontend indexes this map by name and computes nothing about
+    /// which edges are in force.
+    ///
+    /// Uncapped on purpose. `setuptools` has 150 dependents in the 352-package fixture, and the
+    /// view shows a bounded window — but the "+ N more" count has to come from the full set or a
+    /// capped view misreports a total, which is the rule `SUGGESTIONS_SHOWN` and `RUFF_ROWS_SHOWN`
+    /// already follow. Capping here would put that count out of reach.
+    ///
+    /// Every installed package gets a node, including the leaves: a package with no edges in
+    /// either direction is a fact worth rendering, not an absence to fall through on.
+    #[must_use]
+    pub fn view(&self) -> DepsGraph {
+        let nodes = self
+            .versions
+            .iter()
+            .map(|(pkg, version)| {
+                let node = DepsNode {
+                    version: Some(version.clone()),
+                    dependents: self.edges_to(pkg),
+                    dependencies: self.requires_of(pkg),
+                    impact: self
+                        .removal_closure(std::slice::from_ref(pkg))
+                        .len()
+                        .saturating_sub(1),
+                    reach: self.reach(pkg),
+                    unsatisfied: self.unsatisfied(pkg),
+                };
+                (pkg.clone(), node)
+            })
+            .collect();
+        DepsGraph { nodes }
+    }
+
     /// Evaluate the uninstall guard against a removal set (DATA-FLOW §5).
     #[must_use]
     pub fn guard(&self, removing: &[PkgName]) -> GuardReport {
@@ -401,6 +540,99 @@ impl GuardReport {
             .cloned()
             .collect()
     }
+}
+
+/// One edge of the dependency graph, seen from a focused package.
+///
+/// `pkg` is always the **other end** of the edge and `constraint` always the specifier written on
+/// it, so one type serves both directions: in a dependents column `pkg` is who requires the focus,
+/// in a dependencies column it is what the focus requires. `version` is that package's installed
+/// version.
+///
+/// Three fields identical to [`BrokenDependent`], and deliberately a separate type. That one is
+/// about *breakage* — its doc is written for the uninstall dialog and its `Ord` exists for the
+/// dedup in [`ReverseDeps::breaking_dependents`] — so reusing it here would have a dependencies
+/// column claim every dependency is a broken dependent. The `From` impl below is the bridge, and
+/// [`ReverseDeps::edges_to`] goes through it precisely so the two cannot drift.
+///
+/// `constraint` is the **bare specifier tail** — `"<2,>=1.26.0"`, never `"numpy<2,>=1.26.0"` — for
+/// [`BrokenDependent`]'s reason. The other half of the sentence is the focused package, which the
+/// caller already has; Rust emits data and each head writes its own sentence (I18N §1). An empty
+/// string means unconstrained, which is a different statement from "no edge" and the view says so.
+#[derive(
+    Debug,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    serde::Serialize,
+    serde::Deserialize,
+    schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct DepEdge {
+    /// The package at the other end of the edge.
+    pub pkg: PkgName,
+    /// Its installed version, when the graph knows it.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// The version specifier written on the edge. Empty when unconstrained.
+    pub constraint: String,
+}
+
+impl From<BrokenDependent> for DepEdge {
+    fn from(d: BrokenDependent) -> Self {
+        Self {
+            pkg: d.pkg,
+            version: d.version,
+            constraint: d.constraint,
+        }
+    }
+}
+
+/// Everything a focus view needs about one installed package.
+///
+/// `impact` and `reach` are the pair the view exists for. Every other question PipDock answers
+/// about the graph is single-hop — the uninstall guard, blocker attribution and pin auto-suggest
+/// all look one edge out — so the only thing a dependency view adds over shipped behaviour is
+/// **transitive** reach, and it is a number rather than a picture because the picture does not
+/// survive the scale: measured on the 352-package fixture, a depth-2 neighbourhood is a median of
+/// 172 nodes and exceeds 60 for 212 of 352 packages.
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct DepsNode {
+    /// The package's own installed version.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub version: Option<String>,
+    /// Installed packages that require this one, with the constraint each declared.
+    pub dependents: Vec<DepEdge>,
+    /// Installed packages this one requires, in force.
+    pub dependencies: Vec<DepEdge>,
+    /// How many packages would be left broken if this one went, transitively. The size of
+    /// [`ReverseDeps::removal_closure`] without the package itself.
+    pub impact: usize,
+    /// How many installed packages this one pulls in, transitively.
+    pub reach: usize,
+    /// In-force requirements with nothing installed to satisfy them.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub unsatisfied: Vec<PkgName>,
+}
+
+/// The in-force dependency graph of one environment (PRD P1-6).
+///
+/// Keyed by package name, one entry per installed distribution. Produced by
+/// [`ReverseDeps::view`]; see its doc for why this crosses the bridge whole rather than a package
+/// at a time, and why nothing here is capped.
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct DepsGraph {
+    /// Every installed package, including those with no edges in either direction.
+    pub nodes: BTreeMap<PkgName, DepsNode>,
 }
 
 /// Does `version` satisfy the PEP 440 specifier set `constraint`?
@@ -806,5 +1038,260 @@ mod tests {
         // The reason the guard runs once against the whole set rather than per package.
         let g = ReverseDeps::build(&[dist("x", "1.0", &[]), dist("y", "2.0", &["x>=1"])]);
         assert!(g.guard(&[pkg("x"), pkg("y")]).is_clear());
+    }
+    // --- P1-6: the dependency view -------------------------------------------------------
+
+    /// The environment the view tests share: a diamond, an extra-gated edge, a marker for
+    /// another Python, a requirement nothing satisfies, and a leaf.
+    fn env() -> Vec<Dist> {
+        vec![
+            dist(
+                "app",
+                "1.0",
+                &["lib>=2", "plot; extra == \"charts\"", "gone>=9"],
+            ),
+            dist("also", "1.0", &["lib<3"]),
+            dist("lib", "2.5", &["core", "old; python_version < \"3.0\""]),
+            dist("core", "0.9", &[]),
+            dist("plot", "4.0", &[]),
+            dist("leaf", "1.0", &[]),
+        ]
+    }
+
+    #[test]
+    fn the_two_directions_agree_edge_for_edge() {
+        // One rule, two directions. If these ever disagree, a focus view describes the same edge
+        // twice and differently, and its dependents column stops matching the guard the user is
+        // actually warned by.
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        let all: Vec<PkgName> = env().iter().map(|d| d.name.clone()).collect();
+
+        for from in &all {
+            for edge in g.requires_of(from) {
+                let back = g.edges_to(&edge.pkg);
+                assert!(
+                    back.iter()
+                        .any(|e| e.pkg == *from && e.constraint == edge.constraint),
+                    "{from} -> {} is missing from edges_to({})",
+                    edge.pkg,
+                    edge.pkg
+                );
+            }
+            for edge in g.edges_to(from) {
+                let fwd = g.requires_of(&edge.pkg);
+                assert!(
+                    fwd.iter()
+                        .any(|e| e.pkg == *from && e.constraint == edge.constraint),
+                    "{} -> {from} is missing from requires_of({})",
+                    edge.pkg,
+                    edge.pkg
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn an_extra_gated_edge_appears_in_neither_direction() {
+        // `plot` is installed, but `app` wants it only under `extra == "charts"`. Counting it
+        // would have the view claim a dependency the environment does not rely on — the rule
+        // `dependents_of` already applies, which is why both directions go through `applies_in`.
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        assert!(
+            !g.requires_of(&pkg("app"))
+                .iter()
+                .any(|e| e.pkg == pkg("plot"))
+        );
+        assert!(g.edges_to(&pkg("plot")).is_empty());
+    }
+
+    #[test]
+    fn a_marker_for_another_python_is_not_a_missing_dependency() {
+        // `lib` wants `old` only below Python 3.0, and `old` is not installed. Reporting it as
+        // unsatisfied on 3.12 would make a healthy environment look broken, which is exactly why
+        // this cannot be recomputed in the frontend from the raw strings.
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        assert!(g.unsatisfied(&pkg("lib")).is_empty());
+        // ...while a genuinely absent requirement still is one.
+        assert_eq!(g.unsatisfied(&pkg("app")), [pkg("gone")]);
+    }
+
+    #[test]
+    fn an_unsatisfied_requirement_is_never_also_a_dependency_row() {
+        // The two sets are disjoint by construction, so no row carries an "is it installed?"
+        // flag for the reader to interpret.
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        let deps: Vec<PkgName> = g
+            .requires_of(&pkg("app"))
+            .into_iter()
+            .map(|e| e.pkg)
+            .collect();
+        for missing in g.unsatisfied(&pkg("app")) {
+            assert!(!deps.contains(&missing), "{missing} is in both sets");
+        }
+    }
+
+    #[test]
+    fn reach_and_impact_count_transitively_and_exclude_the_package() {
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        // app -> lib -> core: two, not one, and `plot` is extra-gated so not three.
+        assert_eq!(g.reach(&pkg("app")), 2);
+        // core <- lib <- {app, also}: three.
+        assert_eq!(g.removal_closure(&[pkg("core")]).len() - 1, 3);
+        // A leaf is zero in both directions, which is a fact to render, not an absence.
+        assert_eq!(g.reach(&pkg("leaf")), 0);
+        assert_eq!(g.removal_closure(&[pkg("leaf")]).len() - 1, 0);
+    }
+
+    #[test]
+    fn reach_terminates_on_a_cycle_and_does_not_count_the_package_itself() {
+        // `removal_closure` has had this test since S3. `reach` is the same walk the other way
+        // and needs its own: a cycle through the focus would otherwise count it as its own
+        // transitive dependency.
+        let g = ReverseDeps::build(&[
+            dist("a", "1.0", &["b"]),
+            dist("b", "1.0", &["c"]),
+            dist("c", "1.0", &["a"]),
+        ]);
+        assert_eq!(g.reach(&pkg("a")), 2);
+        assert_eq!(g.removal_closure(&[pkg("a")]).len() - 1, 2);
+    }
+
+    #[test]
+    fn the_view_has_a_node_for_every_installed_package() {
+        // Including `leaf`, which has no edge in either direction. A view that fell through on
+        // those would leave 32 of the 352-package fixture with nothing to render.
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        let view = g.view();
+        assert_eq!(view.nodes.len(), env().len());
+        for d in env() {
+            assert!(view.nodes.contains_key(&d.name), "{} has no node", d.name);
+        }
+        let leaf = &view.nodes[&pkg("leaf")];
+        assert!(leaf.dependents.is_empty() && leaf.dependencies.is_empty());
+        assert_eq!(leaf.version.as_deref(), Some("1.0"));
+    }
+
+    #[test]
+    fn the_view_agrees_with_the_methods_it_is_built_from() {
+        // The view is what crosses the bridge; the methods are what every test above pins. If
+        // the two can differ, all of that is proved about something the user never sees — which
+        // is the shape of the fixture bug Slice 0 found.
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        for (name, node) in &g.view().nodes {
+            assert_eq!(node.dependents, g.edges_to(name), "{name} dependents");
+            assert_eq!(
+                node.dependencies,
+                g.requires_of(name),
+                "{name} dependencies"
+            );
+            assert_eq!(node.reach, g.reach(name), "{name} reach");
+            assert_eq!(node.unsatisfied, g.unsatisfied(name), "{name} unsatisfied");
+            assert_eq!(
+                node.impact,
+                g.removal_closure(std::slice::from_ref(name)).len() - 1,
+                "{name} impact"
+            );
+        }
+    }
+
+    #[test]
+    fn the_dependents_column_is_the_set_the_guard_warns_about() {
+        // `edges_to` projects `breaking_dependents` rather than walking `edges` again, so this
+        // holds by construction. Asserted anyway: it is the property that makes the projection
+        // worth having, and an "optimisation" that inlined the walk would break it silently.
+        let g = ReverseDeps::build_for(&env(), "3.12.10");
+        // Compared whole, not by name. Comparing names alone passed a mutation that dropped the
+        // version and the constraint from every row — the two halves of the sentence the column
+        // exists to show.
+        for d in env() {
+            let guarded: Vec<DepEdge> = g
+                .breaking_dependents(&d.name)
+                .into_iter()
+                .map(DepEdge::from)
+                .collect();
+            assert_eq!(g.edges_to(&d.name), guarded, "{} disagrees", d.name);
+        }
+    }
+    /// The shape of a real environment, which no synthetic fixture can supply.
+    ///
+    /// Everything above is built from six hand-written dists. This one runs the probe against a
+    /// live interpreter and reports what the graph actually looks like — the numbers that decided
+    /// the view is drawn at depth 1 and navigated beyond it. Opt-in, like `audit`'s live tests:
+    ///
+    /// ```text
+    /// PIPDOCK_GRAPH_PYTHON=C:\Python314\python.exe \
+    ///   cargo test -p pipdock-core --release --lib graph::tests::the_real_environment -- --ignored --nocapture
+    /// ```
+    ///
+    /// `--release` is not optional. A debug build measures bounds checks; the same slice measured
+    /// an index load at 572 ms in debug and 140 ms in release, and a design was justified on the
+    /// larger number before anyone noticed.
+    #[tokio::test]
+    #[ignore = "needs a real interpreter; run with --ignored and PIPDOCK_GRAPH_PYTHON"]
+    async fn the_real_environment() {
+        let Ok(exe) = std::env::var("PIPDOCK_GRAPH_PYTHON") else {
+            panic!("set PIPDOCK_GRAPH_PYTHON to an interpreter path");
+        };
+        let probed =
+            crate::envs::probe(std::path::Path::new(&exe), crate::model::EnvSource::Manual)
+                .await
+                .expect("probe succeeds");
+
+        let built = std::time::Instant::now();
+        let g = ReverseDeps::build_for(&probed.dists, &probed.env.python_version);
+        let build_ms = built.elapsed();
+
+        let viewed = std::time::Instant::now();
+        let view = g.view();
+        let view_ms = viewed.elapsed();
+
+        let json = serde_json::to_string(&view).expect("serializes");
+
+        let edges: usize = view.nodes.values().map(|n| n.dependencies.len()).sum();
+        let mut fan_in: Vec<usize> = view.nodes.values().map(|n| n.dependents.len()).collect();
+        let mut impacts: Vec<usize> = view.nodes.values().map(|n| n.impact).collect();
+        fan_in.sort_unstable();
+        impacts.sort_unstable();
+        let p = |v: &[usize], q: f64| v[((v.len() as f64 * q) as usize).min(v.len() - 1)];
+        let leaves = view
+            .nodes
+            .values()
+            .filter(|n| n.dependents.is_empty())
+            .count();
+        let missing: usize = view.nodes.values().map(|n| n.unsatisfied.len()).sum();
+
+        eprintln!("packages          {}", view.nodes.len());
+        eprintln!("in-force edges    {edges}");
+        eprintln!("build             {build_ms:?}");
+        eprintln!("view              {view_ms:?}");
+        eprintln!("payload           {} KB", json.len() / 1024);
+        eprintln!(
+            "fan-in            median {} p90 {} max {}",
+            p(&fan_in, 0.5),
+            p(&fan_in, 0.9),
+            fan_in.last().copied().unwrap_or(0)
+        );
+        eprintln!(
+            "impact            median {} p90 {} max {}",
+            p(&impacts, 0.5),
+            p(&impacts, 0.9),
+            impacts.last().copied().unwrap_or(0)
+        );
+        eprintln!("leaves            {leaves}");
+        eprintln!("unsatisfied       {missing}");
+
+        // Not a benchmark assertion — those belong in `tests/`, and this number is a report. What
+        // is asserted is the invariant a benchmark cannot state: every installed package has a
+        // node, and no edge points anywhere but at another node.
+        assert_eq!(view.nodes.len(), probed.dists.len());
+        for (name, node) in &view.nodes {
+            for edge in node.dependencies.iter().chain(&node.dependents) {
+                assert!(
+                    view.nodes.contains_key(&edge.pkg),
+                    "{name} has an edge to {}, which has no node",
+                    edge.pkg
+                );
+            }
+        }
     }
 }
