@@ -18,6 +18,7 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 import type {
   AuditReport,
   Decision,
+  DepsGraph,
   Dist,
   Freshness,
   Hit,
@@ -69,6 +70,7 @@ export const COMMANDS = [
   'pin_add',
   'pin_remove',
   'pin_suggestions',
+  'deps_graph',
   'env_export',
   'requirements_read',
   'cache_usage',
@@ -254,6 +256,16 @@ export const pinRemove = (envHash: string, pkg: string): Promise<boolean> =>
  */
 export const pinSuggestions = (env: PyEnv): Promise<PinSuggestion[]> =>
   invoke('pin_suggestions', { env })
+
+/**
+ * The in-force dependency graph of the environment — PRD P1-6.
+ *
+ * **Costs one probe, and is asked once per environment rather than once per package.** The focus
+ * view re-centres by indexing `nodes`, so a per-package command would pay that probe on every
+ * click. Everything about which edges are in force — PEP 508 markers, extra-gating — is decided
+ * in Rust; this side looks up a key and never parses a requirement.
+ */
+export const depsGraph = (env: PyEnv): Promise<DepsGraph> => invoke('deps_graph', { env })
 
 /**
  * Write the environment out as a `requirements.txt`, resolving to the path written (PRD P1-3).

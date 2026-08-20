@@ -71,6 +71,7 @@ pub fn run() {
             commands::pin_add,
             commands::pin_remove,
             commands::pin_suggestions,
+            commands::deps_graph,
             commands::env_export,
             commands::requirements_read,
             commands::cache_usage,

@@ -132,6 +132,7 @@ This table is the surface. A command that is not listed here does not exist; add
 | `pin_list` | `Pin[]` | Pins for an environment. |
 | `pin_add` | `()` | Add or replace a pin. |
 | `pin_remove` | `bool` | Remove a pin; reports whether one existed. |
+| `deps_graph` | `DepsGraph` | The in-force dependency graph of one environment (PRD P1-6): every installed package, its dependents and dependencies with the specifier on each edge, and its transitive `impact` and `reach`. **One call per environment, not one per package** — the view re-centres on a click, and a per-package command would pay a 605 ms probe for each one. 249 KB and 45 ms on the 352-package fixture. Uncapped, because the view's "+ N more" count has to come from the full set. |
 | `pin_suggestions` | `PinSuggestion[]` | Packages worth pinning, by in-force reverse-dependency count (PRD P1-2). **One probe per call**, which is why UI-SPEC §4 puts this on the Pins screen rather than a sidebar badge — the cost is paid only by someone who opened the tab. |
 | `snapshot_list` | `SnapshotMeta[]` | Snapshots for an environment, newest first. Takes the `env_hash`, not a `PyEnv`: snapshots outlive the interpreter that made them, and an environment whose Python is gone still has a history worth showing. |
 | `snapshot_create` | `SnapshotMeta` | Take a snapshot on demand, outside any plan. |

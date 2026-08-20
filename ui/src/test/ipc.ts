@@ -32,6 +32,7 @@ export interface IpcMock {
   pinAdd: ReturnType<typeof vi.fn>
   pinRemove: ReturnType<typeof vi.fn>
   pinSuggestions: ReturnType<typeof vi.fn>
+  depsGraph: ReturnType<typeof vi.fn>
   envExport: ReturnType<typeof vi.fn>
   requirementsRead: ReturnType<typeof vi.fn>
   cacheUsage: ReturnType<typeof vi.fn>
@@ -78,6 +79,7 @@ export function ipcMock(): IpcMock {
     // Empty by default: a screen that renders a suggestion section must not get one for free, or
     // a test asserting the section is absent passes for the wrong reason.
     pinSuggestions: vi.fn().mockResolvedValue([]),
+    depsGraph: vi.fn().mockResolvedValue({ nodes: {} }),
     envExport: vi.fn().mockResolvedValue('C:/out/requirements.txt'),
     requirementsRead: vi.fn().mockResolvedValue({ specs: [], skipped: [] }),
     cacheUsage: vi.fn().mockResolvedValue({
