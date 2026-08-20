@@ -377,6 +377,36 @@ pub async fn pin_suggestions(
     ))
 }
 
+/// The in-force dependency graph of one environment — PRD P1-6.
+///
+/// **One probe, one value, one call per environment.** The alternative shape — a command taking a
+/// package and returning its neighbours — reads more naturally and is the wrong design: the view
+/// re-centres on a click, so every click would pay a 605 ms probe to answer a question the
+/// previous probe already had the data for. The whole graph is 249 KB on the 352-package fixture
+/// and takes 45 ms to build, against the 605 ms the probe costs either way.
+///
+/// It is [`pin_suggestions`]'s shape rather than [`audit_run`]'s: a subprocess measured in
+/// hundreds of milliseconds needs no `Sessions` slot, no progress channel and no cancellation.
+/// Those exist for `audit_run` because an audit is 18-68 seconds; borrowing them here would be a
+/// constant carrying its original units, which is the mistake `AUDIT_TIMEOUT` records.
+///
+/// Nothing is capped. The view shows a bounded window per column, but its "+ N more" count has to
+/// come from the full set or a capped view misreports a total — the rule `SUGGESTIONS_SHOWN` and
+/// `RUFF_ROWS_SHOWN` already follow.
+///
+/// # Errors
+/// `PD-ENV-001` when the interpreter has gone, `PD-ENV-003` when the probe output is unreadable.
+#[tauri::command]
+pub async fn deps_graph(env: PyEnv) -> Wire<pipdock_core::graph::DepsGraph> {
+    // No store read at all, so there is no guard to drop — the graph depends on the interpreter
+    // and on nothing the user has configured. `pkg_list` is the same, and for the same reason.
+    let probed = envs::probe(&env.interpreter, env.source).await?;
+    Ok(
+        pipdock_core::graph::ReverseDeps::build_for(&probed.dists, &probed.env.python_version)
+            .view(),
+    )
+}
+
 /// Write the environment out as a `requirements.txt` — PRD P1-3.
 ///
 /// **The document is `Engine::freeze`'s**, byte for byte, which is the same one a snapshot
