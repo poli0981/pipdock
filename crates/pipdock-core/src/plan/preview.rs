@@ -236,10 +236,14 @@ pub fn derive_forced(
 pub fn forced_collisions(
     report: &ResolutionReport,
     adjust: &crate::engine::GuardAdjust,
+    forced: &[PkgName],
     req: &PlanRequest,
     installed: &[crate::model::Dist],
 ) -> Vec<PkgName> {
-    if adjust.pins.is_empty() {
+    // Only a *forced* pin releases anything. A `Hold` pin is the user saying a package stays put;
+    // releasing the packages it collides with would move them to accommodate it, which nobody
+    // asked for — its impossibility is shown as it stands.
+    if forced.is_empty() {
         return Vec::new();
     }
     let Some(detail) = &report.impossible else {

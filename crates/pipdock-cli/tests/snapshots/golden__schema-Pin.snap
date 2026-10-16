@@ -9,12 +9,12 @@ expression: out
       "oneOf": [
         {
           "const": "exclude",
-          "description": "Excluded from bulk updates. The user can still update it deliberately, one package at a\ntime — a pin is \"do not sweep this up\", not \"never touch this\".",
+          "description": "Left out of every update until it is unpinned (DATA-FLOW §9.5), whether the update names\nit or sweeps it up with *Select all*.",
           "type": "string"
         },
         {
           "additionalProperties": false,
-          "description": "Held at an exact version: excluded from bulk updates *and* restated at this version in\nevery plan, so the resolver treats it as fixed.",
+          "description": "Held at an exact version: left out of every update *and* restated at this version in\nevery plan, so the resolver treats it as fixed — including as another package's dependency.",
           "properties": {
             "hold": {
               "properties": {

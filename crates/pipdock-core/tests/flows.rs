@@ -52,6 +52,10 @@ struct World {
     older: BTreeMap<String, Vec<String>>,
     /// Which engine this pretends to be; the flow asks PyPI about uv's plans, not pip's.
     engine: Option<EngineId>,
+    /// How many times `list --outdated` was asked — a network sweep of every package.
+    outdated_calls: usize,
+    /// The next this-many resolves fail, as an unreachable index would.
+    failing_resolves: usize,
     /// What a package's newest release needs at least, per dependency: `httpcore` 1.0.9 needs
     /// `h11>=0.16`.
     needs: BTreeMap<String, Vec<(String, String)>>,
@@ -182,7 +186,8 @@ impl Engine for Scripted {
     }
 
     async fn list_outdated(&self, _env: &PyEnv) -> Result<Vec<OutdatedDist>> {
-        let world = self.world();
+        let mut world = self.world();
+        world.outdated_calls += 1;
         Ok(world
             .installed
             .iter()
@@ -203,15 +208,23 @@ impl Engine for Scripted {
         req: &PlanRequest,
         ctx: &ResolveCtx,
     ) -> Result<ResolutionReport> {
-        let hangs = {
+        let (hangs, fails) = {
             let mut world = self.world();
+            let fails = world.failing_resolves > 0;
+            world.failing_resolves = world.failing_resolves.saturating_sub(1);
             world.resolves.push(ResolveCall {
                 req: req.clone(),
                 adjust: ctx.adjust.clone(),
                 system: ctx.system,
             });
-            world.resolve_hangs
+            (world.resolve_hangs, fails)
         };
+        if fails {
+            return Err(PdError::new(
+                Code::NetUnreachable,
+                "could not reach the index",
+            ));
+        }
         if hangs {
             ctx.cancel.cancelled().await;
             return Err(
@@ -303,6 +316,14 @@ impl Engine for Scripted {
             });
         }
         for pin in &ctx.adjust.pins {
+            // A pin at the installed version is not a change; no engine reports one.
+            if world
+                .installed
+                .get(pin.name.as_str())
+                .is_some_and(|i| i.version == pin.version.0)
+            {
+                continue;
+            }
             changes.push(Change {
                 name: pin.name.clone(),
                 from: world
@@ -1084,4 +1105,146 @@ async fn a_requires_python_nobody_knows_never_blocks() {
     assert_eq!(report.changes.len(), 1);
     assert!(report.incompatible.is_empty());
     assert!(releases.asked.load(std::sync::atomic::Ordering::SeqCst) >= 1);
+}
+
+#[tokio::test]
+async fn a_rollback_across_engines_never_removes_pip() {
+    // C7. uv's freeze has no `--all`, so a uv snapshot never lists pip; compared with pip's
+    // freeze, pip looked added since the snapshot, and the restore uninstalled it.
+    let engine = Scripted::default()
+        .with("pip", "26.2.1", &[])
+        .with("setuptools", "80.9.0", &[])
+        .with("idna", "3.4", &[]);
+    let dir = app_data("cross-engine");
+    let hash = pipdock_core::envs::env_hash(std::path::Path::new("python.exe"));
+    let taken_by_uv = snapshot::create(
+        &dir,
+        &hash,
+        "idna==3.2\n".to_owned(),
+        Trigger::Manual,
+        EngineId::Uv,
+        jiff::Timestamp::now(),
+    )
+    .expect("snapshot");
+    let (_, preview) = RollbackFlow::start(
+        env(),
+        Box::new(engine),
+        &dir,
+        &taken_by_uv.meta.id,
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert!(
+        preview.restore.uninstall.is_empty(),
+        "nothing the engine manages for itself is removed: {:?}",
+        preview.restore.uninstall
+    );
+    let restored: Vec<String> = preview
+        .restore
+        .install
+        .iter()
+        .map(|s| s.to_requirement())
+        .collect();
+    assert_eq!(restored, ["idna==3.2"]);
+}
+
+#[tokio::test]
+async fn a_held_package_is_restated_in_every_plan() {
+    // H17. `hold_requirements` existed and nothing called it, so a held package was only left
+    // out of the upgrade list — free to move as anyone's dependency.
+    let engine = Scripted::default()
+        .with("numpy", "1.21.0", &[])
+        .with("requests", "2.28.0", &[])
+        .offering("numpy", "2.0.0")
+        .offering("requests", "2.32.0");
+    let hold = pipdock_core::pins::Pin {
+        pkg: pkg("numpy"),
+        mode: pipdock_core::pins::PinMode::Hold {
+            version: Version("1.21.0".into()),
+        },
+        reason: None,
+    };
+    let (flow, step) = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &update_all(),
+        &[hold],
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    let FlowStep::NeedsConfirm { report } = step else {
+        panic!("{step:?}");
+    };
+    let planned: Vec<String> = report.changes.iter().map(|c| c.name.to_string()).collect();
+    assert_eq!(planned, ["requests"]);
+    assert_eq!(flow.excluded_pins().len(), 1);
+    let world = engine.world();
+    let pins: Vec<String> = world.resolves[0]
+        .adjust
+        .pins
+        .iter()
+        .map(|p| p.to_requirement())
+        .collect();
+    assert_eq!(pins, ["numpy==1.21.0"], "the hold reached the resolver");
+}
+
+#[tokio::test]
+async fn a_failed_re_resolve_leaves_the_preview_decidable() {
+    // U24. A decision round whose resolve failed left the new request beside the old report, and
+    // the GUI dropped the flow: the preview stayed on screen with a Confirm that answered
+    // "no plan".
+    let engine = Scripted::default()
+        .with("httpx", "0.23.0", &["httpcore<0.16.0,>=0.15.0"])
+        .with("httpcore", "0.15.0", &[])
+        .offering("httpcore", "1.0.9");
+    let intent = Intent::Update {
+        all: false,
+        pkgs: vec!["httpcore".to_owned()],
+        except: Vec::new(),
+        force_latest: false,
+    };
+    let (mut flow, step) = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &intent,
+        &[],
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    assert!(matches!(step, FlowStep::NeedsDecisions { .. }), "{step:?}");
+
+    engine.world().failing_resolves = 1;
+    let force = BTreeMap::from([(pkg("httpcore"), Decision::ForceLatest)]);
+    let err = flow.decide(&force).await.expect_err("the index is down");
+    assert_eq!(err.code, Code::NetUnreachable);
+    assert_eq!(
+        flow.report().held_back.len(),
+        1,
+        "the preview still describes the flow"
+    );
+
+    let step = flow.decide(&force).await.expect("the same decision, again");
+    assert!(matches!(step, FlowStep::NeedsConfirm { .. }), "{step:?}");
+}
+
+#[tokio::test]
+async fn an_install_never_asks_the_index_what_is_outdated() {
+    // M28. `list --outdated` sweeps the index for every installed package — tens of seconds on a
+    // large environment — and an install uses none of it.
+    let engine = Scripted::default().with("idna", "3.4", &[]);
+    let _ = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &install(&["six==1.17.0"]),
+        &[],
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    assert_eq!(engine.world().outdated_calls, 0);
 }

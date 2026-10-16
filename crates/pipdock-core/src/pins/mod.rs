@@ -21,11 +21,14 @@ use crate::store::Store;
 )]
 #[serde(rename_all = "kebab-case")]
 pub enum PinMode {
-    /// Excluded from bulk updates. The user can still update it deliberately, one package at a
-    /// time — a pin is "do not sweep this up", not "never touch this".
+    /// Left out of every update until it is unpinned (DATA-FLOW §9.5), whether the update names
+    /// it or sweeps it up with *Select all*.
+    // This said "bulk updates" and that the user "can still update it deliberately, one package
+    // at a time", which nothing implemented: `filter_upgrades` has always applied to a named
+    // package as much as to *Select all*. §9.5 is the rule; unpinning is the deliberate step.
     Exclude,
-    /// Held at an exact version: excluded from bulk updates *and* restated at this version in
-    /// every plan, so the resolver treats it as fixed.
+    /// Held at an exact version: left out of every update *and* restated at this version in
+    /// every plan, so the resolver treats it as fixed — including as another package's dependency.
     Hold {
         /// The version to hold at.
         version: Version,
