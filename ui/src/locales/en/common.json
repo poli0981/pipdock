@@ -48,7 +48,7 @@
     "pipUpgradeNoSnapshot": "No snapshot is taken: restoring one would need the pip being replaced.",
     "title": "Environments",
     "empty": "no Python environments found",
-    "emptyHint": "Install Python, or use Browse… to pick an interpreter.",
+    "emptyHint": "Install Python, or create a virtual environment named .venv, venv, env or .env in this folder.",
     "scanning": "Discovering environments…",
     "scanPhase": {
       "registry": "Reading the Windows registry",
@@ -82,8 +82,8 @@
     "badge": {
       "update": "UPDATE",
       "pinned": "pinned",
-      "pinnedDetail": "Pinned: left out of bulk updates. You can still update it on its own.",
-      "heldDetail": "Held at {{version}}: left out of bulk updates, and restated at this version in every plan."
+      "pinnedDetail": "Pinned: left out of every update, including one that names it. Unpin it to update it.",
+      "heldDetail": "Held at {{version}}: kept at this version in every plan, including one that names it."
     },
     "actions": {
       "pin": "Pin this package",
@@ -458,7 +458,7 @@
     "docsHash": "Legal documents",
     "docsHashDetail": "Your acceptance is recorded against this value. Editing any of the documents changes it, and the acceptance screen appears once more on the next launch.",
     "aiTitle": "How this was built",
-    "aiBody": "PipDock was written with substantial help from an AI coding assistant — Claude Opus 5, made by Anthropic — under human review. It wrote source code, tests and translations; every change was read and merged by the maintainer, and the built application was driven by hand before release. Copyright and the GPL-3.0-only licence are unchanged.",
+    "aiBody": "PipDock was written with substantial help from an AI coding assistant — Claude Opus 5, and from 1.4.0 Claude Opus 5.5, made by Anthropic — under human review. It wrote source code, tests and translations. The maintainer decides what ships: through 1.3.0 they read and merged every change themselves, and 1.4.0 was released by the assistant on their written instruction, once its checks had passed. Copyright and the GPL-3.0-only licence are unchanged.",
     "aiRead": "Read the full disclosure",
     "openRepo": "Open the repository",
     "reopen": "Show the documents again",

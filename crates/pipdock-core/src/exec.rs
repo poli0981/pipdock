@@ -289,7 +289,7 @@ impl Command {
     /// Run to completion, capturing output. See [`TreeGuard`] for what "stop" means here.
     ///
     /// # Errors
-    /// `PD-ENG-001` when the program cannot be spawned, `PD-INT-001` when the watchdog fires.
+    /// `PD-ENG-001` when the program cannot be spawned, `PD-ENG-004` when the watchdog fires.
     pub async fn run(&self) -> Result<Output> {
         let started = self.logged_start();
         // Spawned rather than `.output()`ed, so the child can be put in a job before it is waited

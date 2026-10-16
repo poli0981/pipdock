@@ -190,7 +190,8 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
         // Backdrop only: clicks inside the panel below stop here first.
         if (e.target === ref.current) onClose()
       }}
-      className="mt-24 w-full max-w-xl rounded-pd border border-border bg-surface p-0 text-text backdrop:bg-bg/80"
+      // `mx-auto`: preflight's `margin: 0` removed the centring; see PdDialog.
+      className="mx-auto mt-24 w-full max-w-xl rounded-pd border border-border bg-surface p-0 text-text backdrop:bg-bg/80"
     >
       <div className="p-3">
         <input

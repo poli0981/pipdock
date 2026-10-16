@@ -37,22 +37,24 @@ Options:
           Ad-hoc exclusions on top of the pin list
 
       --json
-          Machine-readable output; NDJSON for streaming commands
+          Machine-readable output: exactly one JSON document on stdout (CLI-SPEC §6).
+          
+          Prompts, warnings and engine output go to stderr. This said "NDJSON for streaming commands" until [VERSION], when several commands printed several documents.
 
       --dry-run
           Print the resolution report and exit without changing anything
 
   -y, --yes
-          Assume defaults on all prompts. Conflicts resolve to *skip*, never *force*
+          Assume the default at every prompt: a held-back package keeps its compatible version and an impossible one is skipped. Only `--strategy latest` forces
 
       --quiet
-          Reduce log output
+          Do not stream engine output to stderr. (The log file is written regardless.)
 
       --verbose
-          Increase log output
+          Also write the log to stderr, at debug level
 
       --log-file <PATH>
-          Tee logs to a file
+          Also write the log to this file. The daily log in `data\logs\` is always kept
 
       --no-snapshot
           DANGEROUS: skip the pre-batch snapshot. CI images only; prints a warning.

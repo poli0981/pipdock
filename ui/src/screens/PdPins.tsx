@@ -6,11 +6,10 @@
  * inventory, so it is built from the primitives; the 🔒 chip is `PdPinChip`, shared with the table
  * rather than re-derived, or the two would eventually disagree about which mode is which.
  *
- * **Exclude only.** The screen shows a `Hold` pin faithfully if one exists — the CLI could write
- * one in principle — but does not offer to create one, because `pins::hold_requirements` is dead
- * code in the core and `engine::plan_requirements` restates each package at its *installed*
- * version. A hold at any other version is a promise nothing keeps, and offering it here would be
- * the interface lying about what the engine does.
+ * **Exclude only.** The screen shows a `Hold` pin faithfully if one exists — the CLI can write
+ * one — but does not offer to create one. Holds are honoured since 1.4.0 (`GuardAdjust.pins`
+ * restates a held package at its held version), but nothing here asks for the version to hold
+ * at, and a hold the user cannot see the version of is worse than none.
  *
  * The reason commits on blur rather than on every keystroke: it is a `pin_add` upsert per commit,
  * and one round trip per character typed is a lot of SQLite for a text field.

@@ -34,7 +34,6 @@ tokio-util = "0.7.20"
 tracing = "0.1.44"
 
 [dev-dependencies]
-insta = { version = "1.49.0", features = ["json"] }
 jiff = "0.2.38"
 tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros"] }
 
