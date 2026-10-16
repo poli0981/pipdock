@@ -13,7 +13,8 @@ use pipdock_core::engine::{
 use pipdock_core::envs::{self, Candidate};
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::flow::{
-    FlowStep, GuardAck, NothingReason, RollbackFlow, SnapshotPolicy, UninstallFlow, UpdateFlow,
+    FlowOptions, FlowStep, GuardAck, NothingReason, RollbackFlow, SnapshotPolicy, UninstallFlow,
+    UpdateFlow,
 };
 use pipdock_core::model::{EngineId, EnvSource, PkgName, PyEnv, StepStatus};
 
@@ -520,7 +521,14 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     // Read before the flow starts: `UpdateFlow` takes the pins rather than the store they came
     // from, so its future stays `Send` for the GUI's sake.
     let env_pins = pins::list(&store, &envs::env_hash(&env.interpreter))?;
-    let (mut flow, mut step) = UpdateFlow::start(env, engine_for(opts), &intent, &env_pins).await?;
+    let (mut flow, mut step) = UpdateFlow::start(
+        env,
+        engine_for(opts),
+        &intent,
+        &env_pins,
+        FlowOptions::default(),
+    )
+    .await?;
 
     // The flow returns the exclusion as data; the wording is the head's business (I18N §1).
     if !flow.excluded_pins().is_empty() && !opts.json {
@@ -1431,7 +1439,8 @@ pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
     let env = select_env(opts).await?;
     let app_data = app_data_dir();
 
-    let (mut flow, preview) = RollbackFlow::start(env, engine_for(opts), &app_data, id).await?;
+    let (mut flow, preview) =
+        RollbackFlow::start(env, engine_for(opts), &app_data, id, FlowOptions::default()).await?;
 
     if preview.restore.is_empty() {
         println!("environment already matches snapshot {}", preview.target.id);
@@ -1775,7 +1784,8 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     let env = select_env(opts).await?;
     let engine = engine_for(opts);
 
-    let (mut flow, report) = UninstallFlow::start(env, engine, pkgs).await?;
+    let (mut flow, report) =
+        UninstallFlow::start(env, engine, pkgs, FlowOptions::default()).await?;
 
     if !report.is_clear() {
         if opts.json {
