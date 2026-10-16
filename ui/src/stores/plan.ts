@@ -56,6 +56,8 @@ export type PlanPhase =
   | 'idle'
   | 'resolving'
   | 'preview'
+  /** The uninstall guard is running; the dialog opens over the table when it answers. */
+  | 'guarding'
   | 'guard'
   | 'executing'
   | 'summary'
@@ -70,7 +72,9 @@ export type PlanPhase =
  * Update and nothing whatsoever happened.
  *
  * `guard` is deliberately **not** one either: DATA-FLOW §5's dialog opens *over* the table the
- * user selected from, so they can still see what they picked while deciding.
+ * user selected from, so they can still see what they picked while deciding. Nor is `guarding`,
+ * the probe before it: the guard used to set `resolving`, which swapped the table for the plan
+ * panel for half a second and threw away the table's scroll position (U14).
  */
 export const PANEL_PHASES: ReadonlySet<PlanPhase> = new Set<PlanPhase>([
   'resolving',
@@ -179,6 +183,20 @@ const EMPTY = {
 let unlisten: (() => void) | undefined
 
 /**
+ * Which plan the store is on. Every command's answer is checked against it, and `reset` moves it
+ * on — so an answer that arrives after the user left is dropped instead of re-opening the panel
+ * they just closed (U9).
+ */
+let generation = 0
+
+/**
+ * How long to keep listening after the command answers. The command's reply and its last progress
+ * events travel separately and in no promised order, and unsubscribing at once lost the final
+ * `stepFinished` — the live region stopped one short of the total.
+ */
+const TRAILING_EVENTS_MS = 50
+
+/**
  * Drive one execution to its summary: subscribe, run, unsubscribe.
  *
  * Shared by `execute` and `confirmUninstall` because the tail of DATA-FLOW §3 and §5 is the same
@@ -197,13 +215,20 @@ async function runToSummary(
     usePlanStore.setState((s) => apply(s, event))
   })
 
+  const mine = generation
   try {
-    set({ outcome: await command(), phase: 'summary', current: null })
+    const outcome = await command()
+    await new Promise((r) => setTimeout(r, TRAILING_EVENTS_MS))
+    if (mine !== generation) return
+    set({ outcome, phase: 'summary', current: null })
   } catch (e) {
+    if (mine !== generation) return
     set({ phase: 'summary', error: asPdError(e), current: null })
   } finally {
-    unlisten?.()
-    unlisten = undefined
+    if (mine === generation) {
+      unlisten?.()
+      unlisten = undefined
+    }
   }
 }
 
@@ -213,10 +238,14 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   ...EMPTY,
 
   resolve: async (env, intent) => {
+    const mine = ++generation
     set({ phase: 'resolving', ...EMPTY, kind: intent.intent === 'install' ? 'install' : 'update', env })
     try {
-      set({ step: await planResolve(env, intent), phase: 'preview' })
+      const step = await planResolve(env, intent)
+      if (mine !== generation) return
+      set({ step, phase: 'preview' })
     } catch (e) {
+      if (mine !== generation) return
       // `failed`, not `idle`: the panel is what renders `error`, and going back to `idle`
       // un-mounts it. Every resolve failure — a plan already in flight, a PEP 668 environment,
       // an unreachable index — was silently swallowed by that.
@@ -229,13 +258,18 @@ export const usePlanStore = create<PlanState>((set, get) => ({
 
   submitDecisions: async () => {
     const { decisions } = get()
+    const mine = generation
     set({ phase: 'resolving', error: null })
     try {
       // Answers are cleared with the round they belonged to: the next preview may name a
       // different set of packages, and a stale answer for one no longer in conflict would be
       // sent back to a flow that has moved on.
-      set({ step: await planDecide(decisions), decisions: {}, phase: 'preview' })
+      const step = await planDecide(decisions)
+      if (mine !== generation) return
+      set({ step, decisions: {}, phase: 'preview' })
     } catch (e) {
+      if (mine !== generation) return
+      // The preview stays and stays usable: a failed round leaves the flow as it was (U24).
       set({ phase: 'preview', error: asPdError(e) })
     }
   },
@@ -248,10 +282,14 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   startUninstall: async (env, pkgs) => {
-    set({ phase: 'resolving', ...EMPTY, kind: 'uninstall', env })
+    const mine = ++generation
+    set({ phase: 'guarding', ...EMPTY, kind: 'uninstall', env })
     try {
-      set({ guard: await uninstallGuard(env, pkgs), phase: 'guard' })
+      const guard = await uninstallGuard(env, pkgs)
+      if (mine !== generation) return
+      set({ guard, phase: 'guard' })
     } catch (e) {
+      if (mine !== generation) return
       set({ phase: 'failed', error: asPdError(e) })
     }
   },
@@ -264,13 +302,17 @@ export const usePlanStore = create<PlanState>((set, get) => ({
     // instead of straight to execution, because a dependent of a dependent has to surface before
     // it is removed. `guardBusy` rather than leaving the dialog blank — it usually comes back
     // inside a probe's worth of time and a flicker reads as a bug.
+    const mine = generation
     set({ guardBusy: true, error: null })
     try {
-      set({ guard: await uninstallGuard(env, guard.withDependents), phase: 'guard' })
+      const widened = await uninstallGuard(env, guard.withDependents)
+      if (mine !== generation) return
+      set({ guard: widened, phase: 'guard' })
     } catch (e) {
+      if (mine !== generation) return
       set({ phase: 'failed', error: asPdError(e) })
     } finally {
-      set({ guardBusy: false })
+      if (mine === generation) set({ guardBusy: false })
     }
   },
 
@@ -279,10 +321,14 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   },
 
   rollback: async (env, id) => {
+    const mine = ++generation
     set({ phase: 'resolving', ...EMPTY, kind: 'rollback', env })
     try {
-      set({ preview: await snapshotRollbackPreview(env, id), phase: 'preview' })
+      const preview = await snapshotRollbackPreview(env, id)
+      if (mine !== generation) return
+      set({ preview, phase: 'preview' })
     } catch (e) {
+      if (mine !== generation) return
       set({ phase: 'failed', error: asPdError(e) })
     }
   },
@@ -301,6 +347,15 @@ export const usePlanStore = create<PlanState>((set, get) => ({
   setConsoleOpen: (open) => set({ consoleOpen: open }),
 
   reset: () => {
+    // Leaving a plan that the backend is still working on — a resolve, a guard probe — or holding
+    // parked — a preview, a guard dialog — stops it there too. Back during a resolve used to
+    // return to the table while pip went on backtracking with the slot claimed, and the answer
+    // then re-opened the panel the user had just closed (U9).
+    const { phase } = get()
+    if (phase === 'resolving' || phase === 'guarding' || phase === 'preview' || phase === 'guard') {
+      void planCancel().catch(() => undefined)
+    }
+    generation += 1
     unlisten?.()
     unlisten = undefined
     set({ phase: 'idle', ...EMPTY })

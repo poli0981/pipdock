@@ -172,7 +172,10 @@ export function App() {
         <main key={nav} ref={mainRef} className="flex min-w-0 flex-1 flex-col overflow-hidden">
           {PANEL_PHASES.has(planPhase) ? (
             <PdPlanPanel
-              onFinished={() => {
+              onFinished={(changed) => {
+                // Nothing ran: the screen behind the panel is still true, and the selection is
+                // still what the user picked.
+                if (!changed) return
                 // The environment changed under whatever screen is behind this, so re-read it
                 // rather than showing the versions from before the run.
                 clearSelection()
