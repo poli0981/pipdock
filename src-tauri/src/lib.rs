@@ -22,10 +22,61 @@ pub mod state;
 /// runtime, and typechecked the whole time. This list is what makes the gap explicit instead of
 /// invisible: a name here is a promise with a date on it, and the test below fails the moment
 /// `COMMANDS` and reality disagree in either direction.
-pub const NOT_YET: &[(&str, &str)] = &[
-    ("env_add_manual", "M3 — Browse… has no surface yet"),
-    ("logs_tail", "M3 — needs the logging subsystem"),
-];
+pub const NOT_YET: &[(&str, &str)] = &[("env_add_manual", "M3 — Browse… has no surface yet")];
+
+/// Start the app's own log: `data\logs\pipdock.<date>.log`, at `PIPDOCK_LOG` or INFO.
+///
+/// The GUI has no terminal, so before 1.4.0 a panic or a failed startup left no trace at all.
+fn init_logging(app_data: &std::path::Path) -> std::path::PathBuf {
+    use tracing_subscriber::layer::SubscriberExt as _;
+    use tracing_subscriber::util::SubscriberInitExt as _;
+    use tracing_subscriber::{EnvFilter, Layer as _, fmt};
+
+    let dir = pipdock_core::logging::log_dir(app_data);
+    pipdock_core::logging::sweep(
+        &dir,
+        pipdock_core::LOG_RETENTION_DAYS,
+        jiff::Timestamp::now(),
+    );
+    let file = pipdock_core::logging::DailyFile::new(&dir, "pipdock");
+    let path = file.current_path();
+    let level = EnvFilter::try_from_env("PIPDOCK_LOG").unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(
+            fmt::layer()
+                .with_ansi(false)
+                .with_writer(move || file.clone())
+                .with_filter(level),
+        )
+        .try_init();
+    pipdock_core::logging::install_panic_hook();
+    tracing::info!(target: "pipdock::app", version = env!("CARGO_PKG_VERSION"), "start");
+    path
+}
+
+/// Say that PipDock cannot start, and why, before any window exists (U18).
+///
+/// The store used to be opened inside Tauri's `setup`, whose failure is a `panic!` in the event
+/// loop: a release build has no console, so a data folder that could not be opened meant a
+/// double-click that did nothing at all. This runs before Tauri does, so it cannot use the
+/// catalogs the webview loads — the one place GUI copy is written in Rust, both languages at once,
+/// with the code and the log path as data (I18N §1's exception, stated).
+fn startup_failed(e: &pipdock_core::PdError, log: &std::path::Path) {
+    let detail = format!(
+        "PipDock could not open its data folder and has to close.\n\
+         PipDock không mở được thư mục dữ liệu và phải đóng.\n\n\
+         {}: {}\n\n{}",
+        e.code,
+        e.message,
+        log.display()
+    );
+    let _ = rfd::MessageDialog::new()
+        .set_level(rfd::MessageLevel::Error)
+        .set_title("PipDock")
+        .set_description(detail)
+        .set_buttons(rfd::MessageButtons::Ok)
+        .show();
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(
@@ -34,6 +85,17 @@ pub const NOT_YET: &[(&str, &str)] = &[
 )]
 pub fn run() {
     use tauri::Manager as _;
+
+    let log = init_logging(&pipdock_core::store::default_app_data());
+    // Opened before Tauri starts, so a failure can be *said*: see `startup_failed`.
+    let state = match state::AppState::new() {
+        Ok(state) => state,
+        Err(e) => {
+            tracing::error!(target: "pipdock::app", code = %e.code, message = %e.message, "could not start");
+            startup_failed(&e, &log);
+            return;
+        }
+    };
 
     tauri::Builder::default()
         // **First, before every other plugin.** The single-instance handler has to be registered
@@ -54,11 +116,10 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .setup(|app| {
-            // Opening the store is the one startup step that can fail for a reason the user can
-            // act on (a data directory that is not writable). Failing here, before a window is
-            // shown, beats every command failing later with the same cause.
-            app.manage(state::AppState::new()?);
+        .setup(move |app| {
+            // Already open: the one startup step that can fail for a reason the user can act on
+            // ran before Tauri, where its failure can reach the user.
+            app.manage(state);
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -104,6 +165,7 @@ pub fn run() {
             commands::settings_set,
             commands::legal_consent_get,
             commands::legal_consent_set,
+            commands::logs_tail,
         ])
         .run(tauri::generate_context!())
         .expect("error while running PipDock");

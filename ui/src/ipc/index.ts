@@ -17,30 +17,31 @@ import { open, save } from '@tauri-apps/plugin-dialog'
 
 import type {
   AuditReport,
-  Decision,
-  DepsGraph,
-  Dist,
-  Freshness,
-  Hit,
-  EngineId,
-  EnvSource,
-  Diff,
-  EngineInfo,
-  ExecutionSummary,
-  FlowStep,
-  GuardReport,
-  Intent,
-  OutdatedDist,
-  PackageMeta,
   CacheTarget,
   CacheUsage,
+  Decision,
+  DepsGraph,
+  Diff,
+  Dist,
+  EngineId,
+  EngineInfo,
+  EnvSource,
+  ExecutionSummary,
+  FixReport,
+  FlowStep,
+  Freshness,
+  GuardReport,
+  HealthReport,
+  Hit,
+  Intent,
+  LogTail,
+  OutdatedDist,
+  PackageMeta,
   ParsedRequirements,
   Pin,
   PinSuggestion,
   ProgressEvent,
   PyEnv,
-  HealthReport,
-  FixReport,
   RefreshReport,
   RollbackPreview,
   SnapshotMeta,
@@ -431,6 +432,15 @@ export interface BugReportLink {
  * The URL carries a truncated excerpt because GitHub rejects very long ones; the full log comes
  * back separately so the UI can put it on the clipboard and say it did (§4.3).
  */
+/**
+ * The end of PipDock's own log, and the folder it is in — Settings' Logs row.
+ *
+ * Never rejects by contract: no log yet is an empty `lines`. `lines` defaults to 200 and the
+ * command clamps it, because the result crosses the bridge whole.
+ */
+export const logsTail = (lines?: number): Promise<LogTail> =>
+  invoke('logs_tail', { lines: lines ?? null })
+
 export const reportBugUrl = (env?: PyEnv, code?: string): Promise<BugReportLink> =>
   invoke('report_bug_url', { env: env ?? null, code: code ?? null })
 

@@ -19,12 +19,11 @@
 //! reported so the number is honest about where the space went; refreshing the index is
 //! `index refresh`, which replaces rows rather than deleting a file.
 //!
-//! # There are no log files
+//! # Log files are not a target
 //!
-//! [`crate::LOG_RETENTION_DAYS`] has never had a reader. The only log is the in-memory ring buffer
-//! behind *Report bug*, and `logs_tail` is still owed. When the logging subsystem lands it becomes
-//! a fourth entry here; until then, reporting a "logs" line of zero bytes would be inventing a
-//! thing that does not exist.
+//! Since 1.4.0 there are log files (`crate::logging`), and they look after themselves: the sweep
+//! keeps [`crate::LOG_RETENTION_DAYS`] and nothing more, so a "clear logs" button would only take
+//! away the one record a bug report needs. Settings shows where they are instead.
 
 use std::path::{Path, PathBuf};
 

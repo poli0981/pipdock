@@ -1456,6 +1456,30 @@ pub async fn engine_info(env: PyEnv) -> Wire<Vec<pipdock_core::model::EngineInfo
     Ok(out)
 }
 
+/// The end of PipDock's own log, and where the files are — Settings' Logs row.
+///
+/// Read on a blocking thread: a few files' worth of disk reads is not async work. `lines` is
+/// clamped, because the result crosses IPC whole.
+///
+/// # Errors
+/// Never: no log yet, or one that cannot be read, is an empty tail.
+#[tauri::command]
+pub async fn logs_tail(
+    state: tauri::State<'_, AppState>,
+    lines: Option<usize>,
+) -> Wire<pipdock_core::logging::LogTail> {
+    let dir = pipdock_core::logging::log_dir(&state.app_data);
+    let wanted = lines.unwrap_or(200).min(2_000);
+    let read = dir.clone();
+    let lines = tokio::task::spawn_blocking(move || pipdock_core::logging::tail(&read, wanted))
+        .await
+        .unwrap_or_default();
+    Ok(pipdock_core::logging::LogTail {
+        dir: dir.display().to_string(),
+        lines,
+    })
+}
+
 /// A prefilled GitHub issue URL, and the log to put on the clipboard (ERROR-CATALOG §4).
 ///
 /// Two fields because §4.3 splits them: the URL carries a truncated, tail-biased excerpt so GitHub

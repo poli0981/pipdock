@@ -64,6 +64,7 @@ const SCHEMA_TYPES: &[&str] = &[
     "HealthReport",
     "AuditReport",
     "FixReport",
+    "LogTail",
 ];
 
 fn pipdock() -> Command {

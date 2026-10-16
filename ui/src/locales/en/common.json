@@ -121,7 +121,7 @@
   "deps": {
     "title": "Dependencies",
     "back": "Back to packages",
-    "loading": "Reading this environment's dependencies\u2026",
+    "loading": "Reading this environment's dependencies…",
     "dependents_one": "{{count}} package requires this",
     "dependents_other": "{{count}} packages require this",
     "dependencies_one": "Requires {{count}} package",
@@ -426,7 +426,12 @@
     "pinThresholdDetail": "How many other packages must depend on something before the Pins screen suggests pinning it. Zero turns the suggestions off.",
     "override": "Allow externally managed environments",
     "overrideDetail": "PEP 668 marks some Pythons as managed by the operating system. Installing into one can break system tools, and there is no undo beyond a snapshot. Leave this off unless you know why you need it.",
-    "saved": "Saved"
+    "saved": "Saved",
+    "logs": "Logs",
+    "logsDetail": "PipDock keeps its own log for 14 days in this folder. Nothing in it is sent anywhere; copy it into a bug report if you want someone to read it.",
+    "logsCopy": "Copy recent log",
+    "logsCopied": "Copied",
+    "logsEmpty": "Nothing has been logged yet."
   },
   "legal": {
     "title": "Before you start",

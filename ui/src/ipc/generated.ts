@@ -637,6 +637,14 @@ export type Intent =
   | { all: boolean; except?: string[]; forceLatest?: boolean; intent: 'update'; pkgs?: string[] }
   | { intent: 'install'; specs: string[] };
 
+/** The end of PipDock's own log, for Settings' Logs row (ARCHITECTURE §7). */
+export interface LogTail {
+  /** The folder the log files are in. A path — data, never localized (I18N §2). */
+  dir: string;
+  /** The most recent lines, oldest first. Empty when nothing has been logged yet. */
+  lines: string[];
+}
+
 /** How a hit matched, in ranking order. */
 export type MatchKind =
   | 'exact'
