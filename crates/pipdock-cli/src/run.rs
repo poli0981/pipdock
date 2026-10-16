@@ -2127,7 +2127,9 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
         GuardAck::Clear
     };
     let summary = flow.execute(ack, tx).await?;
-    drop(pump);
+    // Drained, not dropped: the last lines of a removal are the ones that say how it ended, and a
+    // dropped handle let the summary print over them (X38). The other three pumps already wait.
+    let _ = pump.await;
 
     print_summary(opts, &summary);
     Ok(finished(&summary, snap.as_ref().map(|m| m.id.as_str())))

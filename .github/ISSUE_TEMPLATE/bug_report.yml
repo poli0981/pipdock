@@ -13,7 +13,8 @@ body:
     id: pd-version
     attributes:
       label: PipDock version
-      placeholder: "1.0.0"
+      # Not a version number: any example goes stale with the next release, as "1.0.0" did.
+      placeholder: "x.y.z — shown under About → This build"
     validations:
       required: true
   - type: input

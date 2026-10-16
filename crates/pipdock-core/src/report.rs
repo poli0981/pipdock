@@ -59,11 +59,38 @@ pub fn bug_report_url(report: &BugReport, os: &str) -> String {
         url.push_str(&format!("&error-code={}", urlencode(code.as_str())));
     }
 
-    let excerpt = excerpt(&report.log);
-    if !excerpt.is_empty() {
-        url.push_str(&format!("&log-excerpt={}", urlencode(&excerpt)));
+    let encoded = encoded_excerpt(&excerpt(&report.log));
+    if !encoded.is_empty() {
+        url.push_str(&format!("&log-excerpt={encoded}"));
     }
     url
+}
+
+/// The excerpt as it goes into the URL, cut further until its **encoded** form fits.
+///
+/// [`crate::BUG_REPORT_EXCERPT_CHARS`] counts characters before encoding, but percent-encoding
+/// decides the length GitHub sees: an ASCII letter costs one byte, a path separator three and a
+/// Vietnamese letter up to nine (`%E1%BB%87`). A log full of accented paths made a URL several
+/// times the budget, and GitHub answers that with an error page instead of the form (M51). Lines
+/// are dropped from the front — the tail is where the failure is — until the encoding fits.
+fn encoded_excerpt(excerpt: &str) -> String {
+    let mut text = excerpt;
+    loop {
+        let encoded = urlencode(text);
+        if encoded.len() <= crate::BUG_REPORT_EXCERPT_CHARS || text.is_empty() {
+            return encoded;
+        }
+        text = match text.find('\n') {
+            Some(i) if i + 1 < text.len() => &text[i + 1..],
+            // One line left: drop a tenth of it from the front, at a `char` boundary.
+            _ => {
+                let keep_from = text.chars().count() / 10 + 1;
+                text.char_indices()
+                    .nth(keep_from)
+                    .map_or("", |(at, _)| &text[at..])
+            }
+        };
+    }
 }
 
 /// The tail of `log`, at most [`crate::BUG_REPORT_EXCERPT_CHARS`] characters.
@@ -161,5 +188,51 @@ mod tests {
         let log = "môi trường ".repeat(2000);
         let cut = excerpt(&log);
         assert!(cut.chars().count() <= crate::BUG_REPORT_EXCERPT_CHARS);
+    }
+
+    /// The `log-excerpt` parameter of `url`, still encoded.
+    fn encoded_excerpt_of(url: &str) -> &str {
+        url.split("&log-excerpt=").nth(1).unwrap_or("")
+    }
+
+    #[test]
+    fn a_log_of_accented_paths_still_fits_in_the_url() {
+        // M51: 6000 characters of this encode to roughly 20 KB, and GitHub refuses the form.
+        let line = "C:\\Users\\Nguyễn\\Tài liệu\\dự án\\.venv\\Lib\\site-packages\\gói\n";
+        let url = bug_report_url(
+            &BugReport {
+                log: line.repeat(400),
+                ..BugReport::default()
+            },
+            "Windows 11",
+        );
+        let encoded = encoded_excerpt_of(&url);
+        assert!(!encoded.is_empty(), "the excerpt is cut, not dropped");
+        assert!(
+            encoded.len() <= crate::BUG_REPORT_EXCERPT_CHARS,
+            "{} bytes encoded",
+            encoded.len()
+        );
+        // Still the tail, still whole lines.
+        assert!(
+            encoded.ends_with("g%C3%B3i%0A"),
+            "{}",
+            &encoded[encoded.len() - 20..]
+        );
+        assert!(encoded.starts_with("C%3A%5CUsers"), "{}", &encoded[..20]);
+    }
+
+    #[test]
+    fn one_enormous_line_is_cut_rather_than_dropped() {
+        let url = bug_report_url(
+            &BugReport {
+                log: "đ".repeat(5_000),
+                ..BugReport::default()
+            },
+            "Windows 11",
+        );
+        let encoded = encoded_excerpt_of(&url);
+        assert!(!encoded.is_empty());
+        assert!(encoded.len() <= crate::BUG_REPORT_EXCERPT_CHARS);
     }
 }
