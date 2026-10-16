@@ -118,7 +118,7 @@ impl Engine for PipEngine {
         if !out.ok() {
             return Err(out.into_error());
         }
-        super::parse::list_json(&out.stdout)
+        super::parse::list_json(&out.stdout, EngineId::Pip)
     }
 
     async fn list_outdated(&self, env: &PyEnv) -> Result<Vec<OutdatedDist>> {
@@ -130,7 +130,7 @@ impl Engine for PipEngine {
         if !out.ok() {
             return Err(out.into_error());
         }
-        super::parse::outdated_json(&out.stdout)
+        super::parse::outdated_json(&out.stdout, EngineId::Pip)
     }
 
     async fn resolve(
@@ -151,21 +151,7 @@ impl Engine for PipEngine {
             .run()
             .await?;
         out.stderr = files.humanize(&out.stderr);
-        if !out.ok() {
-            // **The same shape uv gives** (ARCHITECTURE §3). pip's ResolutionImpossible was a hard
-            // error, so under pip one unsatisfiable package in a fifteen-package request failed
-            // the whole preview and the per-package *Skip* the preview offers under uv never
-            // appeared.
-            if let Some(detail) = super::parse::pip_impossible(&out.stderr) {
-                return Ok(ResolutionReport {
-                    impossible: Some(detail),
-                    raw: out.stderr,
-                    ..ResolutionReport::default()
-                });
-            }
-            return Err(out.into_error());
-        }
-        super::parse::pip_report(&out.stdout, &out.stderr, &installed)
+        super::parse::pip_resolution(out.code, &out.stdout, &out.stderr, &installed)
             .map(super::parse::ParsedPlan::into_report)
     }
 

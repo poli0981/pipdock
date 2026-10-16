@@ -556,6 +556,12 @@ static CLASSIFIERS: &[Classifier] = &[
         code: Code::EngPipTooOld,
         all_of: &["no such option: --report"],
     },
+    // The planner's argv puts `--dry-run` first, and optparse stops at the first option it does
+    // not know — so a pip below 22.2 says this, not the `--report` line above.
+    Classifier {
+        code: Code::EngPipTooOld,
+        all_of: &["no such option: --dry-run"],
+    },
     Classifier {
         code: Code::EngNotFound,
         all_of: &["no module named pip"],

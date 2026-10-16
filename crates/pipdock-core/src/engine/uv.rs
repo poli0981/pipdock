@@ -115,7 +115,7 @@ impl Engine for UvEngine {
         if !out.ok() {
             return Err(out.into_error());
         }
-        super::parse::list_json(&out.stdout)
+        super::parse::list_json(&out.stdout, EngineId::Uv)
     }
 
     async fn list_outdated(&self, env: &PyEnv) -> Result<Vec<OutdatedDist>> {
@@ -135,7 +135,7 @@ impl Engine for UvEngine {
         if !out.ok() {
             return Err(out.into_error());
         }
-        super::parse::outdated_json(&out.stdout)
+        super::parse::outdated_json(&out.stdout, EngineId::Uv)
     }
 
     async fn resolve(
@@ -156,9 +156,9 @@ impl Engine for UvEngine {
             .cancel(ctx.cancel.clone())
             .run()
             .await?;
-        // uv exits non-zero on an unsatisfiable set, but its message is the most useful thing it
-        // produces (SP-1), so the plan is parsed either way and the parser decides.
-        super::parse::uv_plan(&out.stdout, &out.stderr, &installed)
+        // uv exits non-zero on an unsatisfiable set, and its explanation is the most useful thing
+        // it produces (SP-1) — so the exit decides between a plan, an impossibility and a failure.
+        super::parse::uv_resolution(out.code, &out.stdout, &out.stderr, &installed)
             .map(super::parse::ParsedPlan::into_report)
     }
 
