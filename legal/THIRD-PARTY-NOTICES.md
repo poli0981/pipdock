@@ -1,6 +1,6 @@
 # PipDock — Third-Party Notices
 
-*Version 1.1 · 2026-08-14 · This inventory is maintained by hand and reconciled against the manifests (`Cargo.toml`, `src-tauri/Cargo.toml`, `crates/*/Cargo.toml`, `package.json`) at each release. It names the direct dependencies PipDock declares, not their transitive trees — for the complete resolved graph, read `Cargo.lock` and `package-lock.json`, which are committed. All bundled licenses are GPL-3.0-compatible.*
+*Version 1.2 · 2026-10-16 · This inventory is maintained by hand and reconciled against the manifests (`Cargo.toml`, `src-tauri/Cargo.toml`, `crates/*/Cargo.toml`, `package.json`) at each release. It names the direct dependencies PipDock declares, not their transitive trees — for the complete resolved graph, read `Cargo.lock` and `package-lock.json`, which are committed. All bundled licenses are GPL-3.0-compatible.*
 
 ## A. Bundled / linked components (distributed with PipDock)
 
@@ -23,6 +23,7 @@
 | rusqlite / SQLite | MIT / Public Domain | local cache |
 | winreg | MIT | Windows-only — PEP 514 interpreter discovery |
 | win32job | MIT OR Apache-2.0 | Windows-only — Job Objects, so cancelling reaches the compilers pip spawns |
+| rfd | MIT | the native dialog that says why PipDock cannot start, shown before any window exists |
 | Inter typeface | SIL OFL 1.1 | UI font — `ui/src/assets/fonts/InterVariable.woff2` |
 | JetBrains Mono typeface | SIL OFL 1.1 | mono font — `ui/src/assets/fonts/JetBrainsMono-Regular.woff2` |
 | Microsoft Edge WebView2 Runtime | proprietary, system component | rendering (not distributed by PipDock; Evergreen runtime assumed present per Microsoft's terms) |
@@ -50,9 +51,9 @@ These run as independent programs from your system or from PipDock's isolated to
 
 ## C. Services
 
-PyPI (operated by the Python Software Foundation) supplies the package name index and metadata under its Terms of Use. It is the only service PipDock connects to.
+PyPI (operated by the Python Software Foundation) supplies the package name index, package and release metadata, and — through pip-audit, which queries PyPI's own vulnerability data by default — the Security tab's advisories, under its Terms of Use. It is the only service PipDock connects to.
 
-GitHub hosts the repository, the legal documents, the issue tracker and the release downloads — reached by *you*, in your browser, because PipDock does not update itself. `docs.astral.sh` hosts the ruff rule pages each Code Health finding links to, and `poli0981.dev` the author's contact page. Those three are URLs handed to your browser, never fetched by the application.
+GitHub hosts the repository, the legal documents, the issue tracker and the release downloads — reached by *you*, in your browser, because PipDock does not update itself. `docs.astral.sh` hosts the ruff rule pages each Code Health finding links to, `osv.dev` the advisory page each Security finding links to, and `poli0981.dev` the author's contact page. Those four are URLs handed to your browser, never fetched by the application.
 
 ## D. Trademarks
 
