@@ -90,7 +90,7 @@ impl ToolArg {
 /// Options accepted by every command (CLI-SPEC §2).
 #[derive(Debug, Args)]
 pub struct GlobalOpts {
-    /// Interpreter or environment directory. Defaults to the last used env, else an
+    /// Interpreter or environment directory. Defaults to the one `env use` set, else an
     /// auto-detected `.venv` in the working directory.
     #[arg(long, global = true, value_name = "PATH")]
     pub env: Option<PathBuf>,
