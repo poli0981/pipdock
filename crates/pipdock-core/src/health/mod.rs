@@ -54,6 +54,36 @@ pub const TOOLS_REQUIREMENTS: &str = include_str!(concat!(
     "/../../tools/tools-requirements.txt"
 ));
 
+/// Every package either venv can install, pinned `==`: the tools' **whole** dependency tree.
+///
+/// The ledger pins four tools and nothing beneath them, so each sync resolved their thirty-odd
+/// dependencies against whatever PyPI held that day — a report was reproducible for a build only
+/// as far as the top of the tree, and a compromised or broken release of `requests` or `rich`
+/// reached every user on their next Health click (H27). This file constrains without installing,
+/// so one file serves both venvs. Generated, never hand-edited — the command is in its header —
+/// and a test refuses a ledger pin it does not match. Hashes are the next step and are not here.
+///
+/// `pip` itself is left out on purpose: it is the installer, pip-audit depends on it, and a
+/// constraint would make pip replace itself half-way through installing pip-audit.
+pub const TOOLS_CONSTRAINTS: &str = include_str!(concat!(
+    env!("CARGO_MANIFEST_DIR"),
+    "/../../tools/tools-constraints.txt"
+));
+
+/// [`TOOLS_CONSTRAINTS`] as written beside the venv: its pin lines alone, LF-terminated.
+#[must_use]
+pub fn constraints_body() -> String {
+    TOOLS_CONSTRAINTS
+        .lines()
+        .map(|l| l.split('#').next().unwrap_or("").trim())
+        .filter(|l| !l.is_empty())
+        .fold(String::new(), |mut acc, line| {
+            acc.push_str(line);
+            acc.push('\n');
+            acc
+        })
+}
+
 /// The tools actually installed into the venv, out of the shipped ledger.
 ///
 /// The ledger is the **release-time pin set** and also carries `pip-audit` for the post-1.0
@@ -214,6 +244,9 @@ const MANIFEST_FILE: &str = "manifest.json";
 
 /// The resolved requirements written beside the venv, for the user to read.
 const REQUIREMENTS_FILE: &str = "tools-requirements.txt";
+
+/// [`TOOLS_CONSTRAINTS`], written beside the venv for the install to read.
+const CONSTRAINTS_FILE: &str = "tools-constraints.txt";
 
 /// `ERROR_FILENAME_EXCED_RANGE` — Windows' "the path is too long".
 const OS_PATH_TOO_LONG: i32 = 206;
@@ -480,6 +513,9 @@ pub async fn sync_tools_venv(
     // and whatever line endings the build machine checked out stop.
     std::fs::write(&requirements, requirements_body(&pins))
         .map_err(|e| fs_failure("write the tools requirements", &e))?;
+    let constraints = tools_dir.join(CONSTRAINTS_FILE);
+    std::fs::write(&constraints, constraints_body())
+        .map_err(|e| fs_failure("write the tools constraints", &e))?;
 
     // The venv is rebuilt, not repaired. `pip install -r` over an existing venv is a no-op when
     // the pins are already satisfied — so a sync run to replace a deleted `ruff.exe` installed
@@ -494,7 +530,7 @@ pub async fn sync_tools_venv(
     // needed anyway — `needs_sync` short-circuits the common case in ~30 ms.
     remove_venv(&venv)?;
     create_venv(base_python, &venv, &sink.at(0)).await?;
-    install_pins(&venv, &requirements, &sink.at(1)).await?;
+    install_pins(&venv, &requirements, &constraints, &sink.at(1)).await?;
     let tools = verify_tools(tools_dir, tool_set, sink).await?;
 
     let python = venv_python(tools_dir);
@@ -522,6 +558,22 @@ pub async fn sync_tools_venv(
         return Err(fs_failure("write the tools manifest", &e));
     }
     Ok(manifest)
+}
+
+/// `pip install --only-binary=:all: -r <pins> -c <the whole tree>`.
+fn install_argv(requirements: &Path, constraints: &Path) -> Vec<String> {
+    vec![
+        "-m".to_owned(),
+        "pip".to_owned(),
+        "install".to_owned(),
+        "--only-binary=:all:".to_owned(),
+        "--disable-pip-version-check".to_owned(),
+        "--no-input".to_owned(),
+        "-r".to_owned(),
+        requirements.display().to_string(),
+        "-c".to_owned(),
+        constraints.display().to_string(),
+    ]
 }
 
 /// Clear the way for a fresh venv.
@@ -594,21 +646,17 @@ async fn create_venv(base_python: &Path, venv: &Path, sink: &ProgressSink) -> Re
 /// falls back to an sdist build, which ends at `PD-BLD-001` — telling someone who clicked *Health*
 /// to install Visual Studio Build Tools. With it, the same situation is a clean resolution failure
 /// this maps to `PD-NET-011`. As of 2026-08-12 it never fires, which is exactly when to add it.
-async fn install_pins(venv: &Path, requirements: &Path, sink: &ProgressSink) -> Result<()> {
+async fn install_pins(
+    venv: &Path,
+    requirements: &Path,
+    constraints: &Path,
+    sink: &ProgressSink,
+) -> Result<()> {
     let python = venv.join("Scripts").join("python.exe");
     sink.started(None, ExecMode::Batch);
 
     let out = crate::exec::Command::python(&python)
-        .args([
-            "-m",
-            "pip",
-            "install",
-            "--only-binary=:all:",
-            "--disable-pip-version-check",
-            "--no-input",
-            "-r",
-        ])
-        .arg(requirements.display().to_string())
+        .args(install_argv(requirements, constraints))
         .cancel(sink.cancel.clone())
         .run_streaming(sink, None, ExecMode::Batch)
         .await
@@ -1434,5 +1482,53 @@ mod tests {
                 .collect(),
         );
         pins_hash(&pins)
+    }
+
+    #[test]
+    fn every_tool_is_constrained_at_the_version_the_ledger_pins() {
+        // A Dependabot bump of a tool that is not followed by regenerating the constraints would
+        // install the tool at one version and constrain it at another: pip refuses that, and every
+        // user's next Health click fails with PD-NET-011.
+        let ledger = parse_ledger(TOOLS_REQUIREMENTS).expect("ledger parses");
+        let body = constraints_body();
+        for (name, version) in &ledger {
+            let line = format!("{name}=={version}");
+            assert!(
+                body.lines()
+                    .any(|l| l == line || l.starts_with(&format!("{line} ;"))),
+                "tools-constraints.txt does not pin {line}. Regenerate it with the command in its \
+                 header"
+            );
+        }
+    }
+
+    #[test]
+    fn the_constraints_are_exact_pins_and_never_pip() {
+        for line in constraints_body().lines() {
+            let (pin, marker) = line.split_once(" ; ").unwrap_or((line, ""));
+            let (name, version) = pin.split_once("==").unwrap_or_else(|| panic!("{line}"));
+            let name = PkgName::parse(name).unwrap_or_else(|_| panic!("{line}"));
+            assert!(crate::pep440::is_version(version), "{line}");
+            assert_ne!(
+                name.as_str(),
+                "pip",
+                "pip is the installer, not a dependency to pin"
+            );
+            assert!(
+                marker
+                    .chars()
+                    .all(|c| c.is_ascii_alphanumeric() || " ._'<>=!~()".contains(c)),
+                "{line}"
+            );
+        }
+        assert!(constraints_body().lines().count() > HEALTH_TOOLS.len() + AUDIT_TOOLS.len());
+    }
+
+    #[test]
+    fn the_install_is_constrained_by_the_whole_tree() {
+        let argv = install_argv(Path::new("req.txt"), Path::new("con.txt"));
+        let at = argv.iter().position(|a| a == "-c").expect("-c");
+        assert_eq!(argv[at + 1], "con.txt");
+        assert!(argv.iter().any(|a| a == "--only-binary=:all:"));
     }
 }
