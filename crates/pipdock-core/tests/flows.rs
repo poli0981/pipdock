@@ -20,13 +20,15 @@ use pipdock_core::envs::ProbeResult;
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::exec::Stop;
 use pipdock_core::flow::{
-    FlowOptions, FlowStep, Intent, NothingReason, SnapshotPolicy, UpdateFlow,
+    FlowOptions, FlowStep, Intent, NothingReason, RollbackFlow, SnapshotPolicy, UninstallFlow,
+    UpdateFlow,
 };
 use pipdock_core::model::{
     CheckReport, Dist, EngineId, EngineInfo, EnvSource, ExecMode, OutdatedDist, PkgName, PyEnv,
     StepResult, StepStatus, Version,
 };
 use pipdock_core::plan::{Change, ChangeKind, PlanRequest, ResolutionReport};
+use pipdock_core::snapshot::{self, Trigger};
 
 /// One package in the scripted world.
 #[derive(Clone)]
@@ -367,4 +369,164 @@ async fn a_stop_during_the_first_resolve_reaches_the_engine() {
         started.1
     );
     assert!(engine.world().installs.is_empty(), "nothing ran");
+}
+
+/// Start an update over `engine`'s world with default options.
+async fn start_update(engine: &Scripted, opts: FlowOptions) -> UpdateFlow {
+    UpdateFlow::start(env(), Box::new(engine.clone()), &update_all(), &[], opts)
+        .await
+        .expect("start")
+        .0
+}
+
+#[tokio::test]
+async fn a_preview_confirmed_after_the_environment_changed_is_refused_before_the_snapshot() {
+    // C1. Something installs a package from another terminal while the preview is on screen.
+    // The check compared the plan's hash with itself and the resolve-time listing with itself,
+    // so it could never fire.
+    let engine = Scripted::default()
+        .with("idna", "3.4", &[])
+        .offering("idna", "3.10");
+    let mut flow = start_update(&engine, FlowOptions::default()).await;
+    let _ = engine.clone().with("six", "1.17.0", &[]);
+
+    let dir = app_data("drift");
+    let err = flow
+        .take_snapshot(SnapshotPolicy::Take, &dir)
+        .await
+        .expect_err("a preview of a different environment is refused");
+    assert_eq!(err.code, Code::ResPlanStale);
+    assert!(
+        !dir.exists(),
+        "no snapshot is written for a plan that will not run"
+    );
+    assert!(engine.world().installs.is_empty());
+}
+
+static NOW_MS: std::sync::atomic::AtomicI64 = std::sync::atomic::AtomicI64::new(1_785_000_000_000);
+
+fn test_clock() -> jiff::Timestamp {
+    jiff::Timestamp::from_millisecond(NOW_MS.load(std::sync::atomic::Ordering::SeqCst))
+        .expect("in range")
+}
+
+#[tokio::test]
+async fn a_preview_left_on_screen_for_eleven_minutes_is_refused() {
+    // C1's other half: `accept` stamped the plan at execute time, so its age was always zero.
+    let engine = Scripted::default()
+        .with("idna", "3.4", &[])
+        .offering("idna", "3.10");
+    let opts = FlowOptions {
+        clock: test_clock,
+        ..FlowOptions::default()
+    };
+    let mut flow = start_update(&engine, opts).await;
+    NOW_MS.fetch_add(11 * 60 * 1000, std::sync::atomic::Ordering::SeqCst);
+
+    let dir = app_data("stale");
+    let err = flow
+        .take_snapshot(SnapshotPolicy::Waive, &dir)
+        .await
+        .expect_err("an eleven-minute-old preview is refused, waiver or not");
+    assert_eq!(err.code, Code::ResPlanStale);
+    assert!(engine.world().installs.is_empty());
+}
+
+#[tokio::test]
+async fn the_summary_and_its_snapshot_carry_one_plan_id() {
+    // M31: the snapshot said "update-<env>" for every plan ever made in an environment, and the
+    // summary carried a second, different id — nothing tied a run to the snapshot taken for it.
+    let engine = Scripted::default()
+        .with("idna", "3.4", &[])
+        .offering("idna", "3.10");
+    let mut flow = start_update(&engine, FlowOptions::default()).await;
+    let dir = app_data("plan-id");
+    let meta = flow
+        .take_snapshot(SnapshotPolicy::Take, &dir)
+        .await
+        .expect("snapshot")
+        .expect("taken");
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let summary = flow.execute(tx).await.expect("execute");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let Trigger::Plan { plan_id } = &meta.trigger else {
+        panic!("a plan's snapshot says so: {:?}", meta.trigger);
+    };
+    assert_eq!(plan_id, &summary.plan_id);
+    assert_eq!(plan_id, flow.plan_id());
+}
+
+#[tokio::test]
+async fn a_removal_guarded_against_an_older_environment_is_refused() {
+    // M44: the guard found nothing that needs `x`. Since then `y`, which does, was installed.
+    let engine = Scripted::default().with("x", "1.0", &[]);
+    let (mut flow, report) = UninstallFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &["x".to_owned()],
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    assert!(report.is_clear());
+    let _ = engine.clone().with("y", "2.0", &["x>=1"]);
+
+    let dir = app_data("guard-drift");
+    let err = flow
+        .take_snapshot(SnapshotPolicy::Take, &dir)
+        .await
+        .expect_err("a guard over a different environment is refused");
+    assert_eq!(err.code, Code::ResPlanStale);
+    assert_eq!(
+        engine.version_of("x").as_deref(),
+        Some("1.0"),
+        "nothing was removed"
+    );
+}
+
+#[tokio::test]
+async fn a_rollback_previewed_against_an_older_environment_is_refused() {
+    // M44: the restore plan is a diff against the freeze `start` took; applied to anything else
+    // it removes and reinstalls the wrong things.
+    let engine = Scripted::default().with("idna", "3.4", &[]);
+    let dir = app_data("rollback-drift");
+    let hash = pipdock_core::envs::env_hash(std::path::Path::new("python.exe"));
+    let target = snapshot::create(
+        &dir,
+        &hash,
+        "idna==3.2
+"
+        .to_owned(),
+        Trigger::Manual,
+        EngineId::Pip,
+        jiff::Timestamp::now(),
+    )
+    .expect("target snapshot");
+    let (mut flow, preview) = RollbackFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &dir,
+        &target.meta.id,
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    assert!(
+        !preview.restore.is_empty(),
+        "the fixture must have work to do"
+    );
+    let _ = engine.clone().with("six", "1.17.0", &[]);
+
+    let err = flow
+        .take_snapshot(&dir)
+        .await
+        .expect_err("a restore planned against a different environment is refused");
+    assert_eq!(err.code, Code::ResPlanStale);
+    assert_eq!(
+        snapshot::list(&dir, &hash).expect("list").len(),
+        1,
+        "only the target exists: no pre-rollback snapshot was written"
+    );
+    let _ = std::fs::remove_dir_all(&dir);
 }

@@ -283,6 +283,11 @@ fn report(packages: &[(&str, &str)]) -> ResolutionReport {
     }
 }
 
+/// The identity of [`env`], which a plan is now verified against.
+fn env_hash() -> String {
+    pipdock_core::envs::env_hash(std::path::Path::new("python.exe"))
+}
+
 fn now() -> jiff::Timestamp {
     "2026-07-27T12:00:00Z".parse().unwrap()
 }
@@ -327,7 +332,13 @@ async fn run_with(
     let dir = scratch();
     let _ = std::fs::remove_dir_all(&dir);
     let snap = snapshot_for(&dir);
-    let plan = AcceptedPlan::accept(report(packages), "envhash01".to_owned(), &[], now());
+    let plan = AcceptedPlan::accept(
+        "plan-1".to_owned(),
+        report(packages),
+        env_hash(),
+        &[],
+        now(),
+    );
     let summary = execute(
         engine,
         &env(),
@@ -513,8 +524,9 @@ async fn a_stale_preview_is_refused() {
     let _ = std::fs::remove_dir_all(&dir);
     let snap = snapshot_for(&dir);
     let plan = AcceptedPlan::accept(
+        "plan-1".to_owned(),
         report(&[("idna", "3.18")]),
-        "envhash01".to_owned(),
+        env_hash(),
         &[],
         now(),
     );
@@ -543,8 +555,9 @@ async fn a_preview_made_before_the_environment_changed_is_refused() {
     let _ = std::fs::remove_dir_all(&dir);
     let snap = snapshot_for(&dir);
     let plan = AcceptedPlan::accept(
+        "plan-1".to_owned(),
         report(&[("idna", "3.18")]),
-        "envhash01".to_owned(),
+        env_hash(),
         &[],
         now(),
     );
@@ -591,12 +604,13 @@ async fn reordering_the_installed_set_is_not_drift() {
         size_bytes: None,
     };
     let plan = AcceptedPlan::accept(
+        "plan-1".to_owned(),
         report(&[("idna", "3.18")]),
-        "envhash01".to_owned(),
+        env_hash(),
         &[a.clone(), b.clone()],
         now(),
     );
-    assert!(plan.verify("envhash01", &[b, a], now()).is_ok());
+    assert!(plan.verify(&env_hash(), &[b, a], now()).is_ok());
 }
 
 #[tokio::test]
@@ -783,8 +797,9 @@ async fn an_isolated_step_holds_everything_else_where_the_preview_put_it() {
     let _ = std::fs::remove_dir_all(&dir);
     let snap = snapshot_for(&dir);
     let plan = AcceptedPlan::accept(
+        "plan-1".to_owned(),
         report(&[("alpha", "2.0"), ("badone", "1.0")]),
-        "envhash01".to_owned(),
+        env_hash(),
         &installed,
         now(),
     );
