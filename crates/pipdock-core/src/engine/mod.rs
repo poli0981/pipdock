@@ -13,7 +13,7 @@ pub mod uv;
 
 use async_trait::async_trait;
 
-use crate::errors::Result;
+use crate::errors::{Code, PdError, Result};
 use crate::model::{
     CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
     StepResult, StepStatus,
@@ -238,6 +238,7 @@ pub trait Engine: Send + Sync {
         &self,
         env: &PyEnv,
         names: &[PkgName],
+        system: SystemPackages,
         sink: ProgressSink,
     ) -> Result<StepResult>;
 
@@ -268,6 +269,71 @@ pub trait Engine: Send + Sync {
     }
 }
 
+/// Whether an engine call may override PEP 668 with `--break-system-packages` (SECURITY §3).
+///
+/// A named value rather than a `bool`, for the reason [`crate::snapshot::SnapshotProof`] is a
+/// named waiver. The only way to [`Self::OverrideAllowed`] is a flow that probed the environment,
+/// found it externally managed, and was told by its caller that the Settings override is on —
+/// hard invariant 5 says the flag is never passed implicitly, and this is what makes "implicitly"
+/// greppable.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SystemPackages {
+    /// The flag is not passed. Everything defaults to this.
+    #[default]
+    Protected,
+    /// The environment is externally managed and the user turned the override on.
+    OverrideAllowed,
+}
+
+impl SystemPackages {
+    /// `--break-system-packages`, or nothing.
+    #[must_use]
+    pub const fn args(self) -> &'static [&'static str] {
+        match self {
+            Self::Protected => &[],
+            Self::OverrideAllowed => &["--break-system-packages"],
+        }
+    }
+}
+
+/// What the override can do with this engine, for an environment that is externally managed.
+///
+/// uv has taken `--break-system-packages` throughout its supported range. pip implemented PEP 668
+/// in 23.0 and added the flag in 23.0.1: below 23.0 there is nothing to override and the flag is
+/// an unknown option, and 23.0 itself enforces the marker with no way past it. An unreadable pip
+/// version is assumed modern — a pip that cannot report its version fails on its own first.
+///
+/// # Errors
+/// `PD-ENV-002` for pip 23.0, which no flag gets past.
+pub fn system_packages_for(info: &EngineInfo) -> Result<SystemPackages> {
+    if info.id == EngineId::Uv {
+        return Ok(SystemPackages::OverrideAllowed);
+    }
+    let release = info.version.as_deref().map(|v| {
+        let mut parts = v.split('.').map(|p| {
+            p.chars()
+                .take_while(char::is_ascii_digit)
+                .collect::<String>()
+                .parse::<u32>()
+                .unwrap_or(0)
+        });
+        (
+            parts.next().unwrap_or(0),
+            parts.next().unwrap_or(0),
+            parts.next().unwrap_or(0),
+        )
+    });
+    match release {
+        Some(r) if r < (23, 0, 0) => Ok(SystemPackages::Protected),
+        Some(r) if r < (23, 0, 1) => Err(PdError::new(
+            Code::EnvExternallyManaged,
+            "pip 23.0 enforces PEP 668 and has no override; --break-system-packages arrived in \
+             pip 23.0.1",
+        )),
+        _ => Ok(SystemPackages::OverrideAllowed),
+    }
+}
+
 /// What one resolve is given besides the request itself.
 #[derive(Debug, Clone, Default)]
 pub struct ResolveCtx {
@@ -275,6 +341,9 @@ pub struct ResolveCtx {
     pub cancel: tokio_util::sync::CancellationToken,
     /// What the flow changes about the requirement lines the engine is given.
     pub adjust: GuardAdjust,
+    /// uv refuses even a dry run in an externally managed environment without the flag; pip's
+    /// `--dry-run --report` is exempt and is never given it.
+    pub system: SystemPackages,
 }
 
 /// Changes to the requirement lines of a resolve, made by the flow — never by an adapter.
@@ -307,6 +376,8 @@ pub struct InstallSet {
     pub specs: Vec<PinnedSpec>,
     /// Everything that must stay at these versions if the engine touches it at all.
     pub constraints: Vec<PinnedSpec>,
+    /// Whether the PEP 668 override applies to this install.
+    pub system: SystemPackages,
 }
 
 impl InstallSet {
@@ -316,6 +387,7 @@ impl InstallSet {
         Self {
             specs,
             constraints: Vec::new(),
+            system: SystemPackages::Protected,
         }
     }
 }
@@ -964,5 +1036,41 @@ mod tests {
         let detail = parse::pip_impossible(&out).expect("impossible");
         let names: Vec<&str> = detail.packages.iter().map(PkgName::as_str).collect();
         assert_eq!(names, ["httpcore", "httpx"]);
+    }
+
+    #[test]
+    fn the_override_reaches_pip_only_where_pip_has_the_flag() {
+        let pip = |v: &str| EngineInfo {
+            id: EngineId::Pip,
+            version: Some(v.into()),
+            available: true,
+        };
+        // Below 23.0 nothing enforces the marker, and the flag is an unknown option.
+        assert_eq!(
+            system_packages_for(&pip("22.3.1")).expect("ok"),
+            SystemPackages::Protected
+        );
+        // 23.0 enforces it and offers no way past.
+        assert_eq!(
+            system_packages_for(&pip("23.0")).expect_err("no flag").code,
+            Code::EnvExternallyManaged
+        );
+        for v in ["23.0.1", "24.1b1", "26.2.1"] {
+            assert_eq!(
+                system_packages_for(&pip(v)).expect("ok"),
+                SystemPackages::OverrideAllowed,
+                "{v}"
+            );
+        }
+        let uv = EngineInfo {
+            id: EngineId::Uv,
+            version: Some("0.13.1".into()),
+            available: true,
+        };
+        assert_eq!(
+            system_packages_for(&uv).expect("ok"),
+            SystemPackages::OverrideAllowed
+        );
+        assert!(SystemPackages::Protected.args().is_empty());
     }
 }

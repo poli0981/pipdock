@@ -603,6 +603,24 @@ pub struct ExecutionOutcome {
     pub snapshot: Option<snapshot::Meta>,
 }
 
+/// The configured engine and the stored PEP 668 override, read and released before any await.
+///
+/// `Store` is not `Sync`, so a future holding its guard is not `Send` and a command would not
+/// compile — and where it does compile it serializes every other command behind a subprocess.
+async fn flow_inputs(
+    state: &tauri::State<'_, AppState>,
+) -> pipdock_core::Result<(Box<dyn pipdock_core::engine::Engine>, flow::FlowOptions)> {
+    let store = state.store.lock().await;
+    let stored = settings::load(&store)?;
+    Ok((
+        engine::for_id(stored.engine),
+        flow::FlowOptions {
+            allow_externally_managed: stored.allow_externally_managed,
+            ..flow::FlowOptions::default()
+        },
+    ))
+}
+
 /// Begin an update or install: resolve, and derive what needs a decision.
 ///
 /// The first of the four calls that drive one `UpdateFlow` (DATA-FLOW §3). The flow is parked in
@@ -633,15 +651,20 @@ pub async fn plan_resolve(
     // Both store reads happen up front and the guard is dropped before any await. `Store` is not
     // `Sync`, so a future holding one is not `Send` and a Tauri command cannot return it — which
     // is what forced `UpdateFlow::start` to take the pins rather than the store.
-    let (engine, env_pins) = {
+    let (engine, env_pins, allow_externally_managed) = {
         let store = state.store.lock().await;
-        let engine = engine::for_id(settings::load(&store)?.engine);
+        let stored = settings::load(&store)?;
         let env_pins = pins::list(&store, &envs::env_hash(&env.interpreter))?;
-        (engine, env_pins)
+        (
+            engine::for_id(stored.engine),
+            env_pins,
+            stored.allow_externally_managed,
+        )
     };
 
     let opts = flow::FlowOptions {
         cancel,
+        allow_externally_managed,
         ..flow::FlowOptions::default()
     };
     match flow::UpdateFlow::start(env, engine, &intent, &env_pins, opts).await {
@@ -783,12 +806,9 @@ pub async fn uninstall_guard(
     // Read, then drop, before any await: `Store` is not `Sync`, so a future holding the guard is
     // not `Send` and this command would not compile — and where it does compile it serializes
     // every other command behind a subprocess.
-    let engine = {
-        let store = state.store.lock().await;
-        engine::for_id(settings::load(&store)?.engine)
-    };
+    let (engine, opts) = flow_inputs(&state).await?;
 
-    match flow::UninstallFlow::start(env, engine, &pkgs, flow::FlowOptions::default()).await {
+    match flow::UninstallFlow::start(env, engine, &pkgs, opts).await {
         Ok((flow, report)) => {
             state.park(Session::Uninstall(Box::new(flow))).await;
             Ok(report)
@@ -932,20 +952,9 @@ pub async fn snapshot_rollback_preview(
 ) -> Wire<flow::RollbackPreview> {
     let _ = state.claim().await?;
 
-    let engine = {
-        let store = state.store.lock().await;
-        engine::for_id(settings::load(&store)?.engine)
-    };
+    let (engine, opts) = flow_inputs(&state).await?;
 
-    match flow::RollbackFlow::start(
-        env,
-        engine,
-        &state.app_data,
-        &id,
-        flow::FlowOptions::default(),
-    )
-    .await
-    {
+    match flow::RollbackFlow::start(env, engine, &state.app_data, &id, opts).await {
         Ok((rollback, preview)) => {
             state.park(Session::Rollback(Box::new(rollback))).await;
             Ok(preview)
