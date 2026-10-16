@@ -10,9 +10,9 @@ Code Health answers three questions about a **project folder** (not an environme
 |---|---|---|
 | Which declared dependencies are unused, missing, or transitive-only? | **deptry** | dependency issues table |
 | Which code is dead (unused functions/classes/vars)? | **vulture** | dead-code findings with confidence % |
-| Does the code violate common standards, and what can be auto-fixed? | **ruff** (`check`, opt-in `--fix`, opt-in `format --check`) | lint findings; safe-fix count |
+| Does the code violate common standards, and what can be auto-fixed? | **ruff** (`check`, opt-in `--fix`; an opt-in `format --check` was specified and never built) | lint findings; safe-fix count |
 
-Hard boundaries: **report-only** for deptry and vulture (no auto-removal of code or dependencies — too dangerous to automate); the only write path is `ruff --fix`/`ruff format`, gated behind an explicit confirm; PipDock never edits `pyproject.toml`/`requirements.txt` for the user — deptry findings link to the *Uninstall* flow instead, where the reverse-dep guard applies.
+Hard boundaries: **report-only** for deptry and vulture (no auto-removal of code or dependencies — too dangerous to automate); the only write path is `ruff check --fix`, gated behind an explicit confirm — `ruff format` is not wired at all (§5 says why); PipDock never edits `pyproject.toml`/`requirements.txt` for the user — deptry findings link to the *Uninstall* flow instead, where the reverse-dep guard applies.
 
 ## 2. Isolation: the tools venv
 
@@ -22,10 +22,11 @@ The three tools are **never installed into the user's environment**. PipDock mai
 %LOCALAPPDATA%\PipDock\data\tools\
 ├─ .venv/                  # created with the newest discovered Python (≥3.10), no upper bound
 ├─ tools-requirements.txt  # the resolved three-tool subset actually installed, LF, no comments
+├─ tools-constraints.txt   # the tools' whole dependency tree, pin lines only, LF — passed as -c (1.4.0)
 └─ manifest.json           # installed pin set + hash; mismatch with shipped pins ⇒ re-sync
 ```
 
-Bootstrap: on first Health run (or pin-set change), create/sync the venv from `tools-requirements.txt`, with progress in the console drawer. Pin policy: exact `==` pins resolved at PipDock release time (Dependabot PRs bump them, in their own group per RELEASE-CI §2); no floating versions at runtime. Offline: if bootstrap can't reach PyPI, Health reports PD-NET-011 and stays disabled; other tabs unaffected.
+Bootstrap: on first Health run (or pin-set change), create/sync the venv from `tools-requirements.txt`, constrained by `tools-constraints.txt`, with progress in the console drawer. Pin policy: exact `==` pins resolved at PipDock release time — for the tools and, since 1.4.0, for everything beneath them (Dependabot PRs bump the tools, in their own group per RELEASE-CI §2); no floating versions at runtime. Offline: if bootstrap can't reach PyPI, Health reports PD-NET-011 and stays disabled; other tabs unaffected.
 
 **Amended by Phase 3 · P2, 2026-08-12** — four corrections, each made against a running bootstrap:
 
@@ -35,6 +36,18 @@ Bootstrap: on first Health run (or pin-set change), create/sync the venv from `t
 - **A sync rebuilds the venv rather than repairing it, and deletes `manifest.json` first.** `pip install -r` over satisfied pins is a no-op, so repairing a deleted `ruff.exe` installed nothing and then failed verification with `PD-HLT-001` — the state the code tells the user to re-sync out of. Deleting the manifest first means a torn sync reads as "never synced" rather than as a manifest claiming tools that are half-replaced.
 
 `python -m venv` exiting non-zero is **`PD-HLT-004`**, added in the same slice: `PD-NET-011` is `Area::Net` and would exit 6, so a script retrying on network failure would loop forever against a broken interpreter.
+
+**Amended by 1.4.0 — the whole tree is pinned, not just the tools.** The ledger pins four tools and nothing beneath them, so every sync resolved their thirty-odd dependencies against whatever PyPI held that day: a report was reproducible for a build only as far as the top of the tree, and a broken or compromised release of `requests`, `rich` or `msgpack` reached every user on their next sync. `tools/tools-constraints.txt` is that tree, compiled once with
+
+```text
+uv pip compile tools/tools-requirements.txt --universal --python-version 3.10 --only-binary :all: --no-emit-package pip -o tools/tools-constraints.txt
+```
+
+— the command is in the file's header, which is the copy to run — embedded in the binary beside the ledger (`health::TOOLS_CONSTRAINTS`), written into the tools directory as its pin lines alone, and passed to the bootstrap's `pip install` as `-c`. One file serves both venvs, because a constraint installs nothing. `pip` is left out on purpose: it is the installer, pip-audit depends on it, and constraining it would make pip replace itself half-way through installing pip-audit.
+
+- **Regenerate it whenever `tools/tools-requirements.txt` moves**, a Dependabot bump included. `every_tool_is_constrained_at_the_version_the_ledger_pins` fails `cargo test` on a ledger pin the constraints do not carry, and names the command: a tool installed at one version and constrained at another is something pip refuses, and every user's next Health click would be `PD-NET-011`.
+- **The manifest hash still covers the tool pins alone**, so the change forced no existing venv to re-sync. By the same rule, a regeneration that moves only a dependency reaches a venv the next time it is rebuilt for another reason — a tool bump, a missing tool, a cleared cache — and not before.
+- **Versions, not hashes.** `--require-hashes` is in ROADMAP's Audit backlog: it needs every wheel's hash across the Pythons and platforms the venvs are built on.
 
 ## 3. Inputs
 
@@ -52,14 +65,15 @@ Also amended: the report type is **`HealthReport`**, not the `CheckReport` ARCHI
 ## 4. Invocations (from the tools venv's interpreter; argv arrays, CWD = project folder)
 
 ```text
-deptry .  --json-output <tmp>\deptry.json
-vulture . --min-confidence <settings, default 80>        # parse text output (stable format)
-ruff check . --output-format json
-ruff check . --fix        # only from the Fix button / `pipdock health --fix` after confirm
-ruff format --check .     # optional toggle, default off
+deptry  . --json-output <tools>\runs\deptry-<pid>.json --no-ansi --ignore-notebooks --extend-exclude ".*<dir>/.*" …
+vulture . --min-confidence 80 --exclude "*/<dir>/*,…"     # parse text output (stable format)
+ruff check . --output-format json --exclude *.ipynb --exclude <dir> …
+ruff check . --output-format json --exclude *.ipynb --exclude <dir> … --fix   # only from the Fix button / `pipdock health --fix` after confirm
 ```
 
-Exclusions honored: `.venv`, `venv`, `node_modules`, `build`, `dist`, `.git`, plus user globs in Settings. Each tool has a watchdog timeout (default 120 s) → PD-HLT-003 partial report.
+Exclusions honored: `.venv`, `venv`, `node_modules`, `build`, `dist`, `.git` (`health::DEFAULT_EXCLUDES`), each in its tool's own dialect — deptry's are anchored regexes, vulture's one comma-separated glob list, ruff's repeated globs — and notebooks (§7) by `*.ipynb` for ruff and `--ignore-notebooks` for deptry. **There are no user globs and no confidence setting**: this paragraph promised "user globs in Settings" and the block above a confidence from `<settings, default 80>`, and neither setting was ever built — `RunOptions` carries both, no head sets them, and the confidence is always 80. Each tool has a watchdog timeout (120 s) → PD-HLT-003 partial report. The list also had `ruff format --check .` as an optional toggle, default off; no toggle exists (§5).
+
+**Amended by 1.4.0 — the fix excludes what the report excluded, by construction.** The fix ran `ruff check . --fix` with none of the read-only run's exclusions (C4). Verified against ruff 0.17.1: it rewrote every `.ipynb` in the tree — which the report never shows — and, in a project whose `pyproject.toml` sets its own `exclude` (which replaces ruff's defaults), the files under `.venv/` as well. The fix's argv is now the report's argv plus `--fix` (`fix_argv` over `run::ruff_argv`, which the pre-write re-check shares too), and `the_fix_excludes_everything_the_preview_excluded` holds it there; re-run against both cases, neither file changes. A fix stopped by its watchdog says that some files may already have been rewritten, because ruff writes as it goes.
 
 ## 5. Results model & UI
 
@@ -72,7 +86,7 @@ Exclusions honored: `.venv`, `venv`, `node_modules`, `build`, `dist`, `.git`, pl
 
 UI (Health tab): run header (folder picker · env chip · Run) → three result tabs with counts; deptry unused-dep rows offer **"Review in Uninstall…"** (jumps to the guarded flow); ruff tab shows `Fix 17 safely fixable issues` → confirm dialog states file count and recommends a clean git tree (PipDock checks `git status --porcelain` if a repo is detected and warns on dirty). Export: `Save report` writes Markdown + JSON to a user-chosen path. CLI mirror: `pipdock health [--tool …] [--fix] [--json]`.
 
-**The fix path, as built (Phase 3 · P5).** One dialog with two states, not two dialogs — two confirms break the click budget and the second is the one nobody reads. Cancel is rendered first and focused, so `Enter` without `Tab` cancels. The confirm carries one unconditional sentence — *PipDock cannot undo this; only your own version control can* — and reserves its danger block for a tree that really has uncommitted work, so a folder outside version control is not nagged about. `git --no-optional-locks status --porcelain --untracked-files=no` is asked **twice**: once when the dialog opens, to decide what to render, and again inside `health_fix`, to decide what to allow. Before anything is written, the command re-reads the project (`PD-RES-002` if the counts moved) and checks every target is writable (`PD-PRM-003` if not) — the fix refuses **as a whole** rather than half-rewriting a tree nothing can restore. Only safe fixes are applied; `--unsafe-fixes` is never passed and **`ruff format` is not wired at all**, because formatting a whole project is a far larger blast radius than fixing seventeen lint findings and §7's non-goals are contractual.
+**The fix path, as built (Phase 3 · P5).** One dialog with two states, not two dialogs — two confirms break the click budget and the second is the one nobody reads. Cancel is rendered first and focused, so `Enter` without `Tab` cancels. The confirm carries one unconditional sentence — *PipDock cannot undo this; only your own version control can* — and reserves its danger block for a tree that really has uncommitted work, so a folder outside version control is not nagged about. `git -c core.fsmonitor=false --no-optional-locks status --porcelain --untracked-files=no` is asked **twice**: once when the dialog opens, to decide what to render, and again inside `health_fix`, to decide what to allow. The `-c` is 1.4.0's: a repository can name a program for `git status` to run — `core.fsmonitor` in its own `.git/config` — and a project folder downloaded rather than cloned brings that file with it, so asking "is it safe to write here" would have run it (SECURITY §2). A command-line `-c` wins over every config file. Before anything is written, the command re-reads the project (`PD-RES-002` if the counts moved) and checks every target is writable (`PD-PRM-003` if not) — the fix refuses **as a whole** rather than half-rewriting a tree nothing can restore. Only safe fixes are applied; `--unsafe-fixes` is never passed and **`ruff format` is not wired at all**, because formatting a whole project is a far larger blast radius than fixing seventeen lint findings and §7's non-goals are contractual.
 
 ## 6. Interpretation guidance (shown as inline help)
 

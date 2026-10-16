@@ -1,6 +1,6 @@
 # PipDock — Privacy Policy
 
-*Version 1.2 · Effective 2026-10-16 · Governing language: English.*
+*Version 1.2 · Effective 2026-10-17 · Governing language: English.*
 
 ## 1. The short version
 

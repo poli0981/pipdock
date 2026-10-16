@@ -740,7 +740,7 @@ Three things it settled that outlive it:
 
 ## Post-1.0 (P1 wave)
 
-Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. **Five of the seven have shipped** — four in 1.1.0 and the Security tab in 1.2.0; the graph view and the scheduled check remain. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
+Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. **Six of the seven have shipped** — four in 1.1.0, the Security tab in 1.2.0 and the dependency view in 1.3.0; the scheduled check remains. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
 
 **About shipped early, in Phase 4** — see above. Two smaller items were added to this wave rather
 than done at 1.0:
@@ -980,8 +980,9 @@ Nine words of PRD, and **every prerequisite is absent.** Counted against the tre
 - **Nothing runs on a timer.** One `tokio::spawn` in the whole Tauri crate, plan-scoped, and zero
   occurrences of `tokio::time::interval` or `setInterval` in either head.
 - **No surface can report a background failure.** `⚠ n` counts mounted `PdErrorRow`s, the `LogRing`
-  is cleared per plan, `logs_tail` is still one of the two `NOT_YET` entries, and the console toggle
-  is disabled while idle. A check that failed at 03:00 has nowhere to say so.
+  is cleared per plan, and the console toggle is disabled while idle. Since 1.4.0 a failure is at
+  least *written down* — the daily log in `data\logs\`, which `logs_tail` reads — but a check that
+  failed at 03:00 still has nowhere to say so on screen.
 
 It is also the item whose users are already served: the PRD's automation persona wants the **CLI in
 an external scheduler**, and `docs/CLI-SPEC.md` already ships the Task Scheduler recipe — zero code,
@@ -1275,8 +1276,8 @@ change, which is exactly what a palette should do on dispatch.
 
 #### Adding a command: the ten places
 
-For P1-A and P1-B, which both need new IPC. Three drift tests in `src-tauri/src/lib.rs` police the
-first four and fail at `cargo test`:
+For P1-A and P1-B, which both need new IPC. Drift tests in `src-tauri/src/lib.rs` — five, since 1.3.0 added the
+table check — police the first four and fail at `cargo test`:
 
 1. `crates/pipdock-core/` — the logic. Business logic never goes in `src-tauri` (ARCHITECTURE §1.1).
 2. `src-tauri/src/commands.rs` — the `#[tauri::command]`, with a `# Errors` section naming its
@@ -1298,6 +1299,125 @@ first four and fail at `cargo test`:
 9. Locale keys in **both** catalogues; `i18n.test.ts` fails on either direction.
 10. Capability changes → `capabilities/*.json`, and the `description` field is prose explaining
     *why*. SECURITY §4 requires the widening be recorded in prose as well.
+
+## 1.4.0 — the audit release — **2026-10-17**
+
+No feature. The owner asked for the whole codebase to be reviewed — logic, configuration,
+performance, logging, tests, UI — and for everything found to be either fixed or written down.
+Three audit passes and a design pass produced **about 170 findings**, and the heaviest 25 were
+checked against the code before any plan was written: all real, several reproduced. The scope the
+owner chose was **every Critical and High in 1.4.0**, plus the cheap Medium and Low ones sitting in
+code that was being changed anyway; the rest is the **Audit backlog** below, each with a place and
+a reason. One PR of about thirty-six commits, each leaving the tree green, and every Critical and
+High fix landed with a test that failed first against the code it replaced.
+
+**Where it started.** `main` had been red since 2026-09-23 — `cargo audit` (rustls 0.23.42,
+quinn-proto, a yanked chacha20) and `npm audit` (undici, source-map-js, brace-expansion) — with
+four Dependabot PRs stuck behind it, and nobody was told: the failure notifier's
+`workflows: ['*']` matched nothing. The weekly fixture-drift job had been red for seven weeks, for
+two reasons that looked like one.
+
+| Area | What was wrong | What it does now |
+|---|---|---|
+| **Mutation safety** (DATA-FLOW §9) | The stale-preview and drift checks never fired: `execute` verified the plan's hash against itself (C1). Requires-Python was never enforced, so `PD-PKG-001` was never raised (C2). A uv build failure read as "nothing to change" (C3). Stop or a watchdog in Phase A became `PD-INT-001` with no summary (C5). *Force latest* forced nothing (C6). A rollback with the other engine could uninstall pip (C7) | Re-probed before the snapshot and before execution. PipDock screens Requires-Python itself, uv's through store v4's `release_meta`. uv is read by exit status. A stopped step is a row. Forcing pins latest, releases the blockers, and the preview names what breaks. Cross-engine rollback leaves pip, setuptools and wheel alone |
+| **`ruff --fix`** | Rewrote files the report never previewed, `.venv/` and notebooks included (C4) | One argv builder for the report and the fix |
+| **Probe** | Crashed on every venv under a folder named in Vietnamese — `-I` ignores `PYTHONUTF8` (H10); parsed METADATA three times per package; dropped interpreter paths with spaces | `-X utf8`; one parse; schema 3 carries the PEP 508 marker environment, so platform-gated requirements stop reading as missing (H25) |
+| **PEP 668** | The override was a checkbox nothing read (H11), and the gate trusted the frontend's copy of the environment (H12) | Decided on a fresh probe; `--break-system-packages` only with the override **and** the marker, pip ≥ 23.0.1; a confirm with Cancel focused; a chip wherever it applies |
+| **Engines** | A resolve could not be stopped (H13); a watchdog surfaced as a PipDock bug (H14); pip's impossibility was an error where uv's was a report (H15); argv passed 32 767 characters at about 1 300 packages (H20) | `ResolveCtx` carries the token; `PD-ENG-004`; both are reports; requirements and constraints travel as files |
+| **Logging** | None. `tracing` was declared in three crates and used nowhere; `--verbose` and `--log-file` did nothing; PRIVACY described a 14-day log that did not exist | Daily files in `data\logs\`, swept at 14 days; `logs_tail` and Settings' Logs row; a failed start says so in a native dialog rather than exiting silently |
+| **CLI contract** | `env use` was stored and never read; `--json` printed several documents; Ctrl-C was unhandled | One document per command (CLI-SPEC §6); `--env`, then `env use`, then `.venv`; Ctrl-C stops the process tree and exits 130 |
+| **GUI** | Decline did nothing; the language was not kept; a mutation slot could stay claimed until restart; five stores applied answers for an environment the user had already left; Security could not scroll; the window could not maximize, and opened under a laptop's taskbar | Each fixed with a test; `changelog/1.x.md` lists them |
+| **Legal** | The documents' hash depended on the checkout's line endings; PRIVACY omitted the log and the tool environments, THIRD-PARTY omitted osv.dev | Normalised before hashing, with a test; both documents updated, so the gate shows once |
+| **CI** | As above | Notifier by name; `cargo audit --deny warnings` on a prebuilt binary; a daily `security-scan.yml`; `cargo deny`; CodeQL for Rust and Actions; releases attested, with a dry run; Dependabot cooldowns and groups |
+
+**What running found that reading did not** — the rule this file has recorded since Stage 1, again:
+
+- **The drift job's two causes.** PyPI data — idna's newest release, scipy's list of versions — is
+  now redacted in `capture.py`. uv 0.13 rewriting its errors from miette's `× … ╰─▶ Caused by:` to
+  `error: … cause:` is a format change, and got a frozen corpus of its own (`uv-0.11/`) beside the
+  live one, with a test that both renderings classify alike.
+- **Against pip 26.2.1, uv 0.13.1 and Python 3.14.7**, by running each: both engines now report an
+  impossible set the same way (exit 2); `scipy==1.7.3` on 3.14 is `PD-PKG-001` from both, where pip
+  said "not found" and uv planned it; forcing `httpcore` past `httpx 0.23` installs httpcore 1.0.9
+  with h11 0.16.0 and the post-check names what broke; the override sends its flag to a
+  uv-managed 3.13 and nowhere else; a uv snapshot restored by pip keeps pip; `ruff --fix` leaves
+  `.venv/` and `.ipynb` alone; every `--json` path parses as exactly one document.
+- **Ctrl-Break needed a hang to test.** A blackhole address fails fast on Windows; a silent local
+  TCP server is what keeps pip waiting long enough to be interrupted. Exit 130, and no orphans.
+- **Found while fixing something else**: pip names requirement-file lines `-r <temp> (line N)`, so
+  messages are rewritten back to the user's own text (`RequirementFiles::humanize`); `PkgName`'s
+  `Display` ignored width, so the CLI's columns never lined up; `pipdock list` probed twice; a
+  non-interactive decision skipped impossible packages without saying why; a cache test was flaky on
+  temp-directory names; and the dev CSP, once moved into a Vite plugin, blocked React Refresh's
+  inline preamble because it was injected ahead of it.
+- **Found by installing it.** The release build was installed and driven before the tag, and two
+  defects showed up that no suite could: **every dialog opened in the window's top-left corner** —
+  Tailwind's preflight sets `margin: 0` on everything, which removes the `margin: auto` a modal
+  `<dialog>` is centred by, so the uninstall guard had been there since it was written — and **Search
+  never offered to download the index on a fresh profile**: moving the index load into the
+  background (U35) let a failed load restart on the next keystroke, which reset the slot to
+  *warming* before the search could say why, and the screen asked again every 150 ms forever. A
+  test in `state.rs` now holds the second; jsdom computes no layout, so the first is held by a
+  comment. Also checked there: the strict release CSP renders; the window opens at 1196×799 centred
+  in the work area and maximizes with the column capped; Decline closes the app; Cancel is focused
+  in the PEP 668 confirm and focus returns to the checkbox; the language survives a restart; F5 and
+  Ctrl+R do not reload; `/` lands in the Search field; an update and its rollback run end to end
+  with `from → to` on the row.
+
+**Deliberately not done**, beyond the backlog: no CLI switch for the PEP 668 override — it stays a
+decision made in the GUI, behind a confirm; no multi-ecosystem Dependabot group, because what one
+does to the dependencies outside its patterns is undocumented and a wrong guess silently stops every
+other update (the `tauri lockstep` job covers the risk instead); the screenshots were not retaken.
+
+### Audit backlog
+
+What 1.4.0 left, as the owner chose — each with where it is and why it waited. Line numbers are as
+of the audit (`main` at `02cc17d`); a file 1.4.0 changed may have moved them. **Read this before
+starting a slice**: several are cheaper inside a slice that touches the same file.
+
+| ID | Where | What | Why it waited |
+|---|---|---|---|
+| BL-1 | `engine/mod.rs` `plan_requirements` | The guard set pins every installed package a plan does not move — the *dependencies* of a target updated alone included — so a target whose new release needs a newer dependency is held back with no culprit (pandas alone, over an old numpy). Update-all is unaffected, and *Force latest* works around it | The fix, releasing the targets' dependency closure, is safe under SP-1 but wants uv's `-U` eagerness measured first |
+| M46 | `compat.rs:30-51`; `engine/parse.rs` `is_downgrade` | Pre-, post- and dev-releases are not ordered per PEP 440 | Needs a full comparator; no reported case |
+| N4 | `flow` rollback | A rollback's restore set is not screened for Requires-Python | A restore re-installs what was there; a mismatch means the interpreter changed under the snapshot |
+| H27 | `tools/*-constraints.txt` | Pinned by version, not by hash | `--require-hashes` needs every wheel's hash across the Pythons and platforms CI covers |
+| H27-b | `health/mod.rs` `pins_hash` | A venv's manifest hashes its tool pins only, so regenerating the constraints alone — to pick up a patched dependency, say — leaves every existing venv reporting fresh | Hashing the whole constraints file into both venvs would make a pip-audit bump re-sync Code Health, which the hashes are independent to prevent; the precise fix hashes each venv's closure, built from the file's `# via` annotations |
+| X19 | first-run engine choice | uv is not detected and offered on first run (PRD P0-9) | A first-run surface the app does not have |
+| X17 | `pipdock-cli/src/run.rs:759,1197,1219,1545,1049-1050` | Some refusals carry a code that describes something else | Wants a "confirmation required" code — nine places, its own change |
+| X16 (rest) | `pipdock-cli` exit codes | A Code Health failure exits with the generic code rather than its own (`update` with no arguments, the other half, is fixed) | CLI-SPEC §5 change |
+| — | `pipdock-cli` `apply_fix`; `health::fix::dirty` | `health --fix --yes` outside a git repository proceeds: `dirty` answers `None` for a clean tree and for no repository alike | Needs a three-way answer from `dirty`, which the GUI's `health_dirty` shares |
+| — | `pipdock-cli` | On a terminal, an impossible package is skipped at the prompt without the engine's explanation; `report-bug` points at a log excerpt the CLI never attaches; `uninstall --json --force` warns about "the breakage above", which JSON mode never printed | Small CLI copy fixes |
+| X36/U55 | `src-tauri/src/commands.rs:425-467,1189-1214,1350-1377` | Save and export accept any path the webview names, and overwrite a sibling without asking | The picker is the only caller today; defence in depth, not a reachable hole |
+| — | `envs/mod.rs:131-138`, `engine/parse.rs:103-108`, `exec.rs:367-375`, `pins/mod.rs:85-89`, `store/mod.rs:253`, `index/mod.rs:144,448` | Failures that are dropped without a log line (a probe error entry, an unreadable pin row, a Job Object that would not attach…) | The log exists now; each wants a `tracing::warn!` and a look at whether it should surface |
+| — | `PIP_MIN_VERSION_FOR_REPORT`, `UV_MIN_VERSION`, `probe_supported`, `MIN_PROBE_PYTHON` | Declared floors nothing enforces | Enforcing them is a user-visible refusal and wants its own copy and test |
+| L56 | `audit.rs:165-168` | An audit's package count includes skipped packages | Cosmetic |
+| L57 | `engine/parse.rs:96-140` | pip's `download_info` is parsed and discarded | Nothing needs it yet |
+| L58 | `health/mod.rs:502-504,668` | Progress steps are numbered absolutely, so a sync shows "0..4 of 5" | Cosmetic |
+| U16 | `stores/health.ts:104`; `PdHealth.tsx:89-91` | Health's project folder is global rather than per environment | A data-model change: `EnvRow.healthProject` exists and the store does not key on it |
+| U19 | `PdEnvironments.tsx:186-196` | Every visit to Environments rescans | Needs a policy — by age, or on request only |
+| U27/U28 | `PdConsoleDrawer.tsx:49-52,77`; `plan.ts:196-198,337-350` | The console drawer does not follow the output, and re-renders per line | Wants a long install measured before it is optimised |
+| U33 | `PdHealth.tsx:103-105,151-154`, `PdSecurity.tsx:102`, `PdRequirements.tsx:47,64`, `PdErrorRow.tsx:98-100`, `PdAbout.tsx:63-65`, `security.ts:122` | A save, clipboard write or picker that fails says nothing | Needs a toast — P1-7's blocker as well |
+| U38 | `index-search.ts:174-177,202` | Metadata errors and a refresh's result are not shown | Same: no surface for a transient message |
+| U39 | `PdSettings.tsx:99-116` | The threshold input fights the user mid-edit | Needs a draft-then-commit pattern |
+| U40 | `PdPins.tsx:138-139,202-209`; `stores/index.ts:466-472` | The empty state can show before the list has loaded; a reason edit commits on blur with no way to cancel; accepting a suggestion drops it even when the pin write failed | Small, and best done together |
+| U41 | `stores/index.ts:526-538`; `PdPalette.tsx:96-103` | No in-flight guard: a double click takes two snapshots, and the palette can dispatch twice | Small |
+| U44 | `PdEnvironments.tsx:186-196` | A `scan-progress` listener can outlive the screen | Small; with U19 |
+| U45 | `styles.css:156-162` | `forced-colors` misses Remove, Force, rollback, Clear and the active tab | Needs a High Contrast pass, by hand |
+| U47 | grids, tabs, radio groups, listbox; `PdHealthReport.tsx:220,321` | ARIA roles are partial | An accessibility pass of its own |
+| U48 | `PdPalette.tsx:219` | The palette's selection is not scrolled into view | Small |
+| U49 | `App.tsx` Ctrl+K | Ctrl+K reads `e.key`, unlike Ctrl+1..9 | Letter shortcuts by physical key are wrong on Dvorak; needs a decision |
+| U50 | `PdHealth.tsx:215`, `PdSecurity.tsx:160`, `PdCacheUsage.tsx:32` | Dates and sizes are not formatted per locale | An `Intl` pass |
+| U51 | `PdEnvironments.tsx:55`, `PdEnvDetail.tsx:76`, `PdPackageRow.tsx` | Long paths and names overflow | With U22's container-query work |
+| U52 | `PdStatusLine.tsx` | The status line does not show a plan's activity | Small |
+| U53 | `PdPackageRow` memo, Health/Pins, *Upgrade pip* | A style object defeats the row's memo; Health and Pins trigger `pkg_outdated`; *Upgrade pip* does not refresh the row's packages | Performance; measure first |
+| U59 | i18n tooling | `saveMissing: false`, and holes in the no-literals lint rule | Tooling |
+| — | WebView2's context menu | Reload, Back and Print are still offered by right-click in a release build | A decision: removing it also removes Copy and Paste from text fields |
+| — | `ui/src/ipc/index.ts` `Settings` | Hand-mirrored rather than generated, against this file's own rule | A `schemars` derive on `settings::Settings` and a re-generated binding |
+| — | `plan.confirm` | "Confirm (1 changes)" — the count is not pluralised | Copy, both catalogues |
+| — | cache manager | The log folder is not one of its targets | The log is new; worth a row once someone asks |
+| X12 | `ci-integration.yml` | The `#[ignore]` tests never run in CI | Each needs a fixture the runner can provide — an index, a hang |
+| — | CI | SBOM, an installer smoke test, coverage, `cargo machete`, actionlint/zizmor, dependency review, typos and link checks | Each its own decision; none is free on a Windows runner |
+| — | `screenshot/` | The eight screenshots predate About and 1.4.0's window | Retake with a release, by hand |
 
 ## Standing risks
 
