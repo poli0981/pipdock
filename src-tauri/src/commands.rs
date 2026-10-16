@@ -196,12 +196,31 @@ pub async fn env_scan(
             .collect()
     };
 
-    let mut rows = Vec::with_capacity(candidates.len());
-    for candidate in candidates {
+    // Four at a time rather than one after another (U19, part). Each probe is a Python start-up
+    // and a walk of site-packages; on a machine with eight interpreters the screen waited for all
+    // eight in series. Each probe still has its own 60 s watchdog, so one hung interpreter costs
+    // its own row, not the scan. Results keep discovery order.
+    let gate = std::sync::Arc::new(tokio::sync::Semaphore::new(4));
+    let mut probes = tokio::task::JoinSet::new();
+    for (index, candidate) in candidates.into_iter().enumerate() {
         let folder = folders.remove(&envs::env_hash(&candidate.path));
-        rows.push(probe_row(candidate.path, candidate.source, folder).await);
+        let gate = std::sync::Arc::clone(&gate);
+        probes.spawn(async move {
+            let _permit = gate.acquire_owned().await.ok();
+            (
+                index,
+                probe_row(candidate.path, candidate.source, folder).await,
+            )
+        });
     }
-    Ok(rows)
+    let mut rows = Vec::new();
+    while let Some(joined) = probes.join_next().await {
+        if let Ok(row) = joined {
+            rows.push(row);
+        }
+    }
+    rows.sort_by_key(|(index, _)| *index);
+    Ok(rows.into_iter().map(|(_, row)| row).collect())
 }
 
 /// Probe one interpreter, for the manual *Browse…* path — and to refresh a single row.
@@ -430,12 +449,8 @@ pub async fn env_export(
     };
     let freeze = engine.freeze(&env).await?;
     let target = std::path::PathBuf::from(&path);
-    std::fs::write(&target, freeze).map_err(|e| {
-        PdError::new(
-            pipdock_core::errors::Code::SysDiskFull,
-            format!("write {}: {e}", target.display()),
-        )
-    })?;
+    std::fs::write(&target, freeze)
+        .map_err(|e| pipdock_core::exec::user_file_error(&target, &e))?;
     Ok(target.display().to_string())
 }
 
@@ -454,12 +469,8 @@ pub async fn env_export(
 pub async fn requirements_read(
     path: String,
 ) -> Wire<pipdock_core::requirements::ParsedRequirements> {
-    let text = std::fs::read_to_string(&path).map_err(|e| {
-        PdError::new(
-            pipdock_core::errors::Code::SysDiskFull,
-            format!("read {path}: {e}"),
-        )
-    })?;
+    let text = std::fs::read_to_string(&path)
+        .map_err(|e| pipdock_core::exec::user_file_error(std::path::Path::new(&path), &e))?;
     Ok(pipdock_core::requirements::parse(&text))
 }
 
@@ -491,7 +502,40 @@ pub async fn cache_clear(
     state: tauri::State<'_, AppState>,
     target: pipdock_core::cache::Target,
 ) -> Wire<u64> {
-    Ok(pipdock_core::cache::clear(&state.app_data, target)?)
+    use pipdock_core::cache::Target;
+
+    // Each target is held by the slot of the feature using it, so a clear is refused with
+    // `PD-RES-003` while that feature runs rather than deleting the venv a Health run is executing
+    // from, the audit venv mid-audit, or the snapshots a plan is writing (U36). A session merely
+    // parked there is put back afterwards — a preview on screen is not something to lose to a
+    // clear in another tab.
+    let app_data = state.app_data.clone();
+    Ok(match target {
+        Target::Snapshots => clear_holding(&state.sessions, app_data, target).await?,
+        Target::Tools => clear_holding(&state.health, app_data, target).await?,
+        Target::Audit => clear_holding(&state.audit, app_data, target).await?,
+    })
+}
+
+/// Clear `target` while holding `slot`, off the async workers: a venv is thousands of files.
+async fn clear_holding<T: Send>(
+    slot: &crate::state::Sessions<T>,
+    app_data: std::path::PathBuf,
+    target: pipdock_core::cache::Target,
+) -> pipdock_core::Result<u64> {
+    let (claim, parked) = slot.claim()?;
+    let freed = tokio::task::spawn_blocking(move || pipdock_core::cache::clear(&app_data, target))
+        .await
+        .map_err(|e| {
+            PdError::new(
+                pipdock_core::errors::Code::IntUnexpected,
+                format!("cache clear stopped: {e}"),
+            )
+        })?;
+    if let Some(session) = parked {
+        claim.park(session);
+    }
+    freed
 }
 
 /// What `index_search` returns.
@@ -524,6 +568,7 @@ pub struct SearchResults {
 /// "refresh the index" is an action, not a failure.
 #[tauri::command]
 pub async fn index_search(
+    app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
     query: String,
     limit: usize,
@@ -537,20 +582,17 @@ pub async fn index_search(
     }
 
     if state.begin_index_load() {
-        let loaded = {
-            let store = state.store.lock().await;
-            NameIndex::load(&store)
-        };
-        state.finish_index_load(loaded);
-        // The load that this keystroke paid for is done, so answer from it rather than making the
-        // user press another key.
-        if let Some(hits) = state.search_index(&query, limit) {
-            return Ok(SearchResults {
-                hits,
-                ready: true,
-                unavailable: None,
-            });
-        }
+        // In the background, on a connection of its own. The load held `state.store` for its
+        // 140 ms — every other command that wanted the store queued behind a keystroke — and ran
+        // on an async worker the rest of the app shares (U35). This search answers `ready: false`
+        // and the screen asks again, which is the contract the doc above always described.
+        let app_data = state.app_data.clone();
+        let handle = app.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            let loaded = pipdock_core::store::Store::open(&app_data)
+                .and_then(|store| NameIndex::load(&store));
+            handle.state::<AppState>().finish_index_load(loaded);
+        });
     }
 
     Ok(SearchResults {
@@ -638,7 +680,7 @@ pub async fn plan_resolve(
     // Claiming before any work means a second resolve is refused rather than racing this one.
     // Whatever flow was parked is dropped: starting a new plan abandons the old preview, which is
     // what the user just asked for.
-    let _ = state.claim().await?;
+    let (claim, _) = state.sessions.claim()?;
     // A bug report carries one run, so the ring starts here rather than at execute.
     state.log.clear();
 
@@ -676,15 +718,14 @@ pub async fn plan_resolve(
             // without this the commonest thing anyone reports — a plan that would not resolve —
             // would attach an empty excerpt.
             state.log.push(flow.report().raw.as_str());
-            state.park(Session::Update(Box::new(flow))).await;
+            claim.park(Session::Update(Box::new(flow)));
             Ok(step)
         }
         Err(e) => {
             if let Some(tail) = e.stderr_tail.as_deref() {
                 state.log.push(tail);
             }
-            // Every failure path releases the slot, or the session refuses plans forever.
-            state.release().await;
+            // The claim drops here and releases the slot — as it does on every `?` above.
             Err(e.into())
         }
     }
@@ -700,7 +741,7 @@ pub async fn plan_decide(
     state: tauri::State<'_, AppState>,
     decisions: std::collections::BTreeMap<String, Decision>,
 ) -> Wire<flow::FlowStep> {
-    let mut flow = state.claim_update().await?;
+    let (claim, mut flow) = state.sessions.claim_update()?;
 
     let parsed = decisions
         .into_iter()
@@ -712,7 +753,7 @@ pub async fn plan_decide(
         Err(e) => {
             // The flow is still good — only the argument was bad, so park it rather than losing
             // the preview the user is looking at.
-            state.park(Session::Update(flow)).await;
+            claim.park(Session::Update(flow));
             return Err(e.into());
         }
     };
@@ -721,7 +762,7 @@ pub async fn plan_decide(
     // the preview on screen is still a plan that can be decided again or confirmed; releasing it
     // here left a preview whose Confirm answered "no plan" (U24).
     let step = flow.decide(&parsed).await;
-    state.park(Session::Update(flow)).await;
+    claim.park(Session::Update(flow));
     Ok(step?)
 }
 
@@ -739,25 +780,18 @@ pub async fn plan_execute(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Wire<ExecutionOutcome> {
-    let mut flow = state.claim_update().await?;
+    let (claim, mut flow) = state.sessions.claim_update()?;
     state.set_cancel(Some(flow.cancel_handle()));
 
-    let snapshot = match flow
+    let snapshot = flow
         .take_snapshot(flow::SnapshotPolicy::Take, &state.app_data)
-        .await
-    {
-        Ok(meta) => meta,
-        Err(e) => {
-            state.release().await;
-            return Err(e.into());
-        }
-    };
+        .await?;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     forward_progress(&app, "plan-progress", rx);
 
     let result = flow.execute(tx).await;
-    state.release().await;
+    drop(claim);
 
     Ok(ExecutionOutcome {
         summary: result?,
@@ -781,7 +815,7 @@ pub async fn plan_execute(
 /// mean the UI has to race the thing it is trying to stop.
 #[tauri::command]
 pub async fn plan_cancel(state: tauri::State<'_, AppState>) -> Wire<bool> {
-    Ok(state.stop().await)
+    Ok(state.sessions.stop())
 }
 
 /// Check what a removal would break, and park the flow that would do it (DATA-FLOW §5).
@@ -800,23 +834,16 @@ pub async fn uninstall_guard(
     env: PyEnv,
     pkgs: Vec<String>,
 ) -> Wire<pipdock_core::graph::GuardReport> {
-    let _ = state.claim().await?;
+    let (claim, _) = state.sessions.claim()?;
 
     // Read, then drop, before any await: `Store` is not `Sync`, so a future holding the guard is
     // not `Send` and this command would not compile — and where it does compile it serializes
-    // every other command behind a subprocess.
+    // every other command behind a subprocess. A failure releases the slot with the claim.
     let (engine, opts) = flow_inputs(&state).await?;
 
-    match flow::UninstallFlow::start(env, engine, &pkgs, opts).await {
-        Ok((flow, report)) => {
-            state.park(Session::Uninstall(Box::new(flow))).await;
-            Ok(report)
-        }
-        Err(e) => {
-            state.release().await;
-            Err(e.into())
-        }
-    }
+    let (flow, report) = flow::UninstallFlow::start(env, engine, &pkgs, opts).await?;
+    claim.park(Session::Uninstall(Box::new(flow)));
+    Ok(report)
 }
 
 /// Snapshot, then remove (DATA-FLOW §5's tail).
@@ -834,7 +861,7 @@ pub async fn uninstall_execute(
     state: tauri::State<'_, AppState>,
     force: bool,
 ) -> Wire<ExecutionOutcome> {
-    let mut flow = state.sessions.claim_uninstall().await?;
+    let (claim, mut flow) = state.sessions.claim_uninstall()?;
     state.set_cancel(Some(flow.cancel_handle()));
 
     let ack = if force {
@@ -843,26 +870,21 @@ pub async fn uninstall_execute(
         flow::GuardAck::Clear
     };
     if let Err(e) = flow.check(ack) {
-        state.release().await;
+        // The guard dialog is still on screen, and *Force remove* is still a choice the user can
+        // make: the flow stays parked rather than leaving a dialog whose buttons answer "no plan".
+        claim.park(Session::Uninstall(flow));
         return Err(e.into());
     }
 
-    let snapshot = match flow
+    let snapshot = flow
         .take_snapshot(flow::SnapshotPolicy::Take, &state.app_data)
-        .await
-    {
-        Ok(meta) => meta,
-        Err(e) => {
-            state.release().await;
-            return Err(e.into());
-        }
-    };
+        .await?;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     forward_progress(&app, "plan-progress", rx);
 
     let result = flow.execute(ack, tx).await;
-    state.release().await;
+    drop(claim);
 
     Ok(ExecutionOutcome {
         summary: result?,
@@ -949,20 +971,14 @@ pub async fn snapshot_rollback_preview(
     env: PyEnv,
     id: String,
 ) -> Wire<flow::RollbackPreview> {
-    let _ = state.claim().await?;
+    let (claim, _) = state.sessions.claim()?;
 
     let (engine, opts) = flow_inputs(&state).await?;
 
-    match flow::RollbackFlow::start(env, engine, &state.app_data, &id, opts).await {
-        Ok((rollback, preview)) => {
-            state.park(Session::Rollback(Box::new(rollback))).await;
-            Ok(preview)
-        }
-        Err(e) => {
-            state.release().await;
-            Err(e.into())
-        }
-    }
+    let (rollback, preview) =
+        flow::RollbackFlow::start(env, engine, &state.app_data, &id, opts).await?;
+    claim.park(Session::Rollback(Box::new(rollback)));
+    Ok(preview)
 }
 
 /// Snapshot the current state, then restore the parked target (DATA-FLOW §8).
@@ -978,22 +994,16 @@ pub async fn snapshot_rollback(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Wire<ExecutionOutcome> {
-    let mut rollback = state.sessions.claim_rollback().await?;
+    let (claim, mut rollback) = state.sessions.claim_rollback()?;
     state.set_cancel(Some(rollback.cancel_handle()));
 
-    let snapshot = match rollback.take_snapshot(&state.app_data).await {
-        Ok(meta) => meta,
-        Err(e) => {
-            state.release().await;
-            return Err(e.into());
-        }
-    };
+    let snapshot = rollback.take_snapshot(&state.app_data).await?;
 
     let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
     forward_progress(&app, "plan-progress", rx);
 
     let result = rollback.execute(tx).await;
-    state.release().await;
+    drop(claim);
 
     Ok(ExecutionOutcome {
         summary: result?,
@@ -1053,7 +1063,7 @@ pub async fn health_run(
 ) -> Wire<pipdock_core::health::HealthReport> {
     use pipdock_core::health;
 
-    state.health.claim().await?;
+    let (claim, _) = state.health.claim()?;
 
     let project = std::path::PathBuf::from(&project);
     let tools_dir = health::tools_dir(&state.app_data);
@@ -1110,18 +1120,15 @@ pub async fn health_run(
             }
             // Parked rather than dropped: P5 checks its consent against this exact report, and the
             // folder it ran in is what a fix would rewrite.
-            state
-                .health
-                .park(crate::state::HealthSession {
-                    project,
-                    env,
-                    report: report.clone(),
-                })
-                .await;
+            claim.park(crate::state::HealthSession {
+                project,
+                env,
+                report: report.clone(),
+            });
             Ok(report)
         }
         Err(e) => {
-            state.health.release().await;
+            drop(claim);
             Err(e.into())
         }
     }
@@ -1156,7 +1163,12 @@ pub async fn audit_run(
 ) -> Wire<pipdock_core::audit::AuditReport> {
     use pipdock_core::{audit, health};
 
-    state.audit.claim().await?;
+    let (claim, _) = state.audit.claim()?;
+    // Registered before anything slow. It was registered after the freeze and the settings read,
+    // so a Stop pressed during either found no token and did nothing — the audit ran to the end
+    // (U37). A token tripped this early skips the venv sync and makes the run report `cancelled`.
+    let token = CancellationToken::new();
+    state.audit.set_cancel(Some(token.clone()));
 
     let dir = health::audit_dir(&state.app_data);
     let outcome = async {
@@ -1175,11 +1187,9 @@ pub async fn audit_run(
 
         let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
         forward_progress(&app, "audit-progress", rx);
-        let token = CancellationToken::new();
-        state.audit.set_cancel(Some(token.clone()));
-        let sink = engine::ProgressSink::new(tx, audit::AUDIT_STEPS + synced, token);
+        let sink = engine::ProgressSink::new(tx, audit::AUDIT_STEPS + synced, token.clone());
 
-        if sync_needed {
+        if sync_needed && !token.is_cancelled() {
             let (python, _) = health::choose_tools_python(&envs::scan().await).await?;
             health::sync_tools_venv(&dir, &python, health::AUDIT_TOOLS, &sink).await?;
         }
@@ -1187,11 +1197,9 @@ pub async fn audit_run(
     }
     .await;
 
-    // Released on both paths, and the token cleared with it: a token left registered would let the
-    // *next* `audit_cancel` stop a run that had not started, which is S5's wedge bug wearing a
-    // different hat.
-    state.audit.release().await;
-    state.audit.set_cancel(None);
+    // Released on both paths, and the token cleared with it — the claim's drop does both. A token
+    // left registered would let the *next* `audit_cancel` stop a run that had not started.
+    drop(claim);
     Ok(outcome?)
 }
 
@@ -1223,12 +1231,8 @@ pub async fn audit_save_report(
     })?;
 
     for (target, contents) in [(&md, body), (&json, document)] {
-        std::fs::write(target, contents).map_err(|e| {
-            PdError::new(
-                pipdock_core::errors::Code::SysDiskFull,
-                format!("write {}: {e}", target.display()),
-            )
-        })?;
+        std::fs::write(target, contents)
+            .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;
     }
     Ok(vec![md.display().to_string(), json.display().to_string()])
 }
@@ -1242,7 +1246,7 @@ pub async fn audit_save_report(
 /// Never fails.
 #[tauri::command]
 pub async fn audit_cancel(state: tauri::State<'_, AppState>) -> Wire<bool> {
-    Ok(state.audit.stop().await)
+    Ok(state.audit.stop())
 }
 
 /// Whether the parked report's project has uncommitted work, so the confirm can say so.
@@ -1259,9 +1263,9 @@ pub async fn audit_cancel(state: tauri::State<'_, AppState>) -> Wire<bool> {
 /// `PD-INT-001` when no run is parked.
 #[tauri::command]
 pub async fn health_dirty(state: tauri::State<'_, AppState>) -> Wire<Option<usize>> {
-    let session = state.health.claim_one().await?;
+    let (claim, session) = state.health.claim_one()?;
     let found = pipdock_core::health::fix::dirty(&session.project).await;
-    state.health.park(session).await;
+    claim.park(session);
     Ok(found.map(|tree| tree.entries))
 }
 
@@ -1289,7 +1293,7 @@ pub async fn health_fix(
 
     // `claim_one`, not `claim`: finding nothing must leave the slot **idle** rather than writing
     // `Busy` and wedging every later command with `PD-RES-003` for a session that does not exist.
-    let session = state.health.claim_one().await?;
+    let (claim, session) = state.health.claim_one()?;
 
     let outcome = async {
         // What the dialog named must be what the server is holding. Only a frontend that is out
@@ -1344,7 +1348,7 @@ pub async fn health_fix(
     if let Ok(report) = &outcome {
         session.report.ruff = report.remaining.clone();
     }
-    state.health.park(session).await;
+    claim.park(session);
     outcome.map_err(Into::into)
 }
 
@@ -1386,12 +1390,8 @@ pub async fn health_save_report(
     })?;
 
     for (target, contents) in [(&md, body), (&json, document)] {
-        std::fs::write(target, contents).map_err(|e| {
-            PdError::new(
-                pipdock_core::errors::Code::SysDiskFull,
-                format!("write {}: {e}", target.display()),
-            )
-        })?;
+        std::fs::write(target, contents)
+            .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;
     }
     Ok(vec![md.display().to_string(), json.display().to_string()])
 }
@@ -1422,13 +1422,11 @@ pub async fn pip_upgrade(state: tauri::State<'_, AppState>, env: PyEnv) -> Wire<
     // `claim` rather than `claim_update`: there is nothing parked to expect. It discards a parked
     // session, which is reachable only if a preview is open — and the plan panel replaces the whole
     // content area while one is, so the Environments row is not clickable.
-    state.sessions.claim().await?;
+    let (claim, _) = state.sessions.claim()?;
 
     let result = PipEngine.upgrade_pip(&env).await;
-    // Released on **both** paths. A claim that is never released leaves every later command
-    // answering PD-RES-003 for a plan that never existed — S5 bug 1, and the reason this is not an
-    // early `?`.
-    state.release().await;
+    // Released on both paths by the claim's drop — S5 bug 1 cannot be written any more.
+    drop(claim);
     Ok(result?)
 }
 

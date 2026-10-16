@@ -602,6 +602,23 @@ pub fn io_error(path: &Path, e: &std::io::Error) -> PdError {
     PdError::new(code, format!("{}: {e}", path.display()))
 }
 
+/// [`io_error`] for a file **the user chose** — an export, a saved report, a requirements file —
+/// where "PipDock is not allowed to write to this environment" (`PD-PRM-001`) would be the wrong
+/// advice. The shell answered every such failure with `PD-SYS-002`, "not enough free disk space",
+/// for a read-only folder and a missing file alike (U25).
+#[must_use]
+pub fn user_file_error(path: &Path, e: &std::io::Error) -> PdError {
+    const ERROR_SHARING_VIOLATION: i32 = 32;
+    let code = match (e.raw_os_error(), e.kind()) {
+        (Some(ERROR_SHARING_VIOLATION), _) => Code::PrmFileLocked,
+        (_, std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem) => {
+            Code::PrmSourceReadOnly
+        }
+        _ => return io_error(path, e),
+    };
+    PdError::new(code, format!("{}: {e}", path.display()))
+}
+
 /// Canonicalize an interpreter path for identity purposes.
 ///
 /// **Spike SP-6.** The same interpreter reports different casing depending on how it was launched

@@ -133,7 +133,9 @@ impl<T> PlanSlot<T> {
 ///
 /// Generic over the parked value so the protocol below can be tested without an `UpdateFlow`.
 pub struct Sessions<T> {
-    slot: tokio::sync::Mutex<PlanSlot<T>>,
+    /// A `std` mutex, not tokio's: it is only ever held to read or replace the slot, never across
+    /// an await, and [`Claim`]'s `Drop` has to be able to take it — a drop cannot await.
+    slot: std::sync::Mutex<PlanSlot<T>>,
     /// The token for whatever engine work is in flight.
     ///
     /// Deliberately **not** inside [`PlanSlot`]: `plan_cancel` must be able to trip it while the
@@ -145,49 +147,105 @@ pub struct Sessions<T> {
 impl<T> Default for Sessions<T> {
     fn default() -> Self {
         Self {
-            slot: tokio::sync::Mutex::new(PlanSlot::Idle),
+            slot: std::sync::Mutex::new(PlanSlot::Idle),
             cancel: std::sync::Mutex::new(None),
         }
     }
 }
 
+/// A claimed slot. **Dropping it releases the slot** — on every path out of a command, the `?`s
+/// included — unless it was [`Self::park`]ed first.
+///
+/// Release used to be a call each exit path had to remember, and three did not: `plan_resolve`,
+/// `uninstall_guard` and the rollback preview all claimed and then had a `?` before their first
+/// release, so a settings read that failed left the slot `Busy` and every later plan answered
+/// `PD-RES-003` until the app was restarted (U4). A guard makes forgetting unrepresentable.
+#[must_use = "dropping a claim releases the slot at once"]
+pub struct Claim<'a, T> {
+    sessions: &'a Sessions<T>,
+    settled: bool,
+}
+
+impl<T> Claim<'_, T> {
+    /// Put a session back for the next call to pick up. Consumes the claim.
+    pub fn park(mut self, session: T) {
+        self.sessions.put(PlanSlot::Ready(session));
+        self.settled = true;
+    }
+}
+
+impl<T> Drop for Claim<'_, T> {
+    fn drop(&mut self) {
+        if !self.settled {
+            self.sessions.put(PlanSlot::Idle);
+            self.sessions.set_cancel(None);
+        }
+    }
+}
+
 impl<T> Sessions<T> {
-    /// Claim the slot for work that is about to *start*, returning whatever was parked.
+    fn lock(&self) -> std::sync::MutexGuard<'_, PlanSlot<T>> {
+        self.slot
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    fn put(&self, next: PlanSlot<T>) {
+        *self.lock() = next;
+    }
+
+    /// Claim the slot for work that is about to *start*, with whatever was parked.
     ///
-    /// `Ok(None)` means the slot was idle and is now claimed — which is what `plan_resolve` wants,
-    /// because it is beginning a plan and must exclude a second one for the whole of the resolve.
-    /// A caller that needs an *existing* session wants [`Self::claim_one`] instead.
+    /// The empty case is a successful claim — `plan_resolve` is beginning a plan and must exclude
+    /// a second one for the whole of the resolve. A caller that needs an *existing* session wants
+    /// [`Self::claim_one`] instead.
     ///
     /// # Errors
     /// `PD-RES-003` when a plan is already in flight.
-    pub async fn claim(&self) -> Result<Option<T>> {
-        let mut slot = self.slot.lock().await;
+    pub fn claim(&self) -> Result<(Claim<'_, T>, Option<T>)> {
+        let mut slot = self.lock();
         if slot.is_busy() {
             return Err(in_flight());
         }
-        Ok(match std::mem::replace(&mut *slot, PlanSlot::Busy) {
+        let parked = match std::mem::replace(&mut *slot, PlanSlot::Busy) {
             PlanSlot::Ready(session) => Some(session),
             PlanSlot::Idle | PlanSlot::Busy => None,
-        })
+        };
+        drop(slot);
+        Ok((
+            Claim {
+                sessions: self,
+                settled: false,
+            },
+            parked,
+        ))
     }
+
     /// Claim the session a caller expects to already be parked.
     ///
     /// The difference from [`Self::claim`] is the empty case, and it is the whole reason this
-    /// method exists. `plan_decide` and `plan_execute` used to call `claim()` and turn its `None`
-    /// into `PD-INT-001` at the call site — but `claim()` had already written `Busy`, and nothing
-    /// on that path released it. One out-of-order call from the UI therefore wedged the slot for
-    /// the rest of the process: every later command answered `PD-RES-003`, for a plan that did not
-    /// exist. Finding nothing is not claiming anything, so this leaves the slot idle.
+    /// method exists: finding nothing is not claiming anything, so the slot is left idle. The old
+    /// code wrote `Busy` before discovering there was nothing to take, and one out-of-order call
+    /// from the UI wedged the slot for the rest of the process.
     ///
     /// # Errors
     /// `PD-RES-003` when a plan is already in flight; `PD-INT-001` when there is nothing parked.
-    pub async fn claim_one(&self) -> Result<T> {
-        let mut slot = self.slot.lock().await;
+    pub fn claim_one(&self) -> Result<(Claim<'_, T>, T)> {
+        let mut slot = self.lock();
         if slot.is_busy() {
             return Err(in_flight());
         }
         match std::mem::replace(&mut *slot, PlanSlot::Busy) {
-            PlanSlot::Ready(session) => Ok(session),
+            PlanSlot::Ready(session) => {
+                drop(slot);
+                Ok((
+                    Claim {
+                        sessions: self,
+                        settled: false,
+                    },
+                    session,
+                ))
+            }
             PlanSlot::Idle | PlanSlot::Busy => {
                 *slot = PlanSlot::Idle;
                 drop(slot);
@@ -195,21 +253,6 @@ impl<T> Sessions<T> {
                 Err(no_session())
             }
         }
-    }
-
-    /// Put a session back for the next call to pick up.
-    pub async fn park(&self, session: T) {
-        *self.slot.lock().await = PlanSlot::Ready(session);
-    }
-
-    /// Release the slot with no session — the plan finished, or failed.
-    ///
-    /// Called on **every** exit path out of a claimed slot. A claim that is never released leaves
-    /// the session permanently refusing plans with `PD-RES-003`, which is the failure mode this
-    /// design has to be careful about.
-    pub async fn release(&self) {
-        *self.slot.lock().await = PlanSlot::Idle;
-        self.set_cancel(None);
     }
 
     /// Record the token for the work about to start.
@@ -238,12 +281,12 @@ impl<T> Sessions<T> {
     /// Stop whatever the session is doing, whichever half of it that is.
     ///
     /// Two states both count as "there was something to stop", and only one of them is a running
-    /// process. Engine work in flight is cancelled through the token. A session merely *parked* —
-    /// a preview on screen, a guard the user is reading — has no process to kill and is discarded
-    /// instead, because leaving it there means the next plan is refused by a flow nobody is
-    /// looking at any more.
-    pub async fn stop(&self) -> bool {
-        let mut slot = self.slot.lock().await;
+    /// process. Engine work in flight is cancelled through the token, and the command running it
+    /// releases the slot when its claim drops. A session merely *parked* — a preview on screen, a
+    /// guard the user is reading — has no process to kill and is discarded instead, because
+    /// leaving it there means the next plan is refused by a flow nobody is looking at any more.
+    pub fn stop(&self) -> bool {
+        let mut slot = self.lock();
         if slot.is_busy() {
             drop(slot);
             return self.cancel_current();
@@ -254,7 +297,16 @@ impl<T> Sessions<T> {
         self.set_cancel(None);
         was_parked
     }
+
+    /// Put a session in the slot without having claimed it. For tests of what comes after.
+    #[cfg(test)]
+    pub fn park_for_test(&self, session: T) {
+        self.put(PlanSlot::Ready(session));
+    }
 }
+
+/// A claimed slot holding the mutation session.
+pub type SessionClaim<'a> = Claim<'a, Session>;
 
 impl Sessions<Session> {
     /// Claim a parked [`Session::Update`].
@@ -262,10 +314,10 @@ impl Sessions<Session> {
     /// # Errors
     /// `PD-RES-003` when a plan is in flight, `PD-INT-001` when nothing is parked or the parked
     /// session is a different flow.
-    pub async fn claim_update(&self) -> Result<Box<UpdateFlow>> {
-        match self.claim_one().await? {
-            Session::Update(flow) => Ok(flow),
-            other => Err(self.wrong_kind(SessionKind::Update, other).await),
+    pub fn claim_update(&self) -> Result<(SessionClaim<'_>, Box<UpdateFlow>)> {
+        match self.claim_one()? {
+            (claim, Session::Update(flow)) => Ok((claim, flow)),
+            (claim, other) => Err(wrong_kind(claim, SessionKind::Update, other)),
         }
     }
 
@@ -273,10 +325,10 @@ impl Sessions<Session> {
     ///
     /// # Errors
     /// As [`Self::claim_update`].
-    pub async fn claim_uninstall(&self) -> Result<Box<UninstallFlow>> {
-        match self.claim_one().await? {
-            Session::Uninstall(flow) => Ok(flow),
-            other => Err(self.wrong_kind(SessionKind::Uninstall, other).await),
+    pub fn claim_uninstall(&self) -> Result<(SessionClaim<'_>, Box<UninstallFlow>)> {
+        match self.claim_one()? {
+            (claim, Session::Uninstall(flow)) => Ok((claim, flow)),
+            (claim, other) => Err(wrong_kind(claim, SessionKind::Uninstall, other)),
         }
     }
 
@@ -284,30 +336,30 @@ impl Sessions<Session> {
     ///
     /// # Errors
     /// As [`Self::claim_update`].
-    pub async fn claim_rollback(&self) -> Result<Box<RollbackFlow>> {
-        match self.claim_one().await? {
-            Session::Rollback(flow) => Ok(flow),
-            other => Err(self.wrong_kind(SessionKind::Rollback, other).await),
+    pub fn claim_rollback(&self) -> Result<(SessionClaim<'_>, Box<RollbackFlow>)> {
+        match self.claim_one()? {
+            (claim, Session::Rollback(flow)) => Ok((claim, flow)),
+            (claim, other) => Err(wrong_kind(claim, SessionKind::Rollback, other)),
         }
     }
+}
 
-    /// Put back a session the caller could not use, and say what was wrong.
-    ///
-    /// Parking rather than dropping: the session is intact and its owner may still come back for
-    /// it. A command asking for the wrong kind is a bug in the frontend's sequencing, and losing
-    /// the user's preview to it would turn a mis-ordered call into lost work.
-    async fn wrong_kind(&self, want: SessionKind, found: Session) -> PdError {
-        let found_kind = found.kind();
-        self.park(found).await;
-        PdError::new(
-            Code::IntUnexpected,
-            format!(
-                "expected {} session, found {}",
-                want.as_str(),
-                found_kind.as_str()
-            ),
-        )
-    }
+/// Put back a session the caller could not use, and say what was wrong.
+///
+/// Parking rather than dropping: the session is intact and its owner may still come back for it.
+/// A command asking for the wrong kind is a bug in the frontend's sequencing, and losing the
+/// user's preview to it would turn a mis-ordered call into lost work.
+fn wrong_kind(claim: SessionClaim<'_>, want: SessionKind, found: Session) -> PdError {
+    let found_kind = found.kind();
+    claim.park(found);
+    PdError::new(
+        Code::IntUnexpected,
+        format!(
+            "expected {} session, found {}",
+            want.as_str(),
+            found_kind.as_str()
+        ),
+    )
 }
 
 /// A second plan was asked for while one is running.
@@ -518,45 +570,9 @@ impl AppState {
         }
     }
 
-    /// See [`Sessions::claim`].
-    ///
-    /// # Errors
-    /// `PD-RES-003` when a plan is already in flight.
-    pub async fn claim(&self) -> Result<Option<Session>> {
-        self.sessions.claim().await
-    }
-
-    /// See [`Sessions::claim_update`].
-    ///
-    /// # Errors
-    /// `PD-RES-003` when a plan is in flight; `PD-INT-001` when nothing of that kind is parked.
-    pub async fn claim_update(&self) -> Result<Box<UpdateFlow>> {
-        self.sessions.claim_update().await
-    }
-
-    /// See [`Sessions::park`].
-    pub async fn park(&self, session: Session) {
-        self.sessions.park(session).await;
-    }
-
-    /// See [`Sessions::release`].
-    pub async fn release(&self) {
-        self.sessions.release().await;
-    }
-
     /// See [`Sessions::set_cancel`].
     pub fn set_cancel(&self, token: Option<CancellationToken>) {
         self.sessions.set_cancel(token);
-    }
-
-    /// See [`Sessions::cancel_current`].
-    pub fn cancel_current(&self) -> bool {
-        self.sessions.cancel_current()
-    }
-
-    /// See [`Sessions::stop`].
-    pub async fn stop(&self) -> bool {
-        self.sessions.stop().await
     }
 }
 
@@ -570,72 +586,92 @@ mod tests {
         Sessions::default()
     }
 
-    #[tokio::test]
-    async fn claiming_an_empty_slot_leaves_it_claimed_for_the_caller() {
+    #[test]
+    fn claiming_an_empty_slot_leaves_it_claimed_for_the_caller() {
         let s = sessions();
-        assert!(s.claim().await.expect("idle slot is claimable").is_none());
+        let (claim, parked) = s.claim().expect("idle slot is claimable");
+        assert!(parked.is_none());
 
         // `plan_resolve` is about to start work, so the slot must exclude a second resolve for the
         // whole of it — the empty case is a successful claim, not a miss.
-        let second = s.claim().await;
         assert_eq!(
-            second.err().map(|e| e.code),
+            s.claim().err().map(|e| e.code),
             Some(Code::ResPlanInFlight),
             "a second plan must be refused while the first holds the slot"
         );
+        drop(claim);
+        assert!(s.claim().is_ok(), "a dropped claim is a released slot");
     }
 
-    #[tokio::test]
-    async fn claiming_a_session_that_is_not_there_does_not_wedge_the_slot() {
-        let s = sessions();
-
-        let missed = s.claim_one().await;
-        assert_eq!(missed.err().map(|e| e.code), Some(Code::IntUnexpected));
-
-        // The regression this whole method exists for: the old code wrote `Busy` before
-        // discovering there was nothing to take, so every later command answered `PD-RES-003`
-        // for a plan that had never existed.
-        s.park(7).await;
-        assert_eq!(s.claim_one().await.ok(), Some(7));
-    }
-
-    #[tokio::test]
-    async fn a_failed_claim_clears_the_token_it_did_not_set() {
+    #[test]
+    fn a_claim_abandoned_by_an_early_return_releases_the_slot() {
+        // U4. Three commands claimed and then had a `?` before their first release; a failed
+        // settings read left the slot Busy and every later plan answered PD-RES-003.
+        fn command(s: &Sessions<u32>) -> Result<()> {
+            let (_claim, _) = s.claim()?;
+            Err(PdError::new(Code::IntUnexpected, "store read failed"))?;
+            Ok(())
+        }
         let s = sessions();
         let token = CancellationToken::new();
         s.set_cancel(Some(token.clone()));
+        assert!(command(&s).is_err());
+        assert!(s.claim().is_ok(), "the next plan is not refused");
+        assert!(!s.cancel_current(), "and the token went with the claim");
+    }
 
-        let _ = s.claim_one().await;
+    #[test]
+    fn claiming_a_session_that_is_not_there_does_not_wedge_the_slot() {
+        let s = sessions();
+        assert_eq!(
+            s.claim_one().err().map(|e| e.code),
+            Some(Code::IntUnexpected)
+        );
+        // The regression this whole method exists for: the old code wrote `Busy` before
+        // discovering there was nothing to take.
+        s.park_for_test(7);
+        assert_eq!(s.claim_one().ok().map(|(_, v)| v), Some(7));
+    }
 
+    #[test]
+    fn a_failed_claim_clears_the_token_it_did_not_set() {
+        let s = sessions();
+        let token = CancellationToken::new();
+        s.set_cancel(Some(token.clone()));
+        let _ = s.claim_one();
         // Releasing means releasing: a stale token left behind would let the *next* plan's
         // `plan_cancel` report that it stopped something.
         assert!(!s.cancel_current(), "the stale token must be gone");
         assert!(!token.is_cancelled());
     }
 
-    #[tokio::test]
-    async fn a_parked_session_survives_until_someone_claims_it() {
+    #[test]
+    fn a_parked_session_survives_until_someone_claims_it() {
         let s = sessions();
-        s.park(1).await;
-        s.park(2).await;
-        assert_eq!(s.claim_one().await.ok(), Some(2), "parking replaces");
-
-        s.park(3).await;
-        s.release().await;
+        let (claim, _) = s.claim().expect("claim");
+        claim.park(2);
+        let (claim, value) = s.claim_one().expect("parked");
+        assert_eq!(value, 2);
+        claim.park(3);
+        let (claim, value) = s.claim_one().expect("parked again");
+        assert_eq!(value, 3);
+        drop(claim);
         assert_eq!(
-            s.claim_one().await.err().map(|e| e.code),
+            s.claim_one().err().map(|e| e.code),
             Some(Code::IntUnexpected),
-            "release discards whatever was parked"
+            "a claim dropped without parking discards the session"
         );
     }
 
-    #[tokio::test]
-    async fn asking_for_the_wrong_kind_gives_it_back() {
+    #[test]
+    fn asking_for_the_wrong_kind_gives_it_back() {
         let s: Sessions<Session> = Sessions::default();
-        s.park(Session::Fake(SessionKind::Uninstall)).await;
+        s.park_for_test(Session::Fake(SessionKind::Uninstall));
 
-        let wrong = s.claim_update().await;
-        let err = wrong.err().expect("an uninstall is not an update");
+        let err = s
+            .claim_update()
+            .err()
+            .expect("an uninstall is not an update");
         assert_eq!(err.code, Code::IntUnexpected);
         assert!(
             err.message
@@ -643,10 +679,9 @@ mod tests {
             "the message must name both kinds, not just say 'no plan': {}",
             err.message
         );
-
-        // Parked, not dropped: a command asking out of order is a frontend sequencing bug, and
-        // losing the user's guard dialog to it would turn a mis-ordered call into lost work.
-        let still_there = s.claim().await.expect("slot is free");
+        // Parked, not dropped: losing the user's guard dialog to a mis-ordered call would turn a
+        // frontend sequencing bug into lost work.
+        let (_, still_there) = s.claim().expect("slot is free");
         assert_eq!(
             still_there.map(|x| x.kind()),
             Some(SessionKind::Uninstall),
@@ -654,38 +689,30 @@ mod tests {
         );
     }
 
-    #[tokio::test]
-    async fn stop_discards_a_parked_session_and_cancels_a_running_one() {
+    #[test]
+    fn stop_discards_a_parked_session_and_cancels_a_running_one() {
         let s: Sessions<Session> = Sessions::default();
-        assert!(!s.stop().await, "nothing to stop");
+        assert!(!s.stop(), "nothing to stop");
 
-        // Parked: no process exists, so stopping means letting go. Leaving it would refuse the
-        // next plan on behalf of a preview nobody is looking at.
-        s.park(Session::Fake(SessionKind::Update)).await;
-        assert!(s.stop().await);
-        assert!(s.claim().await.expect("free").is_none());
-
-        // Busy: there is a child process, and the token is the only thing that reaches it.
-        let token = CancellationToken::new();
-        s.park(Session::Fake(SessionKind::Update)).await;
-        let _running = s.claim_one().await.expect("parked");
-        s.set_cancel(Some(token.clone()));
-        assert!(s.stop().await);
-        assert!(token.is_cancelled());
+        // Parked: no process exists, so stopping means letting go.
+        s.park_for_test(Session::Fake(SessionKind::Update));
+        assert!(s.stop());
+        assert!(s.claim().expect("free").1.is_none());
     }
 
-    #[tokio::test]
-    async fn cancel_reaches_a_session_the_slot_no_longer_owns() {
+    #[test]
+    fn cancel_reaches_a_session_the_slot_no_longer_owns() {
         let s = sessions();
         let token = CancellationToken::new();
-
-        s.park(1).await;
-        let _claimed = s.claim_one().await.expect("parked");
+        s.park_for_test(1);
+        let (claim, _) = s.claim_one().expect("parked");
         s.set_cancel(Some(token.clone()));
 
         // The slot is `Busy` and the session is owned by the caller — which is exactly when
         // `plan_cancel` has to work, and why the token is not stored inside the slot.
-        assert!(s.cancel_current());
+        assert!(s.stop());
         assert!(token.is_cancelled());
+        drop(claim);
+        assert!(s.claim().is_ok(), "the owner's drop is what frees it");
     }
 }
