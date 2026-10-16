@@ -69,6 +69,9 @@ const NO_DEPS = {
   error: null,
 }
 
+/** Which environment the load in flight is for, so a switch can start the next one. */
+let loadingFor: string | null = null
+
 const asPdError = (e: unknown): PdError =>
   isPdError(e) ? e : { code: 'PD-INT-001', message: String(e) }
 
@@ -89,17 +92,25 @@ export const useDepsStore = create<DepsState>((set, get) => ({
 
   load: async (env, envHash) => {
     const { phase, graphFor } = get()
-    if (phase === 'loading') return
+    // Only a load *for this environment* makes another redundant. Bailing on any load meant a
+    // switch while the first was in flight never loaded the second, and the view showed nothing
+    // for the environment on screen (U34).
+    if (phase === 'loading' && loadingFor === envHash) return
     // Already have this environment's graph. Not a cache so much as the answer to "never render a
     // state you have not loaded" read the other way: a second fetch would replace an identical
     // value and flash a loading state over a view that was already correct.
     if (graphFor === envHash && get().graph !== null) return
 
+    loadingFor = envHash
     set({ phase: 'loading', error: null })
     try {
       const graph = await depsGraph(env)
+      if (loadingFor !== envHash) return
+      loadingFor = null
       set({ graph, graphFor: envHash, phase: 'ready' })
     } catch (e) {
+      if (loadingFor !== envHash) return
+      loadingFor = null
       // The graph is dropped, not kept: a failure here means the probe could not read the
       // environment, so whatever is in hand describes an environment that may no longer exist.
       set({ graph: null, graphFor: null, error: asPdError(e), phase: 'failed' })
@@ -107,6 +118,7 @@ export const useDepsStore = create<DepsState>((set, get) => ({
   },
 
   reset: () => {
+    loadingFor = null
     set({ ...NO_DEPS })
   },
 }))

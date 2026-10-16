@@ -220,8 +220,12 @@ export function PdSearch() {
         onInstall={() => {
           if (envRow?.env === undefined) return
           const specs = queueSpecs(queue)
-          clearQueue()
-          void planResolve(envRow.env, { intent: 'install', specs })
+          // Kept until the resolve has answered: a plan already in flight or an unreachable index
+          // used to cost the user the list they had just built (U30). Once there is a preview, the
+          // preview is the list.
+          void planResolve(envRow.env, { intent: 'install', specs }).then(() => {
+            if (usePlanStore.getState().phase === 'preview') clearQueue()
+          })
         }}
       />
     </section>

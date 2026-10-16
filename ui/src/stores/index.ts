@@ -389,8 +389,14 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     set({ listing: 'loading', listError: null })
     try {
       const [dists, pins] = await Promise.all([pkgList(row.env), pinList(row.envHash)])
+      // **Answers for an environment the user has left are dropped** (U5). Switching resets the
+      // slice and starts the new environment's load; the old one, still in flight, then landed on
+      // top of it — the new environment's name over the old one's packages, until something
+      // happened to refetch.
+      if (get().selected !== selected) return
       set({ dists, pins, ...joined(dists, get().outdated, pins), listing: 'ready', loadedFor: selected })
     } catch (e) {
+      if (get().selected !== selected) return
       set({ listing: 'error', listError: asPdError(e) })
     }
   },
@@ -405,8 +411,12 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     set({ outdatedStatus: 'loading', outdatedError: null })
     try {
       const outdated = await pkgOutdated(row.env)
+      // The networked half takes seconds, which is the window a user switches environments in:
+      // its badges belong to the environment that asked (U5).
+      if (get().selected !== selected) return
       set({ outdated, ...joined(get().dists, outdated, get().pins), outdatedStatus: 'ready' })
     } catch (e) {
+      if (get().selected !== selected) return
       // The installed table stays; only the badges are missing. This is the whole reason
       // `pkg_list` and `pkg_outdated` are two commands.
       set({ outdatedStatus: 'error', outdatedError: asPdError(e) })
@@ -450,12 +460,12 @@ export const useEnvStore = create<EnvState>((set, get) => ({
 
     set({ suggestionsLoading: 'loading' })
     try {
-      set({
-        suggestions: await pinSuggestions(row.env),
-        suggestionsFor: selected,
-        suggestionsLoading: 'ready',
-      })
+      const suggestions = await pinSuggestions(row.env)
+      // A probe's worth of time to answer, about the environment that asked (U43).
+      if (get().selected !== selected) return
+      set({ suggestions, suggestionsFor: selected, suggestionsLoading: 'ready' })
     } catch {
+      if (get().selected !== selected) return
       // Advisory. The Pins screen's job is listing pins, and it does that whether or not this
       // resolved — so a failure leaves the section absent rather than putting an error row above
       // the thing the user actually came for.
@@ -495,12 +505,11 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     try {
       // By `envHash`, not by interpreter: a snapshot outlives the Python that made it, so this
       // works on a row whose probe failed and whose `env` is therefore absent.
-      set({
-        snapshots: await snapshotList(row.envHash),
-        snapshotsFor: openFor,
-        snapshotsLoading: 'ready',
-      })
+      const snapshots = await snapshotList(row.envHash)
+      if (get().openFor !== openFor) return
+      set({ snapshots, snapshotsFor: openFor, snapshotsLoading: 'ready' })
     } catch (e) {
+      if (get().openFor !== openFor) return
       set({ snapshotsLoading: 'error', snapshotsError: asPdError(e) })
     }
   },
@@ -516,9 +525,15 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     if (row?.env === undefined) return
 
     set({ diffLoading: 'loading', snapshotsError: null })
+    // Two clicks down the timeline used to show whichever diff answered *last* — often the first
+    // entry's, under the second's heading (U42). Each answer belongs to the entry that asked.
+    const current = () => get().selectedSnapshot === id && get().openFor === openFor
     try {
-      set({ diff: await snapshotDiff(row.env, id), diffLoading: 'ready' })
+      const diff = await snapshotDiff(row.env, id)
+      if (!current()) return
+      set({ diff, diffLoading: 'ready' })
     } catch (e) {
+      if (!current()) return
       set({ diffLoading: 'error', snapshotsError: asPdError(e) })
     }
   },
@@ -562,16 +577,21 @@ async function writePin(
   get: () => EnvState,
   write: (envHash: string) => Promise<void>,
 ): Promise<void> {
-  const { selected, rows, dists, outdated } = get()
+  const { selected, rows } = get()
   const row = rows.find((r) => r.interpreter === selected)
   if (row === undefined) return
 
   try {
     await write(row.envHash)
     const fresh = await pinList(row.envHash)
+    // The rows are joined from what is in the store *now*, not what was there before the two
+    // awaits: `dists` and `outdated` captured up front were the previous listing's whenever a
+    // refresh landed in between, and the table went back to it (U6). And a pin written for an
+    // environment the user has since left is that environment's business, not this table's.
+    if (get().selected !== selected) return
     set((state) => ({
       pins: fresh,
-      ...joined(dists, outdated, fresh),
+      ...joined(state.dists, state.outdated, fresh),
       // A newly pinned package must leave the selection, or Select all's count and what is
       // actually ticked disagree.
       selection: new Set([...state.selection].filter((n) => !fresh.some((p) => p.pkg === n))),

@@ -19,8 +19,12 @@ import { PdSummarySheet } from '@/components/PdSummarySheet'
 import { usePlanStore } from '@/stores'
 
 interface PdPlanPanelProps {
-  /** Called when the user leaves the summary, so the caller can re-read the environment. */
-  onFinished: () => void
+  /**
+   * Called when the user leaves the panel. `changed` is whether anything ran: the caller re-reads
+   * the environment then, and only then. Back from a preview changed nothing, and treating it as
+   * a finished run cleared the user's selection and refetched every listing (U11).
+   */
+  onFinished: (changed: boolean) => void
 }
 
 export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
@@ -65,7 +69,7 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
           type="button"
           onClick={() => {
             reset()
-            onFinished()
+            onFinished(false)
           }}
           className="mt-4 rounded-pd border border-border px-3 py-1 text-data"
         >
@@ -88,7 +92,7 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
             outcome={outcome}
             onDone={() => {
               reset()
-              onFinished()
+              onFinished(true)
             }}
             // Only when the store still knows which environment this was, and never *from* a
             // rollback — offering to undo an undo from its own summary is a loop with no
@@ -114,7 +118,7 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
             type="button"
             onClick={() => {
               reset()
-              onFinished()
+              onFinished(true)
             }}
             className="mt-4 rounded-pd border border-border px-3 py-1 text-data"
           >
@@ -229,7 +233,7 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
               type="button"
               onClick={() => {
                 reset()
-                onFinished()
+                onFinished(false)
               }}
               className="rounded-pd border border-border px-3 py-1 text-data"
             >

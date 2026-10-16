@@ -100,6 +100,10 @@ function asPdError(e: unknown): PdError {
 let issued = 0
 let applied = 0
 let timer: ReturnType<typeof setTimeout> | undefined
+/** The re-ask while the index is still loading. */
+let warmTimer: ReturnType<typeof setTimeout> | undefined
+/** How soon to ask again while the index loads. The load is ~140 ms on the real index. */
+const WARMING_RETRY_MS = 150
 /** When the last search actually fired, for the leading edge below. */
 let lastFired = 0
 
@@ -146,6 +150,16 @@ export const useIndexStore = create<IndexState>((set, get) => ({
             searching: false,
             error: null,
           })
+          // **Warming is not an answer** (U7). The first search after launch starts the index
+          // loading and answers `ready: false`; the field then said "loading" until the user
+          // happened to type another character. Ask again, while this is still the query.
+          if (!results.ready && results.unavailable == null) {
+            if (warmTimer !== undefined) clearTimeout(warmTimer)
+            warmTimer = setTimeout(() => {
+              warmTimer = undefined
+              if (get().query === query) fire()
+            }, WARMING_RETRY_MS)
+          }
         })
         .catch((e: unknown) => {
           if (seq < applied) return

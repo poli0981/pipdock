@@ -60,6 +60,8 @@ export interface IpcMock {
   healthDirty: ReturnType<typeof vi.fn>
   reportBugUrl: ReturnType<typeof vi.fn>
   logsTail: ReturnType<typeof vi.fn>
+  snapshotDiff: ReturnType<typeof vi.fn>
+  indexSearch: ReturnType<typeof vi.fn>
   appInfo: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
@@ -117,6 +119,9 @@ export function ipcMock(): IpcMock {
     healthDirty: vi.fn().mockResolvedValue(null),
     // Settings renders the Logs row, so every Settings test needs this to resolve to a real shape.
     logsTail: vi.fn().mockResolvedValue({ dir: 'C:/data/logs', lines: [] }),
+    snapshotDiff: vi.fn(),
+    // Ready and empty by default: a test about warming says so.
+    indexSearch: vi.fn().mockResolvedValue({ hits: [], ready: true }),
     // `PdErrorRow` asks for this on mount, so any test that renders a screen containing an error
     // needs it — a gap that only appears once a *screen* is under test rather than the row alone.
     //
