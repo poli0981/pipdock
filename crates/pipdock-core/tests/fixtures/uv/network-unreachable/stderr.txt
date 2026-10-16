@@ -1,7 +1,7 @@
 Using Python 3.12.10 environment at: <WORK>\venv
 error: Request failed after 3 retries in <DURATION>
-  Caused by: Failed to fetch: `http://127.0.0.1:1/simple/idna/`
-  Caused by: error sending request for url (http://127.0.0.1:1/simple/idna/)
-  Caused by: client error (Connect)
-  Caused by: tcp connect error
-  Caused by: No connection could be made because the target machine actively refused it. (os error 10061)
+  cause: Failed to fetch: http://127.0.0.1:1/simple/idna/
+  cause: error sending request for url (http://127.0.0.1:1/simple/idna/)
+  cause: client error (Connect)
+  cause: tcp connect error
+  cause: No connection could be made because the target machine actively refused it. (os error 10061)

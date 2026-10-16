@@ -1,6 +1,6 @@
 {
   "scenario": "yanked",
-  "engine_version": "pip 25.0.1 (python 3.12)",
+  "engine_version": "pip 26.2.1 (python 3.12)",
   "python": "Python 3.12.10",
   "argv": [
     "<WORK>\\venv\\Scripts\\python.exe",
@@ -15,6 +15,6 @@
     "-",
     "urllib3==2.0.0"
   ],
-  "stdout_bytes": 8246,
-  "stderr_bytes": 685
+  "stdout_bytes": 8254,
+  "stderr_bytes": 489
 }

@@ -32,7 +32,8 @@ struct Fixture {
 fn load_all() -> Vec<Fixture> {
     let mut out = Vec::new();
     let root = fixtures_root();
-    for engine in ["pip", "uv", "synthetic"] {
+    // `uv-0.11/` is the frozen pre-0.13 rendering; see `both_uv_renderings_classify_identically`.
+    for engine in ["pip", "uv", "uv-0.11", "synthetic"] {
         let dir = root.join(engine);
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;
@@ -265,6 +266,34 @@ fn successful_runs_are_never_classified_as_failures() {
             f.stderr
         );
     }
+}
+
+#[test]
+fn both_uv_renderings_classify_identically() {
+    // uv 0.13 replaced miette's `× … ╰─▶ … Caused by:` with `error: … cause: …`. Both are in the
+    // wild — UV_MIN_VERSION is 0.10 — so a scenario must reach the same code from either, or the
+    // user's error depends on which uv they happen to have.
+    let fixtures = load_all();
+    let by_label = |label: &str| {
+        fixtures
+            .iter()
+            .find(|f| f.label == label)
+            .map(|f| classify_stderr(&f.stderr))
+    };
+    let mut compared = 0;
+    for f in fixtures.iter().filter(|f| f.label.starts_with("uv-0.11/")) {
+        let scenario = f.label.trim_start_matches("uv-0.11/");
+        let Some(current) = by_label(&format!("uv/{scenario}")) else {
+            continue;
+        };
+        assert_eq!(
+            classify_stderr(&f.stderr),
+            current,
+            "uv/{scenario} classifies differently under uv 0.11 and the current uv"
+        );
+        compared += 1;
+    }
+    assert!(compared >= 9, "compared only {compared} scenarios");
 }
 
 #[test]

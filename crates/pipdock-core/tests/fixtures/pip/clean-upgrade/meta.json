@@ -1,6 +1,6 @@
 {
   "scenario": "clean-upgrade",
-  "question": "Baseline: what does an unconstrained upgrade plan look like?",
+  "question": "Baseline: what does an ordinary upgrade plan look like?",
   "expects_code": null,
   "engine": "pip",
   "extra_env": {

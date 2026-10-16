@@ -1,6 +1,6 @@
 {
   "scenario": "held-back",
-  "engine_version": "pip 25.0.1 (python 3.12)",
+  "engine_version": "pip 26.2.1 (python 3.12)",
   "python": "Python 3.12.10",
   "argv": [
     "<WORK>\\venv\\Scripts\\python.exe",
@@ -15,6 +15,6 @@
     "-",
     "httpcore"
   ],
-  "stdout_bytes": 32856,
-  "stderr_bytes": 199
+  "stdout_bytes": 32864,
+  "stderr_bytes": 0
 }

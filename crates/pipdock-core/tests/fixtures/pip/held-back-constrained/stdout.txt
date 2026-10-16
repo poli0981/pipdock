@@ -1,6 +1,6 @@
 {
   "version": "1",
-  "pip_version": "25.0.1",
+  "pip_version": "<PIP>",
   "install": [],
   "environment": {
     "implementation_name": "cpython",

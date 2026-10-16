@@ -4,4 +4,4 @@ Would download 1 package
 Would uninstall 1 package
 Would install 1 package
  - idna==3.4
- + idna==3.18
+ + idna==3.10
