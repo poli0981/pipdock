@@ -118,14 +118,8 @@ fn validated_hold(version: &Version) -> Result<&str> {
             format!("invalid version for a pin: {raw:?}"),
         )
     };
-    let bytes = raw.as_bytes();
-    if bytes.is_empty() || !bytes[0].is_ascii_alphanumeric() {
-        return Err(invalid());
-    }
-    if !bytes
-        .iter()
-        .all(|&b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+' | b'!'))
-    {
+    // The one PEP 440 check, shared with the tools ledger and every argv boundary.
+    if !crate::pep440::is_version(raw) {
         return Err(invalid());
     }
     Ok(raw)

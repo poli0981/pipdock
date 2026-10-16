@@ -190,25 +190,16 @@ pub fn parse(text: &str) -> ParsedRequirements {
 /// uninstallable, while the job here is only to reject whitespace and anything that is not part
 /// of a specifier's alphabet. An empty constraint is valid and means "any version".
 fn is_specifier(raw: &str) -> bool {
-    if raw.is_empty() {
-        return true;
-    }
-    raw.starts_with(['<', '>', '=', '!', '~'])
-        && raw.chars().all(|c| {
-            c.is_ascii_alphanumeric()
-                || matches!(
-                    c,
-                    '<' | '>' | '=' | '!' | '~' | '.' | ',' | '*' | '-' | '_' | '+'
-                )
-        })
+    // The shape check this used to be accepted `>=1.0--break-system-packages` (every character is
+    // in a specifier's alphabet); the grammar does not.
+    raw.is_empty() || crate::pep440::is_specifier_set(raw)
 }
 
 /// Render a parsed requirement back as a spec `Intent::Install` accepts.
 ///
 /// **The marker is dropped, and the extras with it.** A marker is a condition on the *installing*
 /// environment that the resolver evaluates itself, and PipDock's job here is to say which packages
-/// to ask for. Keeping either would put a token into argv that
-/// `plan::build_request`'s `name==version` split does not understand.
+/// to ask for. What is rendered is exactly what [`crate::model::Spec::parse`] reads back.
 fn render(req: &Requirement) -> String {
     if req.constraint.is_empty() {
         req.name.as_str().to_owned()

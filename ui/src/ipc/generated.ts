@@ -949,7 +949,11 @@ export interface SourceLocation {
 export interface Spec {
   /** Normalized distribution name. */
   name: PkgName;
-  /** PEP 440 specifier such as `">=2,<3"`, or `None` for "latest". */
+  /**
+   * PEP 440 specifier such as `">=2,<3"` (or a bare version, read as `==`), or `None` for
+   * "latest". Validated on every way in — [`Spec::parse`] and deserialization — so it is
+   * never prose, a marker or an option by the time it reaches argv.
+   */
   versionReq?: string | null;
 }
 

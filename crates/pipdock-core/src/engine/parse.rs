@@ -106,12 +106,16 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
         let Ok(name) = PkgName::parse(raw_name) else {
             continue;
         };
-        let to = Version(
-            meta.get("version")
-                .and_then(serde_json::Value::as_str)
-                .unwrap_or_default()
-                .to_owned(),
-        );
+        let raw_version = meta
+            .get("version")
+            .and_then(serde_json::Value::as_str)
+            .unwrap_or_default();
+        // pip normalizes report versions to PEP 440; anything else is not something PipDock will
+        // turn into an argv token, and the change is left out rather than mis-rendered.
+        if !crate::pep440::is_argv_safe(raw_version) {
+            continue;
+        }
+        let to = Version(raw_version.to_owned());
 
         if entry.get("is_yanked").and_then(serde_json::Value::as_bool) == Some(true) {
             yanked.push(YankWarning {
@@ -244,7 +248,16 @@ pub fn uv_plan(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedP
                 let Ok(name) = PkgName::parse(name.trim()) else {
                     continue;
                 };
-                let version = Version(version.trim().to_owned());
+                // `+ pkg==0.1.0 (from file:///…)` for a local or direct-URL source: the version is
+                // the first token, and the rest is uv explaining where it comes from. Kept whole,
+                // it reached argv as `pkg==0.1.0 (from file:///…)`.
+                let Some(version) = version.split_whitespace().next() else {
+                    continue;
+                };
+                if !crate::pep440::is_argv_safe(version) {
+                    continue;
+                }
+                let version = Version(version.to_owned());
                 if sign == "-" {
                     removals.insert(name, version);
                 } else {
@@ -664,5 +677,14 @@ mod tests {
             plan.report.is_clean(),
             "a yank must not make the plan dirty"
         );
+    }
+
+    #[test]
+    fn a_uv_line_with_a_source_suffix_keeps_only_the_version() {
+        // `+ pkg==0.1.0 (from file:///…)` reached argv whole as the version.
+        let text = "Resolved 1 package in 5ms\nWould install 1 package\n + localpkg==0.1.0 (from file:///C:/src/localpkg)\n";
+        let plan = uv_plan("", text, &[]).expect("parses");
+        assert_eq!(plan.report.changes.len(), 1);
+        assert_eq!(plan.report.changes[0].to.0, "0.1.0");
     }
 }

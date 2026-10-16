@@ -803,13 +803,7 @@ fn build_request(
                 upgrades: Vec::new(),
                 installs: specs
                     .iter()
-                    .map(|raw| {
-                        let (name, version_req) = match raw.split_once("==") {
-                            Some((n, v)) => (n, Some(v.to_owned())),
-                            None => (raw.as_str(), None),
-                        };
-                        PkgName::parse(name).map(|name| Spec { name, version_req })
-                    })
+                    .map(|raw| Spec::parse(raw))
                     .collect::<Result<_>>()?,
                 strategy: Strategy::Compatible,
             },
@@ -918,8 +912,64 @@ mod tests {
         )
         .expect("builds");
         assert_eq!(req.installs.len(), 2);
-        assert_eq!(req.installs[0].version_req.as_deref(), Some("0.28.1"));
+        assert_eq!(req.installs[0].version_req.as_deref(), Some("==0.28.1"));
         assert_eq!(req.installs[1].version_req, None);
+    }
+
+    #[test]
+    fn every_spec_a_requirements_file_produces_builds_a_request() {
+        // The seam P1-B left open: `requirements::parse` emitted `django>=5.0,<6` and the flow
+        // split on `==` only, so every range failed with PD-PKG-002 and `pkg===1.0` became
+        // version `=1.0`. Fed through for real, not with hand-written specs.
+        let parsed = crate::requirements::parse(
+            "django>=5.0,<6\nrequests==2.32.3\nnumpy ~= 2.1\nlegacy===1.0-final\nidna\n",
+        );
+        assert!(parsed.skipped.is_empty(), "{:?}", parsed.skipped);
+        let (req, _) = build_request(
+            &Intent::Install {
+                specs: parsed.specs,
+            },
+            &[],
+            &[],
+        )
+        .expect("every parsed spec builds");
+        let got: Vec<(String, Option<String>)> = req
+            .installs
+            .iter()
+            .map(|s| (s.name.to_string(), s.version_req.clone()))
+            .collect();
+        assert_eq!(
+            got,
+            [
+                ("django".to_owned(), Some(">=5.0,<6".to_owned())),
+                ("requests".to_owned(), Some("==2.32.3".to_owned())),
+                ("numpy".to_owned(), Some("~=2.1".to_owned())),
+                ("legacy".to_owned(), Some("===1.0-final".to_owned())),
+                ("idna".to_owned(), None),
+            ]
+        );
+    }
+
+    #[test]
+    fn a_version_that_is_not_one_never_reaches_argv() {
+        // SECURITY §2 says versions are validated before argv; they were not. This one is a
+        // single token pip reads as a requirement whose marker is false — a silent no-op install.
+        for bad in [
+            "pkg==2.0 ; python_version<'0'",
+            "pkg==1.0 --break-system-packages",
+            "pkg @ https://example.com/pkg.whl",
+            "pkg is not a requirement",
+        ] {
+            let err = build_request(
+                &Intent::Install {
+                    specs: vec![bad.into()],
+                },
+                &[],
+                &[],
+            )
+            .expect_err(bad);
+            assert_eq!(err.code, Code::PkgNotFound, "{bad}");
+        }
     }
 
     #[test]

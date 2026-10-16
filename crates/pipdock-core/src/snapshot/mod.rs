@@ -171,7 +171,13 @@ fn pin_of(line: &str) -> Option<(PkgName, Version)> {
         return None;
     }
     let name = PkgName::parse(name.trim()).ok()?;
-    Some((name, Version(version.trim().to_owned())))
+    let version = version.trim();
+    // A freeze line whose version could be read as more than one — `pkg==1.0 ; marker` from a
+    // hand-edited snapshot — is unrestorable rather than restored into argv.
+    if !crate::pep440::is_argv_safe(version) {
+        return None;
+    }
+    Some((name, Version(version.to_owned())))
 }
 
 /// Lines a freeze contained that [`parse_freeze`] could not turn into a restorable pin.
@@ -739,6 +745,17 @@ mod tests {
         assert!(
             !earlier.contains(':'),
             "ids must be filename-safe: {earlier}"
+        );
+    }
+
+    #[test]
+    fn a_freeze_line_whose_version_is_not_one_is_unrestorable() {
+        let freeze = "good==1.0\nodd==1.0 ; python_version < '0'\n";
+        let pins = parse_freeze(freeze);
+        assert_eq!(pins.len(), 1, "{pins:?}");
+        assert_eq!(
+            unrestorable_lines(freeze),
+            vec!["odd==1.0 ; python_version < '0'".to_owned()]
         );
     }
 }
