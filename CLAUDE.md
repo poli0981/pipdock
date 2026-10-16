@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.3.0. M1, M2, Phase 3, Phase 4, the P1 wave, the Security tab and the dependency view are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette; 1.2.0 added the Security tab (PRD P1-1); 1.3.0 added the dependency view (P1-6), which is a *mode of the package screen* rather than a tab and adds no runtime dependency — read its ROADMAP record before touching `graph/`, because the shape of the screen is a consequence of measurements rather than of taste. **What is left of Post-1.0 is one thing** — the scheduled check (P1-7) — and `docs/ROADMAP.md` now carries the survey of what blocks it, which for two versions it was cited for and did not contain: no toast component, no notification/autostart/tray plugin, nothing on a timer, and no surface that can report a background failure.
+Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.4.0. M1, M2, Phase 3, Phase 4, the P1 wave, the Security tab and the dependency view are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette; 1.2.0 added the Security tab (PRD P1-1); 1.3.0 added the dependency view (P1-6), which is a *mode of the package screen* rather than a tab and adds no runtime dependency — read its ROADMAP record before touching `graph/`, because the shape of the screen is a consequence of measurements rather than of taste. 1.4.0 added no feature: it is the audit release — about 170 findings, every Critical and High fixed with a test that failed first, and the rest in ROADMAP's **Audit backlog**, with file:line and a reason each. Read that table before starting a slice; most of what is wrong with the codebase is already written down there. **What is left of Post-1.0 is one thing** — the scheduled check (P1-7) — and `docs/ROADMAP.md` now carries the survey of what blocks it, which for two versions it was cited for and did not contain: no toast component, no notification/autostart/tray plugin, nothing on a timer, and no surface that can report a background failure.
 
 ## Read the docs before changing anything
 
@@ -12,16 +12,16 @@ The design is fully specified. Read in this order; do not invent behaviour that 
 3. `docs/DATA-FLOW.md` — update/install/uninstall/rollback state machines, engine command mapping, **invariants §9**
 4. `docs/UI-SPEC.md` — design tokens, screens, click budgets, keyboard map
 5. `docs/CLI-SPEC.md` — commands, flags, exit codes, JSON contracts
-6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **34 in Rust**
+6. `docs/ERROR-CATALOG.md` — the launch codes and their stderr classifiers. **35 in Rust**
    (`Code::ALL`, pinned by two tests); the doc tabulates fewer rows because it folds
-   `PD-HLT-001..004` into one, so it shows **31 rows**. Adding a code means the catalog,
+   `PD-HLT-001..004` into one, so it shows **32 rows**. Adding a code means the catalog,
    `Code::ALL`, both counts, the "no code without a fixture" gate in `classifier_corpus.rs`,
    **both `locales/*/errors.json`**, a regenerated `codes.json`
    (`cargo run -p xtask -- ipc-fixtures`), regenerated bindings, and re-blessed goldens —
-   `golden__schema-Code.snap` **and every schema that embeds it**, which since 1.2.0 is
-   **four**: `StepResult`, `ExecutionSummary`, `HealthReport` and `AuditReport`, the last two
-   via `ToolProblem.code`. **Five snapshot files in all.** This line named three while saying
-   four, and stayed that way through 1.2.0 — grep `PD-ENV-001` across
+   `golden__schema-Code.snap` **and every schema that embeds it**, which since 1.4.0 is
+   **five**: `StepResult`, `ExecutionSummary`, `CheckReport` (its `error`), `HealthReport` and
+   `AuditReport`, the last two via `ToolProblem.code`. **Six snapshot files in all.** This line
+   has been wrong about the count twice — grep `PD-ENV-001` across
    `crates/pipdock-cli/tests/snapshots/` rather than trusting the list. Nine places; the
    gates will tell you which you forgot, including `i18n.test.ts`, which fails on a code with
    no copy in either language
@@ -62,7 +62,7 @@ failed package never aborts a batch (skip-and-continue, then a `"13 successful, 
   minor range at roughly 600 lines and never renumber an existing range file —
   `changelog/README.md` is the authority.
 
-- Crates `pipdock-*`; React components prefixed `Pd` (`PdPackageRow`, `PdConflictDialog`)
+- Crates `pipdock-*`; React components prefixed `Pd` (`PdPackageRow`, `PdConflictRow`)
 - Tauri identifier `com.skullmute.pipdock`; CLI binary `pipdock`
 - Frontend lives in `ui/`, but `package.json` sits at the **repo root** so the ops-repo
   `reusable-web-react.yml` (which has no `working-directory` input) works unmodified; Vite is
@@ -76,9 +76,18 @@ failed package never aborts a batch (skip-and-continue, then a `"13 successful, 
 
 `docs/RELEASE-CI.md` is authoritative *as corrected*: the ops repo `poli0981/.github` has **no
 reusable Rust or Tauri workflow**, its notifiers are **Discord-only**, dependency bumps are
-**Dependabot** (not Renovate), and its CodeQL reusable has **no Rust support**. So `ci-rust.yml` and
-`release.yml` are project-local; `ci-node.yml`, `codeql.yml` and the notifiers are callers.
-Every caller needs an explicit `permissions:` block — callers without one default to `none`.
+**Dependabot** (not Renovate), and its CodeQL reusable *lists* no Rust but passes `languages`
+straight to codeql-action, which analyses Rust and Actions without a build — `codeql.yml` asks for
+both. So `ci-rust.yml`, `release.yml` and `security-scan.yml` are project-local; `ci-node.yml`,
+`codeql.yml` and the notifiers are callers. Every caller needs an explicit `permissions:` block —
+callers without one default to `none` — and a write permission belongs on the job that needs it,
+not the workflow.
+
+**`notify-ci-failure.yml` lists its workflows by name, and a new workflow has to be added to it.**
+`workflows: ['*']` — the ops repo's own example — is not a wildcard to `workflow_run`: it matched
+nothing, and `main` was red from 2026-09-23 for three weeks with no one told. Start any CI
+question with `gh run list --branch main`, and remember that `security-scan.yml` exists for the
+case no PR will catch: an advisory against something already merged.
 
 ## Current state
 
@@ -93,7 +102,7 @@ has a table per stage and says where to pick up; read it before starting a slice
 
 **Phase 3 is complete** — six slices, exit criteria met and recorded. P4 put Code Health on screen: `PdHealthReport` is UI-SPEC §6's
 fifteenth of sixteen, `EnvRow.healthProject` remembers the folder per environment, and
-`health_save_report` writes Markdown + JSON. **`NOT_YET` is down to two**, both M3-general — P5 landed the
+`health_save_report` writes Markdown + JSON. `NOT_YET` was down to two after it, both M3-general — P5 landed the
 gated `ruff --fix`, PipDock's first write outside site-packages and `%LOCALAPPDATA%`. P4 *did* need new commands, contrary to the earlier claim — one shipped, and
 cancellation was deferred on a measurement (a warm three-tool run is 1.3 s in release).
 
@@ -111,16 +120,44 @@ P2 built the tools venv — `health::sync_tools_venv` fills
 `%LOCALAPPDATA%\PipDock\data\tools\.venv` from the shipped pins over `pipdock tools sync`, and there is
 no `TOOLS_PYTHON_MAX` because deptry ships an abi3 wheel (ROADMAP's premise for that const was
 wrong; the record says why). P1 closed **P0-10**: pip's version is on every Environments row and
-*Upgrade pip* is 2 clicks. **Next is P3** (the three runners + `HealthReport`), then P4 (the Health
-screen) and P5 (the gated `ruff --fix`); `~/.claude/plans/b-n-c-th-b-t-snappy-rabin.md` has all
-four decomposed, including six corrections to the specs found by running the pinned tools.
-P2 touched no `NOT_YET` entry: it is CLI-only on purpose, so P3's `health_run` owns the
+*Upgrade pip* is 2 clicks. P3–P5 followed — the three runners and `HealthReport`, the Health
+screen, the gated `ruff --fix` — and are recorded in ROADMAP. P2 touched no `NOT_YET` entry: it is CLI-only on purpose, so P3's `health_run` owns the
 implicit sync rather than the frontend getting two ways to reach one operation.
 
-**`NOT_YET` is two**, and only two: `env_add_manual` and `logs_tail`, both M3-general.
-`src-tauri/src/lib.rs:25-28` is the authority and three tests keep it honest in both directions —
-this file used to say "four" in one paragraph and "two" in another, each true when written and
-neither updated.
+**`NOT_YET` is one**: `env_add_manual` — *Browse…*, and the next slice. `logs_tail` shipped in
+1.4.0 together with the log it tails. `NOT_YET` in `src-tauri/src/lib.rs` is the authority and
+three tests keep it honest in both directions — this file has said "four", "two" and "two" in
+different paragraphs at once, each true when written and none updated.
+
+**1.4.0, the audit release, left these behind** — most found by running rather than by reading, and each
+rule below backed by a test where a test can hold it:
+
+- **A flow is only as safe as what can drive it.** The stale-plan and drift checks (DATA-FLOW
+  §9.3) never fired, because nothing could run a flow without a real engine, so nothing did.
+  `FlowOptions`, the `Engine::probe` seam and `tests/flows.rs`'s scripted engine exist so that
+  every flow decision has a test needing no pip. A new flow decision without one is a regression.
+- **A check that cannot run must not report a pass.** `unwrap_or(ok: true)` said "verified"
+  exactly when nothing was — a pip broken by the run it was checking. `CheckReport.error` says so.
+  The empty-plan path kept its own copy of the bug until the last UI commit of the release.
+- **`python -I` ignores `PYTHONUTF8` and `PYTHONIOENCODING`** (it implies `-E`), so invariant 7's
+  variables did nothing for the probe, and every venv under a folder named in Vietnamese crashed
+  it. `-X utf8` survives isolation; `probe.py` runs under it.
+- **A grant is a contract no frontend test can see.** Decline on the legal gate did nothing in the
+  installed app while its test passed: the test mocks `close()`, and `core:default` never granted
+  `core:window:allow-close`. `lib.rs` pins the webview's exact permissions now — widening them is
+  a test change, on purpose.
+- **Data drift and format drift look identical in a red drift job.** Seven weeks of red were two
+  causes: PyPI data (idna's newest release, scipy's version list) and uv 0.13 rewriting its error
+  rendering. Data is redacted in `capture.py`; a format change gets a frozen corpus of its own
+  (`tests/fixtures/uv-0.11/`, the last miette-style uv) beside the live one (`uv/`).
+- **Normalise everything you hash, not most of it.** The legal-docs hash normalised CRLF in the
+  content and hashed the raw length, so a Windows checkout re-showed the gate for nothing.
+- **`--json` is one document.** Scripts parse stdout with one `ConvertFrom-Json`; prose, prompts
+  and warnings go to stderr. Every command's shape is in CLI-SPEC §6, and the goldens hold it.
+- **Never put a backslash in a Bash heredoc** that becomes source code: the tool collapses `\\`
+  to `\`, which turned `b"\r\n"` test strings into real line breaks and a CRLF test into one that
+  could not fail. Write such files with the Write/Edit tools, then check the failing-first run
+  actually failed.
 
 Three rules P1 left behind, all found by running rather than reading:
 
@@ -201,7 +238,7 @@ Things worth knowing before you change any of it:
 
 - **`cargo test` fails when `ui/src/ipc/generated.ts` is stale.** Fix with
   `cargo run -p xtask -- bindings`; the failure names that command and the first differing line.
-- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 64 snapshots at 1.1.0) are the CLI's output
+- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 68 snapshots at 1.4.0) are the CLI's output
   contract.** A diff there is a real behaviour change — re-bless deliberately, never reflexively.
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no
@@ -340,6 +377,5 @@ Things worth knowing before you change any of it:
   id before execution and the GUI can draw DATA-FLOW §3's distinct states. The cost is that
   skipping the snapshot becomes expressible, which is why `flow::proof_from` refuses `NotTaken`
   with `PD-SNP-001`. Do not "simplify" them back into one.
-- **Fixtures under `tests/fixtures/{pip,uv}/` are not literal engine bytes** — see the redaction
-  note above. Related: `ScanProgress.label` and every path, version and engine id in the UI are
-  data and are never translated (I18N §2).
+- `ScanProgress.label` and every path, version and engine id in the UI are data and are never
+  translated (I18N §2).

@@ -10,65 +10,75 @@
 4.  Skip-and-continue semantics and summary counts.
 5.  Reverse-dependency guard correctness — including that it is *enforced*, not merely reported: a removal the user never accepted must be refused (`GuardAck`, PD-RES-004), and widening a removal must re-run the guard rather than proceed.
 
+**A fix lands with a test that failed without it.** 1.4.0 held every Critical and High audit finding to that rule: each fix's test was run against the code it replaced and seen to fail first (ROADMAP's 1.4.0 record). A test that has never failed has not shown that it can.
+
 ## 2. Layers
 
-### L1 — Core unit tests (Rust, `cargo test`)
+### L1 — Core unit and corpus tests (Rust, `cargo test`)
 
--   **Parser fixtures:** captured real outputs under `tests/fixtures/{pip,uv}/{list,outdated,report,errors}/…` (seeded by spikes SP-1/SP-2, grown from every new engine release and every triaged bug). `insta` snapshot tests assert the normalized `ResolutionReport`. A CI job runs the capture script against the *latest* engine versions weekly and fails on unrecognized shapes → PD-ENG-003 before users hit it.
--   **Error classifiers:** every catalog code has ≥ 1 stderr fixture; a test enforces "no code without fixture."
--   **Graph:** reverse-dep construction and blocker attribution over synthetic metadata sets, including cycles and extras (`pkg[extra]`) markers.
--   **Snapshot diff/rollback planner:** property-style tests — `apply(plan(diff(a,b)), b) == a` over generated freeze pairs, and the **partition**: every significant freeze line is either parsed into a pin or reported unrestorable, never neither. The second is the one a rollback preview stands on — a line both functions dropped disappeared silently, and the preview then promised a restore it could not perform.
--   **Name/spec validation:** PEP 508/440 accept/reject tables.
+-   **Engine captures:** real pip and uv output under `crates/pipdock-core/tests/fixtures/`, one directory per scenario holding `stdout.txt`, `stderr.txt`, `meta.json` (the exit code, and the catalog code the scenario must produce) and `capture-provenance.json` (engine, interpreter and argv), written by `spikes/capture.py` and seeded by spikes SP-1/SP-2. Ten scenarios per engine — a clean upgrade, held back, held back by a constraint, impossible, not found, yanked, `Requires-Python`, a build-backend failure, an unreachable network, the cp1252 report crash — in **three corpora**, plus one of synthetic stand-ins:
+    -   `pip/` and `uv/` — the current engines (pip 26.2.1 and uv 0.13.1 at 1.4.0), and the bytes the weekly drift job re-captures and compares (L2).
+    -   `uv-0.11/` — **frozen**: a byte-identical copy of uv 0.11.32's captures, the last miette-style rendering (`×`, `╰─▶`, "Caused by:"). uv 0.13.0 rewrote every failure as `error:` / `cause:`, and `UV_MIN_VERSION` is still 0.10, so users run both. `both_uv_renderings_classify_identically` (`classifier_corpus.rs`) holds every scenario to one catalog code under either rendering, and `uv_impossibility_reads_the_same_in_both_renderings` (`plan_parsers.rs`) holds the explanation to the same words.
+    -   `synthetic/` — the eight conditions a capture machine cannot produce (a full disk, a locked file, a hash mismatch…), each flagged, saying why it is synthetic and what would replace it; a test refuses one that does not.
+
+    The captures are redacted rather than literal — absolute paths, addresses, progress bars, timings, and data that moves with PyPI rather than with an engine (pip's "from versions" list, its release notice) — so they compare across machines and weeks. Line endings stay byte-exact (`.gitattributes`' `-text`), and a test fails if no fixture keeps a CRLF.
+-   **Parsers against the corpora** (`plan_parsers.rs`): every capture is replayed through the function each `resolve` returns through — `pip_resolution` / `uv_resolution` — and asserted on *meaning*: a plan is recognised, an upgrade knows what it is upgrading from, an impossibility is a report. Deliberately not snapshotted, because a snapshot would fail on every cosmetic engine change and teach re-blessing without reading; this bullet said `insta` snapshots asserted the normalized `ResolutionReport`, and none does. `every_failed_capture_reaches_the_user_as_the_code_it_was_captured_for` is 1.4.0's: the classifier corpus had proved each stderr classifies correctly while uv's adapter never asked the classifier, so a failed build previewed as "no changes".
+-   **Error classifiers** (`classifier_corpus.rs`): every catalog code is covered by a fixture that names it or classifies to it, **or** is listed as raised by PipDock itself, with the module that raises it — a watchdog (PD-ENG-004) or a stale preview (PD-RES-002) has no stderr to capture. A code with neither fails CI: "no code without a fixture". This line said every code has a stderr fixture; the table of codes PipDock raises itself has sat beside the captures since the gate was written.
+-   **Flows, end to end against a scripted engine** (`tests/flows.rs`, 1.4.0). The engine owns a small mutable world — what is installed, what the index offers, whether the interpreter is externally managed — and installs really change it, so a test can move the environment between two calls the way another terminal would; `Engine::probe` and `FlowOptions` (the cancellation token, a clock) are the seams. It exists because everything a flow decides before `plan::execute` — the PEP 668 gate, the drift basis, what reaches the resolver, what a forced package releases — sat behind a free-function probe, so a stale-preview check that could never fire, *Force latest* forcing nothing and a cross-engine rollback removing pip were found by no test. A flow decision without a test here is a regression. `execution.rs` does the same for `plan::execute`: skip-and-continue (thirteen of fifteen apply), the counts against the rows, Phase B isolation, and a stop, a watchdog or an engine that will not start reported per row rather than raised.
+-   **Graph:** reverse-dep construction and blocker attribution over synthetic metadata sets, including cycles and extras (`pkg[extra]`) markers — and, since probe schema 3, platform markers, so ipython's `pexpect; sys_platform != "win32"` no longer reads as a missing dependency on Windows.
+-   **Snapshot diff/rollback planner:** the round trip `apply(plan(diff(a,b)), b) == a` over a constructed pair, and, over 400 generated freeze texts, the **partition**: every significant freeze line is either parsed into a pin or reported unrestorable, never neither. The second is the one a rollback preview stands on — a line both functions dropped disappeared silently, and the preview then promised a restore it could not perform. (This bullet said the round trip ran over generated pairs; only the partition does.)
+-   **Name/spec validation:** PEP 508/440 accept/reject tables — names in `model.rs`, and since 1.4.0 versions and specifier sets in `pep440.rs`, the boundary where text becomes argv (SECURITY §2).
+-   **What the frontend and the shell depend on** fails `cargo test` too: `generated.ts` and the L3 IPC fixtures when stale (`bindings.rs`, `fixtures.rs`); the webview's exact grants and the opener's four hosts (`src-tauri/src/lib.rs`, SECURITY §4) — a grant is a contract no frontend test can see, and *Decline* on the legal gate did nothing in the installed app while its component test, which mocks `close()`, passed; and the legal-documents hash (`crates/pipdock-core/src/legal_hash.rs`), which `build.rs` includes by `#[path]` and the library compiles only under `cfg(test)`, so the tests run the function that runs at build time. A CRLF document hashes like its LF twin — which failed against the code that took the length before normalising — a changed or moved document changes the hash, and the hand-rolled SHA-256 agrees with `sha2` across block boundaries.
+-   **Six tests are `#[ignore]`d**, each needing what `cargo test` must not: real PyPI (the tools-venv bootstrap and its repair), a synced audit venv, a real interpreter (the graph), and a populated index in a release build (`search_latency.rs`, which refuses to run in debug). They run by hand with `--ignored`; **no CI job runs them** (ROADMAP's Audit backlog). L2 drives the bootstrap through the CLI instead.
 
 ### L2 — Engine integration (disposable venvs, Windows CI runner)
 
-Each test creates a throwaway venv (`python -m venv` and `uv venv`), then exercises real engines:
+`ci-integration.yml`'s *Real engines, throwaway venvs* job, on Python 3.10 and 3.14 — the floor and the newest PipDock claims. It runs `cargo test`, builds the CLI and drives it against venvs it creates with `python -m venv`, real pip and real uv on PATH. (This line said `uv venv` as well; nothing creates one.)
 
-Scenario
+| Step | Assertion |
+|---|---|
+| Discovery and inspection | `env list`, `doctor` and `list --json` succeed on a fresh venv |
+| The Code Health tools venv | `tools sync` reaches `fresh` with all three tools and without pip-audit; a warm re-sync short-circuits (under 10 s); a deleted `ruff.exe` reads `toolMissing` and a re-sync repairs it; offline, PD-NET-011, exit 6, and no manifest left behind |
+| pip upkeep | a venv seeded with pip 22.1.2 is upgraded by `pip-upgrade` and its pip runs afterwards — on 3.14 only through the `ensurepip` fallback |
+| PEP 668 | with the marker planted in the base interpreter, a venv built from it is *not* externally managed and the base *is* |
+| The SP-1 conflict | over `httpx==0.23.0`, `update httpcore --dry-run` reports httpcore held back and attributes it to httpx |
+| Update → snapshot → rollback | after `update --all` and `snapshot rollback <id>`, `snapshot diff <id> --json` reports no drift |
+| The uninstall guard | removing `urllib3` from under `requests` exits non-zero |
+| Exit codes | a missing environment exits 3; `doctor` on a healthy one exits 0 |
+| JSON contracts | `pipdock schema` for four types, and `list --json`, parse |
+| An editable install | listed once, and with no size |
 
-Assertion
+**What this table used to claim and L2 does not do:** install three wheels and check the summary; take a conflict down the Force path and see `check` report the breakage; isolate a broken sdist in Phase B; `--force` past the guard; and refuse with PD-ENV-002, then pass the flag under the override, against a real engine. Those are proved against scripted engines in L1 — the batch semantics in `execution.rs`, *Force latest* and the PEP 668 gate and override in `flows.rs`, the guard's acknowledgement in `flow`'s unit tests, the flag itself in the adapters' argv tests — and 1.4.0 ran *Force latest* and the override by hand against pip 26.2.1 and uv 0.13.1 (ROADMAP).
 
-Fresh venv + install 3 small pure wheels
+**The packages are real PyPI packages, and only some are pinned** — `httpx==0.23.0`, `pip==22.1.2`, the shipped tool pins — while `requests` and `update --all` take whatever is newest that day. This paragraph described a pinned package list in `tests/integration/pins.toml` and a local `pypiserver` mirror for offline runs; neither has ever existed. L2 is network-bound, and only as deterministic as PyPI.
 
-summary 3/0; `check` clean
-
-Seed known conflict (install `A==old` requiring `B<x`, then plan `B` latest)
-
-plan shows held-back with correct blocker; Compatible path succeeds; Force path warns and `check` reports breakage
-
-Batch with 1 deliberately broken sdist
-
-Phase B isolates it; counts n-1 ok / 1 failed with PD-BLD-*; env passes `check`
-
-Uninstall a depended-on package
-
-guard lists dependents; `--force` proceeds
-
-Snapshot → mutate → rollback
-
-env freeze equals snapshot
-
-PEP 668 marker file planted
-
-PD-ENV-002 block; override path passes flag
-
-Fixture packages are tiny pinned PyPI wheels (documented list in `tests/integration/pins.toml`) so CI is deterministic; network-touching tests are tagged and can run against a local `pypiserver` mirror when offline determinism is needed.
+**The drift job** (*Re-capture against the latest engines*, Mondays and on dispatch) re-captures `pip/` and `uv/` with the newest pip and uv on Python 3.12.10 — an exact patch, because pip's report and uv's output both record it — uploads what it captured whether or not it passes (`captured-fixtures`: the fix for a real drift is to review and commit exactly those bytes), fails if any fixture but `capture-provenance.json` moved, and runs `cargo test` over the new captures. It failed seven Mondays running before 1.4.0, mostly for reasons that were not engines — idna's newest release and scipy's growing version list, now pinned and redacted in `capture.py` — and it was blind where it mattered: the capture venv never upgraded pip, so the job meant to see a pip change ran the CPython-bundled 25.0.1 throughout. The one real change, uv 0.13's new rendering, was answered by freezing the old captures as `uv-0.11/`.
 
 ### L3 — Frontend (Vitest + Testing Library)
 
-Component tests for `PdConflictRow` (3-way state), `PdPreviewDiff` grouping, `PdSummarySheet` counts, dimming/badging rules on `PdPackageTable`, and the design-token contrast test (all text/surface pairs ≥ WCAG AA computed at build). IPC mocked at the typed wrapper layer with recorded core payloads — the same JSON as L1 fixtures, guaranteeing UI and core agree on shapes. Types are generated by `cargo run -p xtask -- bindings` over `schemars`, not by tauri-specta as this line once said, so **drift is a test failure rather than a compile error** — which means it fires at `cargo test`, locally as well as in CI. See `crates/pipdock-core/src/bindings.rs`.
+Component tests for `PdConflictRow` (3-way state), `PdPreviewDiff` grouping, `PdSummarySheet` counts, dimming/badging rules on `PdPackageTable`, and the design-token contrast test — every text/surface pair ≥ WCAG AA, and since 1.4.0 every badge tint composited over every surface too; it is a test, so it gates every PR. Store tests include `ui/src/stores/races.test.ts` (1.4.0): each holds a command open, moves on — another environment, another timeline entry, Back out of a plan — and only then lets it answer, because five stores wrote whatever came back without asking whether the question was still the one being asked. Six of its seven tests fail on the stores before 1.4.0. `i18n.test.ts` fails on a catalog code that either language has no copy for.
+
+IPC is mocked at the typed wrapper layer (`ui/src/test/ipc.ts`, a factory each test file passes to its own `vi.mock`) with payloads **serialized from the real Rust types** by `cargo run -p xtask -- ipc-fixtures` into `ui/src/test/fixtures/`, and `cargo test` fails when the committed files are stale — which is what guarantees UI and core agree on shapes. Where production computes a value, the fixture is computed by the same function: the guard report and the dependency graph by the real graph over the scenario's rows, the preview's blockers by `blockers_for`, and since 1.4.0 `flow_step_forced.json` by `plan::derive_forced` and `release::mismatch`. A hand-written blocker list that matched the docs while the code had drifted is how the preview shipped a garbled sentence from S3 to 1.1.0 with every suite green. `fixtures.rs` is compiled only under `cfg(test)` or the `fixtures` feature xtask enables, never into a release build. Types are generated by `cargo run -p xtask -- bindings` over `schemars`, not by tauri-specta as this line once said, so **drift is a test failure rather than a compile error** — which means it fires at `cargo test`, locally as well as in CI. See `crates/pipdock-core/src/bindings.rs`.
 
 ### L4 — CLI (assert_cmd + insta)
 
-Golden-output tests per command against a mocked core; TTY vs non-TTY prompt behavior; exit-code table verified exhaustively; `--json` payloads validated against `pipdock schema` output.
+Goldens over the real binary. There is no mocked core — this line promised one, and the CLI has no seam to mock at (`golden.rs` says why) — so what is goldened is everything deterministic without an interpreter: every command's and subcommand's help, which is the flag contract scripts read; the JSON and human error envelope; and `pipdock schema <T>` for every type in `SCHEMA_TYPES`, plus the unknown-type list — **68 snapshots at 1.4.0**. The exit-code table is asserted for the rows reachable without an interpreter (0, 2 and 3); L2 asserts the ones it can reach. A golden diff is a behaviour change: re-bless deliberately, never reflexively.
 
-### L5 — E2E smoke (tauri-driver, P1 gate for release)
+**Not covered by a committed test**, though this line claimed both: TTY versus non-TTY prompting, and `--json` payloads checked against `pipdock schema`'s output. CLI-SPEC §6's one-document `--json` rule was verified for 1.4.0 by driving the real binary through every path (ROADMAP), not by a test that stays.
 
-One scripted run on a Windows runner: launch → legal gate → select seeded venv → update-all happy path → summary visible → rollback. Kept minimal; breadth lives in L2.
+### L5 — E2E smoke — **not built**
+
+The plan was one scripted tauri-driver run on a Windows runner — launch → legal gate → select seeded venv → update-all happy path → summary visible → rollback — as a P1 gate for release. Nothing implements it: no tauri-driver, no WebDriver, no job. What stands in is a person building, installing and driving each release's installer by hand (§4, and ROADMAP Phase 4's "building and installing are their own test tier"). An installer smoke test is in ROADMAP's Audit backlog.
 
 ## 3. Coverage & gates
 
-Core target ≥ 85 % line coverage (`cargo llvm-cov`), classifiers and plan module ≥ 95 %. PRs blocked on: fmt, clippy `-D warnings`, L1, L3, L4; L2 runs on PRs touching `engine|plan|snapshot|graph` paths and nightly otherwise. The weekly latest-engine parser job files an issue automatically on failure (feeds PD-ENG-003 early warning).
+**No coverage is measured.** This section set targets — core ≥ 85 % line coverage (`cargo llvm-cov`), classifiers and plan module ≥ 95 % — that nothing has ever measured: `cargo llvm-cov` is not wired anywhere, and coverage is in ROADMAP's Audit backlog. Until it is, the guarantee is §1's rule — a test that failed first — rather than a percentage.
+
+**Required on every PR** (RELEASE-CI §2 has the exact payload): `fmt · clippy · test` — fmt, clippy `-D warnings`, and `cargo test --workspace`, which is L1, L4 and the Tauri crate's tests; `lint · typecheck · test · build / build` — ESLint, `tsc`, L3 and `vite build`; `cargo audit`; `npm audit`; and CodeQL's JavaScript/TypeScript analysis. `cargo deny`, `tauri lockstep` and CodeQL's Rust and Actions analyses run on every PR and are not required.
+
+**L2** runs nightly, on dispatch, and on PRs that touch what its end-to-end steps run through — the path list in `ci-integration.yml`, which 1.4.0 widened to the CLI, `exec.rs`, the audit, release, error, store and index modules, `Cargo.lock` and `rust-toolchain.toml` — each of them something the end-to-end steps run through, whose changes used to reach `main` without this job seeing them. (This line named `engine|plan|snapshot|graph`; the filter had outgrown that before 1.4.0.) It is not a required check: a path-filtered check that never starts stays pending forever.
+
+**The weekly drift job** reports a failure to Discord through `notify-ci-failure.yml`, like any failure on `main`. It does not file an issue, which this section said it did.
 
 ## 4. Manual test charter (per release)
 

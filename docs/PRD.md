@@ -22,7 +22,7 @@ PipDock's thesis: **don't reimplement the resolver — explain it.** Wrap pip/uv
 - G4 — Core happy paths complete in **≤ 5 clicks** (see UI-SPEC click budgets).
 - G5 — GUI and CLI share **one Rust core**; behavior never diverges.
 - G6 — PipDock **never modifies its own runtime** (standalone binary; the managed environments are external).
-- G7 — Zero telemetry; **PyPI is the only host PipDock connects to.** It does not update itself, so it never calls home; GitHub, the ruff docs and the author's contact page are only ever handed to the browser as a link the user clicked (SECURITY §4/§5).
+- G7 — Zero telemetry; **PyPI is the only host PipDock connects to.** It does not update itself, so it never calls home; GitHub, the ruff docs, OSV's advisory pages and the author's contact page are only ever handed to the browser as a link the user clicked (SECURITY §4/§5).
 
 ## 3. Personas
 
@@ -39,31 +39,31 @@ PipDock's thesis: **don't reimplement the resolver — explain it.** Wrap pip/uv
 
 | # | Feature | Notes |
 |---|---|---|
-| P0-1 | Environment discovery & switcher | PEP 514 registry + `py -0p` + `uv python list` + known venv dirs + manual browse. Recents persisted. |
-| P0-2 | PEP 668 guard | Detect `EXTERNALLY-MANAGED`; block by default with explanation; explicit opt-in override only. |
+| P0-1 | Environment discovery & switcher | PEP 514 registry + `py -0p` + `uv python list` + known venv dirs + manual browse. Recents persisted. **Manual browse is not built:** `env_add_manual` is the one command still owed (`NOT_YET`), so a venv is found only as a `.venv`, `venv`, `env` or `.env` in the working directory, or named with the CLI's `--env`. **Recents:** the CLI's `env use` default is stored and, since 1.4.0, honoured; the GUI's selection lasts for the session. |
+| P0-2 | PEP 668 guard | Detect `EXTERNALLY-MANAGED`; block by default with explanation; explicit opt-in override only. **The override works since 1.4.0.** It saved and nothing read it, so turning it on changed nothing — and the guard decided on whatever the caller last cached, while the rollback flow had no guard at all. Every mutating flow now decides on a fresh probe; turning the override on asks first, and a chip is shown wherever it applies (SECURITY §3). |
 | P0-3 | Installed list | Per-env; up-to-date rows dimmed; outdated rows badged and mirrored into Updates tab. |
-| P0-4 | Updates flow | Group dry-run resolve → preview diff → 3-way conflict choices → two-phase execution → `pip check` post-verify → summary report. |
+| P0-4 | Updates flow | Group dry-run resolve → preview diff → 3-way conflict choices → two-phase execution → `pip check` post-verify → summary report. **Three parts of this worked only from 1.4.0:** *Force latest* was recorded and never read, so a forced resolve was the held-back one again — it now forces, and the preview names what it breaks before anything runs (DISCLAIMER §2); a post-run check that could not run reported `ok`, and now says it could not; and PipDock enforces `Requires-Python` itself (hard invariant 10), where PD-PKG-001 had never been raised. |
 | P0-5 | Search & install | Local PEP 691 name-index cache + fuzzy search; per-package metadata on demand (PyPI JSON API); install queue ("dock bay"). |
 | P0-6 | Bulk uninstall + reverse-dep guard | Warn "removing X breaks Y, Z" before execution; `--force` override. |
 | P0-7 | Pins | Per-env pin list; pinned packages excluded from *Select all*; lock icon in lists. |
 | P0-8 | Snapshots & rollback | Auto snapshot (freeze + metadata) before every batch; diff view; minimal-ops rollback. |
-| P0-9 | Engine setting (pip / uv) | Auto-detect uv on first run; switch any time in Settings; engine badge in status bar. |
+| P0-9 | Engine setting (pip / uv) | Auto-detect uv on first run; switch any time in Settings; engine badge in status bar. **Auto-detect is not implemented, and is owed** (audit backlog X19): a fresh install drives pip (`Settings::default`). `settings.rs` places the detection in Settings, as a choice made where it can be seen, rather than in a read of an empty store — and the CLI follows the stored setting rather than probing `PATH` — but nothing in Settings makes it yet. What exists since 1.4.0 is the half it needs: Settings shows each engine's version for the selected environment beside its radio, *not found* when it is not installed. |
 | P0-10 | pip upkeep | Show pip version per env; one-click `python -m pip install --upgrade pip`. |
 | P0-11 | Code Health tab | deptry + vulture + ruff from PipDock's isolated tools env; report + safe `ruff --fix`. (Promoted to v1 by owner decision 2026-07.) |
 | P0-12 | CLI core parity | env / list / search / install / update / uninstall / pin / snapshot / doctor / health. JSON output. |
 | P0-13 | Legal gate | First-run modal: EULA, License, Disclaimer, Privacy, Third-Party → GitHub links; consent stored with docs-version hash. |
 | P0-14 | i18n EN + VI | GUI fully localized; CLI English-only in v1. |
-| P0-15 | Summary reports | "13 successful, 2 failed" + per-package error-catalog reason; copy log; Report-bug deep link. |
-| P0-16 | Structured logging | Rolling local log files (tracing); in-app live console during execution. |
+| P0-15 | Summary reports | "13 successful, 2 failed" + per-package error-catalog reason; copy log; Report-bug deep link. Since 1.4.0 each row says what it moved from, and the bug report carries the environment's Python version and the engine's. |
+| P0-16 | Structured logging | Rolling local log files (tracing); in-app live console during execution. **Met in 1.4.0.** The live console shipped earlier; the log files did not exist until then — `tracing` was a dependency of three crates and called zero times. Now one file per UTC day under `%LOCALAPPDATA%\PipDock\data\logs\` (`pipdock.<date>.log` for the GUI, `pipdock-cli.<date>.log` for the CLI, so the two never interleave), swept after 14 days: every spawn's argv, exit code and duration, each resolve, snapshot and run outcome, a panic's report, and at DEBUG the engine's own lines. The CLI's `--verbose` and `--log-file` work; Settings shows the folder and copies the recent log; a GUI that cannot open its data folder says so in a dialog naming the log. Nothing in it is sent anywhere. |
 
 ### P1 — v1.x
 
 | # | Feature | Notes |
 |---|---|---|
 | P1-1 | **Shipped 1.2.0.** Security tab | pip-audit (freeze-file mode) listing known advisories per installed package. **Not severity-sorted, because pip-audit has no severity field** — under either vulnerability service its findings carry only `id`, `fix_versions`, `aliases` and `description`, verified against the pinned 2.10.1. Ordered by package, then by whether anything *fixes* it, then by id: the one distinction that changes what the user can do. The CVE is an **alias**; the primary id is a `PYSEC-*`. |
-| P1-2 | Pin auto-suggest | **Shipped post-1.0 (P1-A).** Reverse-dependency count ≥ threshold (default 5, configurable in Settings; zero is off) ⇒ suggest pin with reason. Counts in-force edges only — extras and other-Python markers do not qualify a package. |
+| P1-2 | Pin auto-suggest | **Shipped post-1.0 (P1-A).** Reverse-dependency count ≥ threshold (default 5, configurable in Settings; zero is off) ⇒ suggest pin with reason. Counts in-force edges only — extras and other-Python markers do not qualify a package, and since 1.4.0, when platform markers began to be read, neither do requirements gated to another platform. |
 | P1-3 | **Shipped 1.1.0.** Export / import | `requirements.txt` and `constraints.txt` export; import-as-queue. |
-| P1-4 | **Partly shipped, 1.1.0.** Cache manager | Shows and clears **PipDock's own** disk usage: snapshots and the Code Health tools venv. `index.db` is reported but not clearable — it holds settings, pins and the consent record in the same file, so "clear the cache" must never take them. **The engine caches (`pip cache`, `uv cache`) are not covered** and are a separate item: they belong to the engine, live outside `%LOCALAPPDATA%\PipDock\`, and purging them is a subprocess rather than a file delete. |
+| P1-4 | **Partly shipped, 1.1.0.** Cache manager | Shows and clears **PipDock's own** disk usage: snapshots, the Code Health tools venv and, since 1.2.0, the Security tab's audit venv. Logs (1.4.0) are not a target — the sweep keeps 14 days and nothing more, and Settings' Logs row says where they are. `index.db` is reported but not clearable — it holds settings, pins and the consent record in the same file, so "clear the cache" must never take them. **The engine caches (`pip cache`, `uv cache`) are not covered** and are a separate item: they belong to the engine, live outside `%LOCALAPPDATA%\PipDock\`, and purging them is a subprocess rather than a file delete. |
 | P1-5 | **Shipped 1.1.0.** Command palette | Ctrl+K fuzzy action launcher (terminal-tech signature feature). |
 | P1-6 | **Shipped 1.3.0.** Dependency view | "Who holds this back" for a selected package: the focused package between its dependents and its dependencies, each edge carrying the specifier written on it, each neighbour clickable to re-centre, plus the two transitive counts and any requirement nothing installed satisfies. **Not a node-link diagram, and that is a measurement rather than a shortcut** — on a 352-package environment a depth-1 neighbourhood is a median of 7 nodes but depth 2 is a median of 172 and exceeds 60 for 212 of 352 packages, and there are over 2000 distinct paths from `setuptools` to a root. So it is drawn at depth 1, depth is navigated by re-centring, and the transitive answer is a count. Added no runtime dependency. |
 | P1-7 | Scheduled check | Optional background outdated-check with toast (no auto-apply, ever). |

@@ -1,6 +1,6 @@
 # PipDock — Third-Party Notices
 
-*Version 1.2 · 2026-10-16 · This inventory is maintained by hand and reconciled against the manifests (`Cargo.toml`, `src-tauri/Cargo.toml`, `crates/*/Cargo.toml`, `package.json`) at each release. It names the direct dependencies PipDock declares, not their transitive trees — for the complete resolved graph, read `Cargo.lock` and `package-lock.json`, which are committed. All bundled licenses are GPL-3.0-compatible.*
+*Version 1.2 · 2026-10-17 · This inventory is maintained by hand and reconciled against the manifests (`Cargo.toml`, `src-tauri/Cargo.toml`, `crates/*/Cargo.toml`, `package.json`) at each release. It names the direct dependencies PipDock declares, not their transitive trees — for the complete resolved graph, read `Cargo.lock` and `package-lock.json`, which are committed. All bundled licenses are GPL-3.0-compatible.*
 
 ## A. Bundled / linked components (distributed with PipDock)
 
