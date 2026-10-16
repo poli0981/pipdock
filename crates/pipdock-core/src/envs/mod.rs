@@ -22,7 +22,7 @@ use crate::errors::{Code, PdError, Result};
 use crate::exec::{Command, TempFile, canonical_interpreter, watchdog};
 use crate::model::{Dist, EnvSource, PkgName, PyEnv, Version};
 
-/// The embedded introspection helper, executed as `<env-python> -I probe.py --json`.
+/// The embedded introspection helper, executed as `<env-python> -X utf8 -I probe.py --json`.
 ///
 /// SECURITY §2: `-I` (isolated mode) makes the probe ignore `PYTHONPATH` and user site, so a
 /// poisoned environment cannot inject code into it. It is written to a temp file with a random
@@ -39,6 +39,10 @@ pub struct ProbeResult {
     pub env: PyEnv,
     /// Installed distributions, sorted by normalized name.
     pub dists: Vec<Dist>,
+    /// The PEP 508 marker environment (`sys_platform`, `platform_machine`, …), from probe schema
+    /// 3. Empty for an older probe, which leaves those markers unevaluated — the conservative
+    /// direction (`graph::markers`).
+    pub markers: BTreeMap<String, String>,
 }
 
 /// Identity of an environment: SHA-256 of the canonicalized interpreter path (ARCHITECTURE §6).
@@ -187,7 +191,21 @@ pub fn parse_probe(stdout: &str, interpreter: &Path, source: EnvSource) -> Resul
         source,
     };
 
-    Ok(ProbeResult { env, dists })
+    let markers = doc
+        .get("markers")
+        .and_then(serde_json::Value::as_object)
+        .map(|m| {
+            m.iter()
+                .filter_map(|(k, v)| Some((k.clone(), v.as_str()?.to_owned())))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    Ok(ProbeResult {
+        env,
+        dists,
+        markers,
+    })
 }
 
 /// A discovered interpreter, before it has been probed.
@@ -296,30 +314,39 @@ pub async fn scan_reporting(report: &(dyn Fn(ScanProgress) + Sync)) -> Vec<Candi
     found.into_values().collect()
 }
 
-/// PEP 514 registry entries, from both `HKCU` and `HKLM`.
+/// PEP 514 registry entries: `HKCU`, and both views of `HKLM`.
 ///
 /// SP-6 found `PythonCore` present under **both** hives on the reference machine, which is one of
 /// the two ways the same interpreter reaches discovery twice.
+///
+/// PEP 514 puts a 32-bit all-users install under `HKLM\Software\Wow6432Node\Python`, which a
+/// 64-bit process does not see through the default view — so every such Python was missing from
+/// the registry source. `HKCU` is shared between the views and needs no second read.
 #[must_use]
 pub fn registry_interpreters() -> Vec<PathBuf> {
     #[cfg(windows)]
     {
         use winreg::RegKey;
-        use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ};
+        use winreg::enums::{HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, KEY_WOW64_32KEY};
 
         let mut out = Vec::new();
-        for hive in [HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE] {
+        for (hive, view) in [
+            (HKEY_CURRENT_USER, 0),
+            (HKEY_LOCAL_MACHINE, 0),
+            (HKEY_LOCAL_MACHINE, KEY_WOW64_32KEY),
+        ] {
+            let flags = KEY_READ | view;
             let root = RegKey::predef(hive);
-            let Ok(software) = root.open_subkey_with_flags(r"SOFTWARE\Python", KEY_READ) else {
+            let Ok(software) = root.open_subkey_with_flags(r"SOFTWARE\Python", flags) else {
                 continue;
             };
             for company in software.enum_keys().flatten() {
-                let Ok(company_key) = software.open_subkey_with_flags(&company, KEY_READ) else {
+                let Ok(company_key) = software.open_subkey_with_flags(&company, flags) else {
                     continue;
                 };
                 for tag in company_key.enum_keys().flatten() {
                     let Ok(install) =
-                        company_key.open_subkey_with_flags(format!(r"{tag}\InstallPath"), KEY_READ)
+                        company_key.open_subkey_with_flags(format!(r"{tag}\InstallPath"), flags)
                     else {
                         continue;
                     };
@@ -377,13 +404,25 @@ pub async fn uv_interpreters() -> Vec<PathBuf> {
     out.stdout.lines().filter_map(parse_listed_path).collect()
 }
 
-/// Take the trailing path from a listing line, rejecting `<download available>` placeholders.
+/// The interpreter path of one `py -0p` or `uv python list` row.
+///
+/// Both print a key that never contains whitespace — `-V:3.14`, `cpython-3.14.7-windows-x86_64-none`
+/// — then, for `py`, an optional `*` marking the default, then the path. **The path may contain
+/// spaces.** Taking the last whitespace-separated token turned `C:\Program Files\Python312\python.exe`
+/// — where every all-users python.org installer puts it — into the relative
+/// `Files\Python312\python.exe`, which the existence check then quietly dropped. A row uv offers to
+/// download carries `<download available>` where the path would be, and is rejected.
 fn parse_listed_path(line: &str) -> Option<PathBuf> {
-    let last = line.split_whitespace().next_back()?;
-    if last.starts_with('<') || !last.contains(std::path::MAIN_SEPARATOR) {
+    let (_key, rest) = line.trim().split_once(char::is_whitespace)?;
+    let rest = rest.trim_start();
+    let rest = rest.strip_prefix('*').map_or(rest, str::trim_start);
+    // uv prints a symlink as `path -> target`; the listed path is the interpreter itself.
+    let path = rest.split(" -> ").next()?.trim_end();
+    if path.is_empty() || path.starts_with('<') {
         return None;
     }
-    Some(PathBuf::from(last))
+    let path = PathBuf::from(path);
+    path.is_absolute().then_some(path)
 }
 
 /// Virtual environments in `dir`, one level deep.
@@ -574,6 +613,78 @@ mod tests {
             Some(PathBuf::from(r"C:\Python314\python.exe"))
         );
         assert!(parse_listed_path("").is_none());
+    }
+
+    #[test]
+    fn a_listed_path_with_spaces_survives() {
+        // Where every all-users python.org installer puts Python. The last token alone was the
+        // relative `Files\Python312\python.exe`, and the interpreter vanished from discovery.
+        let program_files = r"C:\Program Files\Python312\python.exe";
+        for line in [
+            format!(" -V:3.12          {program_files}"),
+            format!(" -V:3.12 *        {program_files}\r"),
+            format!(" -3.12-64         {program_files}"),
+            format!("cpython-3.12.10-windows-x86_64-none    {program_files}"),
+        ] {
+            assert_eq!(
+                parse_listed_path(&line),
+                Some(PathBuf::from(program_files)),
+                "{line:?}"
+            );
+        }
+        // uv's warnings, should one reach stdout, are not paths.
+        assert!(
+            parse_listed_path("warning: Failed to inspect Python interpreter from search path")
+                .is_none()
+        );
+        assert!(
+            parse_listed_path("cpython-3.16.0a1-windows-x86_64-none   <download available>")
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn the_marker_environment_is_carried_and_an_older_probe_has_none() {
+        let doc = r#"{"schema":3,"python":"3.14.7","prefix":"C:\\Python314",
+            "externally_managed":false,"hidden_user_site":null,
+            "markers":{"sys_platform":"win32","platform_machine":"AMD64","bogus":7},
+            "dists":[]}"#;
+        let got = parse_probe(doc, Path::new("python.exe"), EnvSource::Registry).expect("parse");
+        assert_eq!(
+            got.markers.get("sys_platform").map(String::as_str),
+            Some("win32")
+        );
+        assert_eq!(
+            got.markers.get("platform_machine").map(String::as_str),
+            Some("AMD64")
+        );
+        assert!(
+            !got.markers.contains_key("bogus"),
+            "only strings are markers"
+        );
+
+        let old = r#"{"schema":2,"python":"3.12.4","prefix":"x","externally_managed":false,
+            "hidden_user_site":null,"dists":[]}"#;
+        let got = parse_probe(old, Path::new("python.exe"), EnvSource::Registry).expect("parse");
+        assert!(got.markers.is_empty());
+    }
+
+    #[test]
+    fn the_probe_reads_metadata_once_per_distribution() {
+        // `dist.version` and `dist.requires` each re-parse METADATA; on the path every environment
+        // open pays, asking all three tripled the work. Measured on CPython 3.14 with 64
+        // distributions: 154 ms before, 118 ms after, the same document either way.
+        // On the code, not the words: the probe's own comment names both on purpose.
+        assert!(
+            PROBE_PY.contains(r#""version": meta.get("Version")"#),
+            "the version comes from the one parse"
+        );
+        assert!(
+            PROBE_PY.contains(r#"meta.get_all("Requires-Dist")"#),
+            "the requirements come from the one parse"
+        );
+        // And it does not reach for `platform`, whose uname() is a WMI query on Windows.
+        assert!(!PROBE_PY.contains("import platform"));
     }
 
     #[test]
