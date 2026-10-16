@@ -175,6 +175,17 @@ impl ReverseDeps {
         }
     }
 
+    /// Build the graph from a probe, evaluating markers against everything it reported: the
+    /// interpreter version and, from probe schema 3, the platform. **Prefer this** wherever a
+    /// probe is in hand — it is the only constructor that knows `sys_platform`.
+    #[must_use]
+    pub fn for_probe(probe: &crate::envs::ProbeResult) -> Self {
+        Self {
+            env: MarkerEnv::from_probe(&probe.env.python_version, &probe.markers),
+            ..Self::build(&probe.dists)
+        }
+    }
+
     /// Build the graph and evaluate markers against `python_version`, e.g. `"3.12.10"`.
     ///
     /// An unparseable version silently leaves evaluation off rather than guessing — the same
@@ -1293,5 +1304,43 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn a_dependency_gated_to_another_platform_is_not_reported_missing() {
+        // ipython on Windows, as probe schema 3 describes it. pexpect is POSIX-only and was
+        // reported missing from every Windows environment with ipython in it; colorama is the
+        // Windows-only one, and *is* missing here.
+        let probe = crate::envs::ProbeResult {
+            env: crate::model::PyEnv {
+                interpreter: "python.exe".into(),
+                prefix: r"C:\venv".into(),
+                python_version: "3.14.7".into(),
+                externally_managed: false,
+                hidden_user_site: None,
+                source: crate::model::EnvSource::Manual,
+            },
+            dists: vec![dist(
+                "ipython",
+                "9.4.0",
+                &[
+                    r#"pexpect>4.3; sys_platform != "win32" and sys_platform != "emscripten""#,
+                    r#"colorama; sys_platform == "win32""#,
+                ],
+            )],
+            markers: [("sys_platform", "win32"), ("os_name", "nt")]
+                .into_iter()
+                .map(|(k, v)| (k.to_owned(), v.to_owned()))
+                .collect(),
+        };
+        let g = ReverseDeps::for_probe(&probe);
+        assert_eq!(g.unsatisfied(&pkg("ipython")), [pkg("colorama")]);
+        // Without the platform, both stay in force — the conservative reading, kept for an older
+        // probe.
+        let blind = ReverseDeps::build_for(&probe.dists, "3.14.7");
+        assert_eq!(
+            blind.unsatisfied(&pkg("ipython")),
+            [pkg("colorama"), pkg("pexpect")]
+        );
     }
 }

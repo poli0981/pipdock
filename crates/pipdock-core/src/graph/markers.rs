@@ -16,15 +16,19 @@
 //! noisy: telling someone on 3.12 that "pandas requires numpy >=1.22.4" is false, and
 //! ERROR-CATALOG's whole premise is that what PipDock says about a failure can be trusted.
 //!
-//! Scope is deliberately narrow. Only `python_version` and `python_full_version` are evaluated,
-//! because those are the markers that actually gate version constraints in the wild, and the
-//! environment already knows its interpreter version. The platform markers are constants for a
-//! Windows-only v1 (PRD non-goals) and reading them would mean plumbing more out of `probe.py`
-//! for no present gain.
+//! `python_version` and `python_full_version` compare as versions. Since probe schema 3 the
+//! platform markers — `sys_platform`, `os_name`, `platform_system`, `platform_machine`, … — are
+//! known too, and compare as strings with `==`, `!=`, `in` and `not in`. They were left out at
+//! first as "constants for a Windows-only v1", and that was the bug: a constant still has to be
+//! *read*, and unread, ipython's `pexpect; sys_platform != "win32"` was in force on Windows, so
+//! the dependency view reported pexpect missing from every Windows environment with ipython in
+//! it (H25).
 //!
 //! **An unrecognised marker keeps the requirement.** Over-reporting a constraint is noise;
 //! dropping one hides the reason a package is stuck, and ARCHITECTURE §3 would rather show
 //! constraints without a culprit than quietly omit them.
+
+use std::collections::BTreeMap;
 
 use crate::compat::PyVersion;
 
@@ -35,25 +39,41 @@ pub struct MarkerEnv {
     python_version: PyVersion,
     /// The full interpreter version — PEP 508's `python_full_version`.
     python_full_version: PyVersion,
+    /// Every variable known as a string: the probe's marker environment and the two Python
+    /// versions. A variable missing from here is unknown, and a requirement gated on it stays in
+    /// force.
+    vars: BTreeMap<String, String>,
 }
 
 impl MarkerEnv {
-    /// Build from `PyEnv::python_version`, e.g. `"3.12.10"`.
+    /// Build from `PyEnv::python_version`, e.g. `"3.12.10"`, knowing nothing about the platform.
     ///
     /// Returns `None` for anything unparseable, which leaves marker evaluation switched off
     /// rather than guessing — the conservative direction.
     #[must_use]
     pub fn from_python_version(raw: &str) -> Option<Self> {
+        Self::from_probe(raw, &BTreeMap::new())
+    }
+
+    /// Build from the interpreter version and the probe's marker environment (probe schema 3).
+    #[must_use]
+    pub fn from_probe(raw: &str, markers: &BTreeMap<String, String>) -> Option<Self> {
         let full = PyVersion::parse(raw).ok()?;
         // `python_version` is major.minor only. Keeping the patch would make the common
         // `python_version == "3.12"` false on 3.12.10, which is backwards.
         let mut parts = raw.split('.');
         let major = parts.next()?;
         let minor = parts.next().unwrap_or("0");
-        let short = PyVersion::parse(&format!("{major}.{minor}")).ok()?;
+        let short_raw = format!("{major}.{minor}");
+        let short = PyVersion::parse(&short_raw).ok()?;
+        let mut vars = markers.clone();
+        vars.entry("python_version".to_owned()).or_insert(short_raw);
+        vars.entry("python_full_version".to_owned())
+            .or_insert_with(|| raw.to_owned());
         Some(Self {
             python_version: short,
             python_full_version: full,
+            vars,
         })
     }
 }
@@ -138,15 +158,36 @@ fn compare(lhs: &Operand, op: &str, rhs: &Operand, env: Option<&MarkerEnv>) -> V
         _ => return None,
     };
 
-    let version = match var {
-        "python_version" => &env.python_version,
-        "python_full_version" => &env.python_full_version,
-        _ => return None,
-    };
+    // PEP 508's containment, for any variable: `lhs in rhs` asks whether lhs occurs in rhs.
+    if op == "in" || op == "not in" {
+        let value = env.vars.get(var)?;
+        let found = if flipped {
+            value.contains(literal)
+        } else {
+            literal.contains(value.as_str())
+        };
+        return Some(found == (op == "in"));
+    }
 
-    // `"3.11" > python_version` means the same as `python_version < "3.11"`.
-    let op = if flipped { mirror(op) } else { op };
-    crate::compat::satisfies_clause(&format!("{op}{literal}"), version)
+    let version = match var {
+        "python_version" => Some(&env.python_version),
+        "python_full_version" => Some(&env.python_full_version),
+        _ => None,
+    };
+    if let Some(version) = version {
+        // `"3.11" > python_version` means the same as `python_version < "3.11"`.
+        let op = if flipped { mirror(op) } else { op };
+        return crate::compat::satisfies_clause(&format!("{op}{literal}"), version);
+    }
+
+    // Everything else compares as a string. Ordering a platform name is not something a
+    // requirement can mean, so `<` and friends stay unevaluated.
+    let value = env.vars.get(var)?;
+    match op {
+        "==" | "===" => Some(value == literal),
+        "!=" => Some(value != literal),
+        _ => None,
+    }
 }
 
 fn mirror(op: &str) -> &str {
@@ -183,10 +224,12 @@ impl<'a> Lexer<'a> {
         Self { src, at: 0 }
     }
 
+    /// Whitespace is skipped by **character**, not by byte. `at += 1` stepped into the middle of
+    /// a no-break space (two bytes) or an ideographic space (three), and the next slice panicked —
+    /// on a marker read out of some installed package's metadata (H19).
     fn skip_ws(&mut self) {
-        while self.src[self.at..].starts_with(char::is_whitespace) {
-            self.at += 1;
-        }
+        let rest = &self.src[self.at..];
+        self.at += rest.len() - rest.trim_start().len();
     }
 
     fn eat_char(&mut self, c: char) -> bool {
@@ -200,13 +243,17 @@ impl<'a> Lexer<'a> {
 
     fn eat_word(&mut self, word: &str) -> bool {
         self.skip_ws();
-        let rest = &self.src[self.at..];
+        // Prefix first, then look past it: slicing `word.len()` bytes in before knowing the text
+        // starts with `word` cut a multi-byte character in half and panicked.
+        let Some(after) = self.src[self.at..].strip_prefix(word) else {
+            return false;
+        };
         // Must be a whole word: `android_api` must not be read as the operator `and`.
-        let ends_cleanly = rest[word.len().min(rest.len())..]
+        if after
             .chars()
             .next()
-            .is_none_or(|c| !c.is_alphanumeric() && c != '_');
-        if rest.starts_with(word) && ends_cleanly {
+            .is_none_or(|c| !c.is_alphanumeric() && c != '_')
+        {
             self.at += word.len();
             return true;
         }
@@ -241,8 +288,15 @@ impl<'a> Lexer<'a> {
                 return Some(op);
             }
         }
-        // `in` / `not in` are string-containment operators PipDock does not evaluate; letting
-        // them fall through to "unrecognised" keeps the requirement.
+        // The word operators, PEP 508's string containment.
+        if self.eat_word("in") {
+            return Some("in");
+        }
+        let before = self.at;
+        if self.eat_word("not") && self.eat_word("in") {
+            return Some("not in");
+        }
+        self.at = before;
         None
     }
 }
@@ -354,6 +408,92 @@ mod tests {
         let mut lx = Lexer::new("android_api == \"21\"");
         assert!(!lx.eat_word("and"));
         assert!(applies(Some("android_api == \"21\""), Some(&e)));
+    }
+
+    fn windows(v: &str) -> MarkerEnv {
+        // What probe schema 3 reported for CPython 3.14.7 on Windows 11, x64.
+        let markers = [
+            ("implementation_name", "cpython"),
+            ("os_name", "nt"),
+            ("platform_machine", "AMD64"),
+            ("platform_python_implementation", "CPython"),
+            ("platform_system", "Windows"),
+            ("sys_platform", "win32"),
+        ]
+        .into_iter()
+        .map(|(k, v)| (k.to_owned(), v.to_owned()))
+        .collect();
+        MarkerEnv::from_probe(v, &markers).expect("parses")
+    }
+
+    #[test]
+    fn a_requirement_gated_to_another_platform_is_not_in_force() {
+        // ipython's pexpect, read on Windows: reported missing from every Windows environment
+        // that had ipython, until the platform markers were read.
+        let e = windows("3.14.7");
+        assert!(!applies(
+            Some(r#"sys_platform != "win32" and sys_platform != "emscripten""#),
+            Some(&e)
+        ));
+        assert!(applies(Some(r#"sys_platform == "win32""#), Some(&e)));
+        assert!(applies(Some(r#"platform_system == "Windows""#), Some(&e)));
+        assert!(!applies(Some(r#"os_name == "posix""#), Some(&e)));
+        assert!(applies(
+            Some(r#"platform_machine == "x86_64" or platform_machine == "AMD64""#),
+            Some(&e)
+        ));
+        assert!(!applies(
+            Some(r#"platform_python_implementation == "PyPy""#),
+            Some(&e)
+        ));
+    }
+
+    #[test]
+    fn containment_reads_in_both_directions() {
+        let e = windows("3.14.7");
+        assert!(!applies(Some(r#""linux" in sys_platform"#), Some(&e)));
+        assert!(applies(Some(r#""win" in sys_platform"#), Some(&e)));
+        assert!(applies(Some(r#"sys_platform in "win32 cygwin""#), Some(&e)));
+        assert!(applies(
+            Some(r#"sys_platform not in "linux darwin""#),
+            Some(&e)
+        ));
+        assert!(!applies(
+            Some(r#"python_version not in "3.13 3.14""#),
+            Some(&e)
+        ));
+    }
+
+    #[test]
+    fn what_the_probe_did_not_report_still_keeps_the_requirement() {
+        // Windows probes leave out platform_release (a WMI query); ordering a platform name means
+        // nothing. Both stay "applies".
+        let e = windows("3.14.7");
+        assert!(applies(Some(r#"platform_release >= "10""#), Some(&e)));
+        assert!(applies(Some(r#"sys_platform > "a""#), Some(&e)));
+    }
+
+    #[test]
+    fn unicode_whitespace_never_panics_the_lexer() {
+        // Markers come from any installed package's metadata. Each of these sliced a multi-byte
+        // character in half.
+        let e = windows("3.14.7");
+        for marker in [
+            "python_version\u{a0}>= \"3.8\"",
+            "\u{3000}python_version >= \"3.8\"",
+            "python_version >= \"3.8\"\u{2003}and\u{2003}os_name == \"nt\"",
+            "é",
+            "andé",
+            "python_version >= \"3.8\" ändé",
+            "\u{a0}",
+        ] {
+            let _ = applies(Some(marker), Some(&e));
+            let _ = applies(Some(marker), None);
+        }
+        assert!(applies(
+            Some("python_version\u{a0}>=\u{a0}\"3.8\""),
+            Some(&e)
+        ));
     }
 
     #[test]
