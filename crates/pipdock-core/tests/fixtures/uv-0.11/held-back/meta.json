@@ -1,0 +1,15 @@
+{
+  "scenario": "held-back",
+  "question": "SP-1 core question: httpx 0.23.0 requires httpcore<0.16, so httpcore cannot reach its 1.x latest. Does the engine name httpx as the blocker, or only report the resolved version? ANSWER: neither \u2014 both engines ignore the installed httpx entirely and plan httpcore 1.0.9, silently breaking it. Exit 0.",
+  "expects_code": null,
+  "engine": "uv",
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 0,
+  "seed": [
+    "httpx==0.23.0"
+  ],
+  "seed_exit_code": 0
+}

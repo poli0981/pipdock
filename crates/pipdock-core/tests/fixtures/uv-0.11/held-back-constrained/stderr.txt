@@ -1,0 +1,4 @@
+Using Python 3.12.10 environment at: <WORK>\venv
+Resolved 8 packages in <DURATION>
+Checked 8 packages in <DURATION>
+Would make no changes

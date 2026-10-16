@@ -1,0 +1,13 @@
+{
+  "scenario": "build-backend-failure",
+  "question": "sdist build backend failure (PEP 517 backend unavailable).",
+  "expects_code": "PD-BLD-002",
+  "engine": "uv",
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 1,
+  "seed": [],
+  "seed_exit_code": null
+}

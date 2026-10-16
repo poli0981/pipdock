@@ -78,8 +78,12 @@ SCENARIOS: list[Scenario] = [
     Scenario(
         name="clean-upgrade",
         seed=["idna==3.4"],
-        target=["idna"],
-        question="Baseline: what does an unconstrained upgrade plan look like?",
+        # Pinned, not "latest". The question is the *shape* of an ordinary upgrade plan, and a bare
+        # `idna` re-answered it with whatever PyPI had that week: idna 3.18 -> 3.20 alone failed the
+        # drift gate for seven Mondays running with no engine change at all. A fixed target keeps
+        # the gate about engines.
+        target=["idna==3.10"],
+        question="Baseline: what does an ordinary upgrade plan look like?",
     ),
     Scenario(
         name="held-back",
@@ -209,8 +213,14 @@ def run(
 
 
 def make_venv(path: Path) -> Path:
-    """Create a disposable venv and return its interpreter."""
-    venv.create(path, with_pip=True, clear=True)
+    """Create a disposable venv and return its interpreter.
+
+    `upgrade_deps` is what makes the weekly job test the *latest* pip, which is its whole purpose
+    (TESTING L1). Without it every capture ran the pip bundled with the runner's CPython -- 25.0.1
+    for two months while pip 26.2.1 was current -- so a pip output change could never have been
+    caught here. uv is upgraded by the workflow itself.
+    """
+    venv.create(path, with_pip=True, clear=True, upgrade_deps=True)
     python = path / ("Scripts/python.exe" if os.name == "nt" else "bin/python")
     if not python.exists():
         raise RuntimeError(f"venv interpreter missing at {python}")
@@ -368,8 +378,21 @@ def redact(text: str, work: Path) -> str:
     text = re.sub(r"0x[0-9A-Fa-f]{6,}", "0xADDR", text)
 
     # pip's download progress bar carries a transfer rate and an ETA, so it is different on
-    # every run and wildly different between a dev machine and a CI runner.
-    text = re.sub(r"(?m)^\s*-+\s+[^\r\n]*?eta [0-9:]+[ \t]*$", "     <PROGRESS>", text)
+    # every run and wildly different between a dev machine and a CI runner. `[ \t]` rather than
+    # `\s`: under (?m) a leading `\s*` could also consume line breaks, which is both wrong (the
+    # match could start on an earlier line) and the backtracking SonarCloud flagged.
+    text = re.sub(r"(?m)^[ \t]*-+[ \t]+[^\r\n]*?eta [0-9:]+[ \t]*$", "     <PROGRESS>", text)
+
+    # pip lists every release it considered when nothing satisfies a requirement -- "(from
+    # versions: 0.8.0, ..., 1.18.1)" -- so the requires-python fixture grew by one version
+    # whenever scipy shipped. A statement about the index, not about pip; no CLASSIFIERS entry
+    # reads it.
+    text = re.sub(r"\(from versions: [^)]*\)", "(from versions: <VERSIONS>)", text)
+
+    # The installation report names the pip that wrote it. `upgrade_deps` makes that the newest
+    # pip, so it moves with every pip release; the exact version is in capture-provenance.json.
+    # The report's own format `version` is what the parser checks, and it stays.
+    text = re.sub(r'"pip_version": "[^"]*"', '"pip_version": "<PIP>"', text)
 
     # pip's self-upgrade notice names the version that is on PyPI *today* — "[notice] A new
     # release of pip is available: 25.0.1 -> 26.1.2" — which is a statement about the index,
@@ -409,7 +432,12 @@ def engine_version(engine: str, python: Path, uv_exe: Path | None) -> str:
     # `pip --version` reports its own install path: "pip 25.0.1 from C:\Users\<name>\... (python
     # 3.12)". That is the capturing user's home directory, and these fixtures are committed to a
     # public repo. Drop the clause; the version and the interpreter are the parts that matter.
-    return re.sub(r"^(pip \S+) from .*? (\(python .*\))$", r"\1 \2", raw)
+    # Split rather than matched: the path can contain anything, and a lazy `.*?` across it is the
+    # backtracking SonarCloud flagged.
+    head, sep, rest = raw.partition(" from ")
+    if sep and " (python " in rest:
+        return f"{head} (python {rest.rsplit(' (python ', 1)[1]}"
+    return raw
 
 
 def python_version(python: Path) -> str:
@@ -435,6 +463,10 @@ def main() -> int:
     if args.engine == "uv" and not args.uv_exe:
         parser.error("--uv-exe is required with --engine uv")
 
+    unknown = sorted(set(args.only or []) - {s.name for s in SCENARIOS})
+    if unknown:
+        # A typo in --only used to capture nothing and exit 0, which reads exactly like success.
+        parser.error(f"unknown scenario(s): {', '.join(unknown)} -- see --list")
     selected = [s for s in SCENARIOS if not args.only or s.name in args.only]
     # Host-dependent scenarios run only when asked for by name. Sweeping them up in a bulk
     # re-capture would overwrite evidence that the current machine cannot produce.
@@ -456,7 +488,9 @@ def main() -> int:
         )
 
     print(json.dumps({"engine": args.engine, "captured": len(summaries)}, indent=2))
-    return 0
+    # Nothing captured is a failed run, not a quiet success: the drift job would otherwise diff an
+    # untouched tree and report "no engine change".
+    return 0 if summaries else 1
 
 
 if __name__ == "__main__":

@@ -1,0 +1,13 @@
+{
+  "scenario": "network-unreachable",
+  "question": "Index unreachable \u2014 connection refused rather than DNS or TLS failure.",
+  "expects_code": "PD-NET-001",
+  "engine": "uv",
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 2,
+  "seed": [],
+  "seed_exit_code": null
+}

@@ -1,0 +1,15 @@
+{
+  "scenario": "clean-upgrade",
+  "question": "Baseline: what does an unconstrained upgrade plan look like?",
+  "expects_code": null,
+  "engine": "uv",
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 0,
+  "seed": [
+    "idna==3.4"
+  ],
+  "seed_exit_code": 0
+}

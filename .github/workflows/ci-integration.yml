@@ -57,6 +57,9 @@ env:
 jobs:
   disposable-venvs:
     name: Real engines, throwaway venvs
+    # The Monday cron exists for the drift job below. Without this the whole suite ran twice every
+    # Monday morning, an hour apart, against the same commit.
+    if: github.event_name != 'schedule' || github.event.schedule != '17 4 * * 1'
     runs-on: windows-latest
     timeout-minutes: 45
     strategy:
@@ -385,10 +388,13 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v7
 
+      # An exact patch, on purpose. pip's report records `python_full_version` and uv prints "Using
+      # Python 3.12.x environment", so a floating `3.12` turns every runner-image Python bump into
+      # a fixture diff that says nothing about pip or uv. Bump it deliberately, and re-capture.
       - name: Setup Python
         uses: actions/setup-python@v7
         with:
-          python-version: '3.12'
+          python-version: '3.12.10'
 
       - name: Install the newest uv
         run: |
@@ -401,6 +407,19 @@ jobs:
         run: |
           python spikes\capture.py --engine pip
           python spikes\capture.py --engine uv --uv-exe .uvtools\Scripts\uv.exe
+
+      # Uploaded whether or not the gate below passes: when it fails, the fix is to review and
+      # commit exactly these bytes, and re-running the capture elsewhere produces different ones
+      # (another interpreter, another network, another day's index).
+      - name: Upload the captured fixtures
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: captured-fixtures
+          path: |
+            crates/pipdock-core/tests/fixtures/pip
+            crates/pipdock-core/tests/fixtures/uv
+          if-no-files-found: error
 
       # A diff means an engine changed its output. That is exactly the PD-ENG-003 situation the
       # adapters degrade into, and catching it here is what stops a user meeting it first.
