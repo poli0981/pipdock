@@ -255,6 +255,17 @@ pub trait Engine: Send + Sync {
     /// Upgrade pip inside `env`. The uv adapter returns an `Unsupported` error — DATA-FLOW §7
     /// says pip upkeep is surfaced only when pip is the active engine or present in the env.
     async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult>;
+
+    /// Probe `env`: the interpreter, its marker environment, and every distribution with its
+    /// requirements.
+    ///
+    /// Provided, and no adapter overrides it: this is `probe.py`, not an engine command. It is on
+    /// the trait so a flow can be driven end to end against a scripted engine — every flow probed
+    /// through a free function, so none of `start`'s decisions (the PEP 668 gate, the graph, the
+    /// drift basis) could be tested without a real interpreter, and the bugs in them were not.
+    async fn probe(&self, env: &PyEnv) -> Result<crate::envs::ProbeResult> {
+        crate::envs::probe(&env.interpreter, env.source).await
+    }
 }
 
 /// What one resolve is given besides the request itself.

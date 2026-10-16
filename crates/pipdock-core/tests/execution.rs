@@ -892,6 +892,7 @@ async fn a_rollback_stops_when_the_token_is_tripped() {
         Box::new(engine.clone()),
         &dir,
         &snap.meta.id,
+        pipdock_core::flow::FlowOptions::default(),
     )
     .await
     .expect("start");

@@ -624,8 +624,11 @@ pub async fn plan_resolve(
     // A bug report carries one run, so the ring starts here rather than at execute.
     state.log.clear();
 
+    // **This token is the flow's own**, handed in before `start` runs the first resolve. The
+    // token registered here used to be a fresh one nothing listened to, so *Stop* pressed while
+    // that resolve ran did nothing (H13).
     let cancel = CancellationToken::new();
-    state.set_cancel(Some(cancel));
+    state.set_cancel(Some(cancel.clone()));
 
     // Both store reads happen up front and the guard is dropped before any await. `Store` is not
     // `Sync`, so a future holding one is not `Send` and a Tauri command cannot return it — which
@@ -637,7 +640,11 @@ pub async fn plan_resolve(
         (engine, env_pins)
     };
 
-    match flow::UpdateFlow::start(env, engine, &intent, &env_pins).await {
+    let opts = flow::FlowOptions {
+        cancel,
+        ..flow::FlowOptions::default()
+    };
+    match flow::UpdateFlow::start(env, engine, &intent, &env_pins, opts).await {
         Ok((flow, step)) => {
             // The engine's own output, kept for a report. A resolve emits no progress events, so
             // without this the commonest thing anyone reports — a plan that would not resolve —
@@ -781,7 +788,7 @@ pub async fn uninstall_guard(
         engine::for_id(settings::load(&store)?.engine)
     };
 
-    match flow::UninstallFlow::start(env, engine, &pkgs).await {
+    match flow::UninstallFlow::start(env, engine, &pkgs, flow::FlowOptions::default()).await {
         Ok((flow, report)) => {
             state.park(Session::Uninstall(Box::new(flow))).await;
             Ok(report)
@@ -930,7 +937,15 @@ pub async fn snapshot_rollback_preview(
         engine::for_id(settings::load(&store)?.engine)
     };
 
-    match flow::RollbackFlow::start(env, engine, &state.app_data, &id).await {
+    match flow::RollbackFlow::start(
+        env,
+        engine,
+        &state.app_data,
+        &id,
+        flow::FlowOptions::default(),
+    )
+    .await
+    {
         Ok((rollback, preview)) => {
             state.park(Session::Rollback(Box::new(rollback))).await;
             Ok(preview)

@@ -136,6 +136,29 @@ pub enum FlowStep {
     },
 }
 
+/// What the caller decides about a flow before it starts.
+#[derive(Debug, Clone)]
+pub struct FlowOptions {
+    /// Stops the flow: its resolve rounds and its execution.
+    ///
+    /// **The caller's, not one the flow makes for itself.** The first resolve runs inside
+    /// `start`, and a token made there could only be handed out once `start` returned — after the
+    /// resolve it was needed to stop. The GUI registered a token of its own for that window that
+    /// nothing listened to, so *Stop* during a first resolve did nothing at all (H13).
+    pub cancel: CancellationToken,
+    /// What time it is. A function so a test can age a preview without waiting ten minutes.
+    pub clock: fn() -> jiff::Timestamp,
+}
+
+impl Default for FlowOptions {
+    fn default() -> Self {
+        Self {
+            cancel: CancellationToken::new(),
+            clock: jiff::Timestamp::now,
+        }
+    }
+}
+
 /// Whether to take the pre-execution snapshot.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum SnapshotPolicy {
@@ -170,6 +193,7 @@ pub struct UpdateFlow {
     /// Pinned packages kept out of this plan, so the caller can say which and why.
     excluded_pins: Vec<Pin>,
     cancel: CancellationToken,
+    clock: fn() -> jiff::Timestamp,
 }
 
 impl UpdateFlow {
@@ -189,6 +213,7 @@ impl UpdateFlow {
         engine: Box<dyn Engine>,
         intent: &Intent,
         pins: &[Pin],
+        opts: FlowOptions,
     ) -> Result<(Self, FlowStep)> {
         let env_hash = crate::envs::env_hash(&env.interpreter);
 
@@ -201,7 +226,7 @@ impl UpdateFlow {
             ));
         }
 
-        let probed = crate::envs::probe(&env.interpreter, env.source).await?;
+        let probed = engine.probe(&env).await?;
         // Built against this interpreter so marker-gated requirements are read correctly: without
         // it a `python_version < "3.11"` branch is reported as a blocker on 3.12 (SP-5 dogfood).
         let graph = ReverseDeps::for_probe(&probed);
@@ -222,7 +247,8 @@ impl UpdateFlow {
             plan_id,
             snapshot: SnapshotState::NotTaken,
             excluded_pins,
-            cancel: CancellationToken::new(),
+            cancel: opts.cancel,
+            clock: opts.clock,
         };
 
         if flow.req.upgrades.is_empty() && flow.req.installs.is_empty() {
@@ -323,7 +349,7 @@ impl UpdateFlow {
                 plan_id: self.plan_id.clone(),
             },
             self.engine.id(),
-            jiff::Timestamp::now(),
+            (self.clock)(),
         )?;
         let meta = snap.meta.clone();
         self.snapshot = SnapshotState::Taken(Box::new(snap));
@@ -347,7 +373,7 @@ impl UpdateFlow {
             self.report.clone(),
             self.env_hash.clone(),
             &self.installed,
-            jiff::Timestamp::now(),
+            (self.clock)(),
         );
 
         plan::execute(
@@ -356,7 +382,7 @@ impl UpdateFlow {
             &accepted,
             proof,
             &self.installed,
-            jiff::Timestamp::now(),
+            (self.clock)(),
             sink,
         )
         .await
@@ -421,6 +447,7 @@ pub struct UninstallFlow {
     /// accepted. Returned to the caller as well, because the caller is what renders it.
     guard: crate::graph::GuardReport,
     cancel: CancellationToken,
+    clock: fn() -> jiff::Timestamp,
 }
 
 /// Whether the user has accepted the breakage the guard found (DATA-FLOW §5).
@@ -449,6 +476,7 @@ impl UninstallFlow {
         env: PyEnv,
         engine: Box<dyn Engine>,
         pkgs: &[String],
+        opts: FlowOptions,
     ) -> Result<(Self, crate::graph::GuardReport)> {
         // DATA-FLOW §2's preamble is "all mutating flows", and a removal is one. `UpdateFlow` has
         // refused these since S1 and this did not, so PipDock would happily strip packages out of
@@ -468,7 +496,7 @@ impl UninstallFlow {
             .collect::<Result<_>>()?;
 
         // The graph is built from probe.py, which is the only source carrying requires_dist.
-        let probed = crate::envs::probe(&env.interpreter, env.source).await?;
+        let probed = engine.probe(&env).await?;
         let report = ReverseDeps::for_probe(&probed).guard(&names);
 
         let env_hash = crate::envs::env_hash(&env.interpreter);
@@ -482,7 +510,8 @@ impl UninstallFlow {
                 plan_id,
                 snapshot: SnapshotState::NotTaken,
                 guard: report.clone(),
-                cancel: CancellationToken::new(),
+                cancel: opts.cancel,
+                clock: opts.clock,
             },
             report,
         ))
@@ -533,7 +562,7 @@ impl UninstallFlow {
                 plan_id: self.plan_id.clone(),
             },
             self.engine.id(),
-            jiff::Timestamp::now(),
+            (self.clock)(),
         )?;
         let meta = snap.meta.clone();
         self.snapshot = SnapshotState::Taken(Box::new(snap));
@@ -625,6 +654,7 @@ pub struct RollbackFlow {
     /// The state being *replaced*, captured before it is — a rollback is itself reversible.
     pre: SnapshotState,
     cancel: CancellationToken,
+    clock: fn() -> jiff::Timestamp,
 }
 
 impl RollbackFlow {
@@ -637,6 +667,7 @@ impl RollbackFlow {
         engine: Box<dyn Engine>,
         app_data: &Path,
         id: &str,
+        opts: FlowOptions,
     ) -> Result<(Self, RollbackPreview)> {
         let env_hash = crate::envs::env_hash(&env.interpreter);
         let target = snapshot::load(app_data, &env_hash, id)?;
@@ -657,7 +688,8 @@ impl RollbackFlow {
                 target_id: target.meta.id,
                 restore,
                 pre: SnapshotState::NotTaken,
-                cancel: CancellationToken::new(),
+                cancel: opts.cancel,
+                clock: opts.clock,
             },
             preview,
         ))
@@ -676,7 +708,7 @@ impl RollbackFlow {
                 restoring: self.target_id.clone(),
             },
             self.engine.id(),
-            jiff::Timestamp::now(),
+            (self.clock)(),
         )?;
         let meta = snap.meta.clone();
         self.pre = SnapshotState::Taken(Box::new(snap));
