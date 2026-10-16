@@ -415,21 +415,24 @@ pub struct AcceptedPlan {
 
 impl AcceptedPlan {
     /// Record the user's confirmation of a report.
+    ///
+    /// `installed` and `resolved_at` are the **basis the report was made against** — the listing
+    /// the preview was resolved over, and when — not the moment of confirmation. The flow used to
+    /// pass the current time and the resolve-time listing back to a check against the same
+    /// listing, so neither half of §9.3 could ever fire (C1). `id` is the flow's, so the summary
+    /// and the snapshot taken for it carry one id (M31).
     #[must_use]
     pub fn accept(
+        id: String,
         report: ResolutionReport,
         env_hash: String,
         installed: &[crate::model::Dist],
-        now: jiff::Timestamp,
+        resolved_at: jiff::Timestamp,
     ) -> Self {
         Self {
-            id: format!(
-                "{}-{}",
-                &env_hash[..8.min(env_hash.len())],
-                now.as_millisecond()
-            ),
+            id,
             report,
-            accepted_at: now,
+            accepted_at: resolved_at,
             env_hash,
             probe_hash: fingerprint(installed),
         }
@@ -449,32 +452,59 @@ impl AcceptedPlan {
         installed: &[crate::model::Dist],
         now: jiff::Timestamp,
     ) -> Result<()> {
-        let age = now
-            .as_millisecond()
-            .saturating_sub(self.accepted_at.as_millisecond());
-        if age < 0 || u128::try_from(age).unwrap_or(u128::MAX) > PLAN_MAX_AGE.as_millis() {
-            return Err(PdError::new(
-                Code::ResPlanStale,
-                format!(
-                    "this preview is older than {} minutes — re-run it",
-                    PLAN_MAX_AGE.as_secs() / 60
-                ),
-            ));
-        }
         if env_hash != self.env_hash {
             return Err(PdError::new(
                 Code::ResPlanStale,
                 "this preview was made for a different environment",
             ));
         }
-        if fingerprint(installed) != self.probe_hash {
-            return Err(PdError::new(
-                Code::ResPlanStale,
-                "the environment changed since the preview was made — re-run it",
-            ));
-        }
-        Ok(())
+        verify_basis(self.accepted_at, &self.probe_hash, installed, now)
     }
+}
+
+/// DATA-FLOW §9.3's two refusals, for any decision made against a listing of an environment: it
+/// is older than [`PLAN_MAX_AGE`], or the environment no longer matches the listing.
+///
+/// Shared by the three flows. A removal's guard and a rollback's restore plan are decisions made
+/// against a listing just as a preview is, and both were executed against whatever the environment
+/// had become (M44).
+///
+/// # Errors
+/// `PD-RES-002` in either case.
+pub fn verify_basis(
+    made_at: jiff::Timestamp,
+    fingerprint_then: &str,
+    installed_now: &[crate::model::Dist],
+    now: jiff::Timestamp,
+) -> Result<()> {
+    verify_age(made_at, now)?;
+    if fingerprint(installed_now) != fingerprint_then {
+        return Err(PdError::new(
+            Code::ResPlanStale,
+            "the environment changed since the preview was made — re-run it",
+        ));
+    }
+    Ok(())
+}
+
+/// The age half of [`verify_basis`], for a decision whose drift is checked another way.
+///
+/// # Errors
+/// `PD-RES-002` when `made_at` is more than [`PLAN_MAX_AGE`] before `now`, or after it.
+pub fn verify_age(made_at: jiff::Timestamp, now: jiff::Timestamp) -> Result<()> {
+    let age = now
+        .as_millisecond()
+        .saturating_sub(made_at.as_millisecond());
+    if age < 0 || u128::try_from(age).unwrap_or(u128::MAX) > PLAN_MAX_AGE.as_millis() {
+        return Err(PdError::new(
+            Code::ResPlanStale,
+            format!(
+                "this preview is older than {} minutes — re-run it",
+                PLAN_MAX_AGE.as_secs() / 60
+            ),
+        ));
+    }
+    Ok(())
 }
 
 /// A cheap, order-independent fingerprint of an installed set.
@@ -535,7 +565,8 @@ pub async fn execute(
     now: jiff::Timestamp,
     sink: ProgressSink,
 ) -> Result<ExecutionSummary> {
-    plan.verify(&plan.env_hash, installed_now, now)?;
+    // Against the environment actually being changed. This compared the plan's hash with itself.
+    plan.verify(&crate::envs::env_hash(&env.interpreter), installed_now, now)?;
 
     let pinned = plan.report.pinned_set();
     if pinned.is_empty() {

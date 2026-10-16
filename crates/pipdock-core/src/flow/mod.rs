@@ -181,8 +181,12 @@ pub struct UpdateFlow {
     env: PyEnv,
     engine: Box<dyn Engine>,
     env_hash: String,
-    /// The installed set at resolve time; also what `AcceptedPlan` fingerprints against.
+    /// The installed set the preview was resolved over — the drift basis (DATA-FLOW §9.3).
     installed: Vec<Dist>,
+    /// When the current preview was resolved — the age basis.
+    resolved_at: jiff::Timestamp,
+    /// The environment as re-probed at confirm time, which is what execution acts on.
+    confirmed: Vec<Dist>,
     graph: ReverseDeps,
     outdated: Vec<OutdatedDist>,
     req: PlanRequest,
@@ -232,13 +236,17 @@ impl UpdateFlow {
         let graph = ReverseDeps::for_probe(&probed);
         let outdated = engine.list_outdated(&env).await?;
         let (req, excluded_pins) = build_request(intent, &outdated, pins)?;
-        let plan_id = format!("update-{env_hash:.8}");
+        // Unique per plan: the snapshot's trigger and the summary carry it, and "update-<env>"
+        // alone named every plan ever made for one environment the same.
+        let plan_id = format!("update-{env_hash:.8}-{}", (opts.clock)().as_millisecond());
 
         let mut flow = Self {
             env,
             engine,
             env_hash,
             installed: probed.dists,
+            resolved_at: (opts.clock)(),
+            confirmed: Vec::new(),
             graph,
             outdated,
             req,
@@ -308,6 +316,7 @@ impl UpdateFlow {
         };
         plan::derive_held_back(&mut report, &self.req.upgrades, &self.outdated, &self.graph);
         self.report = report;
+        self.resolved_at = (self.clock)();
 
         let report = self.report.clone();
         Ok(if self.report.is_clean() {
@@ -329,14 +338,29 @@ impl UpdateFlow {
     /// distinct states the UI renders separately, and because a snapshot failure has to abort
     /// before anything is touched.
     ///
+    /// **This is where DATA-FLOW §9.3 is enforced**: the environment is probed again here, after
+    /// the user confirmed and before anything is written, and a preview that is too old or no
+    /// longer describes the environment is refused. Checked any later and the refusal would come
+    /// after a snapshot nobody needs; checked any earlier and it would miss the minutes the
+    /// preview sat on screen.
+    ///
     /// # Errors
-    /// `PD-SNP-001` when the snapshot cannot be written. **Nothing has been executed** at that
-    /// point, and nothing will be: [`Self::execute`] refuses without this step.
+    /// `PD-RES-002` when the preview is stale or the environment changed; `PD-SNP-001` when the
+    /// snapshot cannot be written. **Nothing has been executed** in either case, and nothing will
+    /// be: [`Self::execute`] refuses without this step.
     pub async fn take_snapshot(
         &mut self,
         policy: SnapshotPolicy,
         app_data: &Path,
     ) -> Result<Option<snapshot::Meta>> {
+        let probed = self.engine.probe(&self.env).await?;
+        self.accepted().verify(
+            &crate::envs::env_hash(&probed.env.interpreter),
+            &probed.dists,
+            (self.clock)(),
+        )?;
+        self.confirmed = probed.dists;
+
         if policy == SnapshotPolicy::Waive {
             self.snapshot = SnapshotState::Waived;
             return Ok(None);
@@ -369,23 +393,27 @@ impl UpdateFlow {
         // pinned-set length.
         let sink = ProgressSink::new(tx, 0, self.cancel.clone());
 
-        let accepted = plan::AcceptedPlan::accept(
-            self.report.clone(),
-            self.env_hash.clone(),
-            &self.installed,
-            (self.clock)(),
-        );
-
         plan::execute(
             self.engine.as_ref(),
             &self.env,
-            &accepted,
+            &self.accepted(),
             proof,
-            &self.installed,
+            &self.confirmed,
             (self.clock)(),
             sink,
         )
         .await
+    }
+
+    /// The current preview as a plan, against the basis it was resolved over.
+    fn accepted(&self) -> plan::AcceptedPlan {
+        plan::AcceptedPlan::accept(
+            self.plan_id.clone(),
+            self.report.clone(),
+            self.env_hash.clone(),
+            &self.installed,
+            self.resolved_at,
+        )
     }
 
     /// Pinned packages kept out of this plan (DATA-FLOW §9.5).
@@ -446,6 +474,8 @@ pub struct UninstallFlow {
     /// What the guard found, kept so [`Self::execute`] can refuse a removal the user never
     /// accepted. Returned to the caller as well, because the caller is what renders it.
     guard: crate::graph::GuardReport,
+    /// What the guard was computed against, and when (DATA-FLOW §9.3).
+    basis: (jiff::Timestamp, String),
     cancel: CancellationToken,
     clock: fn() -> jiff::Timestamp,
 }
@@ -510,6 +540,7 @@ impl UninstallFlow {
                 plan_id,
                 snapshot: SnapshotState::NotTaken,
                 guard: report.clone(),
+                basis: ((opts.clock)(), plan::fingerprint(&probed.dists)),
                 cancel: opts.cancel,
                 clock: opts.clock,
             },
@@ -543,13 +574,21 @@ impl UninstallFlow {
     /// given to. `Waive` returns `None` — there is no meta to print, and no id for the summary to
     /// correlate against.
     ///
+    /// Re-probes first: the guard said what this removal breaks *in the environment it looked
+    /// at*, and a package installed since may depend on what is about to go (M44).
+    ///
     /// # Errors
-    /// `PD-SNP-001` when it cannot be written, in which case nothing is removed.
+    /// `PD-RES-002` when the environment changed since the guard ran, or the guard is older than
+    /// ten minutes; `PD-SNP-001` when the snapshot cannot be written. Nothing is removed in either
+    /// case.
     pub async fn take_snapshot(
         &mut self,
         policy: SnapshotPolicy,
         app_data: &Path,
     ) -> Result<Option<snapshot::Meta>> {
+        let probed = self.engine.probe(&self.env).await?;
+        plan::verify_basis(self.basis.0, &self.basis.1, &probed.dists, (self.clock)())?;
+
         if matches!(policy, SnapshotPolicy::Waive) {
             self.snapshot = SnapshotState::Waived;
             return Ok(None);
@@ -653,6 +692,8 @@ pub struct RollbackFlow {
     restore: snapshot::RollbackPlan,
     /// The state being *replaced*, captured before it is — a rollback is itself reversible.
     pre: SnapshotState,
+    /// The freeze the restore plan was computed from, and when (DATA-FLOW §9.3).
+    basis: (jiff::Timestamp, String),
     cancel: CancellationToken,
     clock: fn() -> jiff::Timestamp,
 }
@@ -671,7 +712,8 @@ impl RollbackFlow {
     ) -> Result<(Self, RollbackPreview)> {
         let env_hash = crate::envs::env_hash(&env.interpreter);
         let target = snapshot::load(app_data, &env_hash, id)?;
-        let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
+        let current_freeze = engine.freeze(&env).await?;
+        let current = snapshot::parse_freeze(&current_freeze);
         let diff = snapshot::diff(&current, &target.entries());
         let restore = snapshot::rollback_plan(&diff);
 
@@ -688,6 +730,7 @@ impl RollbackFlow {
                 target_id: target.meta.id,
                 restore,
                 pre: SnapshotState::NotTaken,
+                basis: ((opts.clock)(), current_freeze),
                 cancel: opts.cancel,
                 clock: opts.clock,
             },
@@ -697,13 +740,28 @@ impl RollbackFlow {
 
     /// Capture the state being replaced, so the rollback is itself reversible (DATA-FLOW §8).
     ///
+    /// The freeze this captures is also the drift check: the restore plan is a diff against the
+    /// freeze `start` took, and applied to anything else it removes and reinstalls the wrong
+    /// things (M44).
+    ///
     /// # Errors
-    /// `PD-SNP-001` when it cannot be written, in which case nothing is restored.
+    /// `PD-RES-002` when the environment changed since the preview, or the preview is older than
+    /// ten minutes; `PD-SNP-001` when the snapshot cannot be written. Nothing is restored in
+    /// either case.
     pub async fn take_snapshot(&mut self, app_data: &Path) -> Result<snapshot::Meta> {
+        let freeze = self.engine.freeze(&self.env).await?;
+        let (made_at, then) = &self.basis;
+        plan::verify_age(*made_at, (self.clock)())?;
+        if snapshot::parse_freeze(&freeze) != snapshot::parse_freeze(then) {
+            return Err(PdError::new(
+                Code::ResPlanStale,
+                "the environment changed since the rollback was previewed — re-run it",
+            ));
+        }
         let snap = snapshot::create(
             app_data,
             &self.env_hash,
-            self.engine.freeze(&self.env).await?,
+            freeze,
             snapshot::Trigger::Rollback {
                 restoring: self.target_id.clone(),
             },
