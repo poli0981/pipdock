@@ -519,61 +519,84 @@ pub async fn execute(
         total: pinned.len(),
         ..sink
     };
+    // What each package moves *from*. The engine cannot say — pip's report has no "before" and an
+    // adapter runs one command — so every row used to carry `from: None`, and the summary and
+    // `--json` called every upgrade a fresh install.
+    let before: std::collections::BTreeMap<&crate::model::PkgName, &crate::model::Version> = plan
+        .report
+        .changes
+        .iter()
+        .filter_map(|c| c.from.as_ref().map(|v| (&c.name, v)))
+        .collect();
+    let row = |spec: &PinnedSpec, status: StepStatus| StepResult {
+        pkg: spec.name.clone(),
+        from: before.get(&spec.name).map(|v| (*v).clone()),
+        to: Some(spec.version.clone()),
+        status,
+        code: None,
+        stderr_tail: None,
+    };
 
     // Phase A. The markers are emitted here rather than inside the adapter for the same reason
     // `step` is: an adapter runs one command and cannot know its position in the plan.
     let batch_sink = sink.at(0);
     batch_sink.started(None, ExecMode::Batch);
+    // **An `Err` here is an outcome, not a reason to abandon the run.** The adapters return one
+    // when the batch is stopped (cancel, watchdog) or cannot start, and the `?` this replaced sent
+    // all three out of `execute` as PD-INT-001: no summary, no "cancelled", no rollback offer, and
+    // the cancelled-Phase-A branch below unreachable outside a test whose fake returned `Ok`.
     let batch = engine
         .install(env, &pinned, ExecMode::Batch, batch_sink.clone())
-        .await?;
-    batch_sink.finished(None, ExecMode::Batch, batch.status);
+        .await;
+    let stopped_by_user = sink.is_cancelled() || batch.as_ref().is_err_and(PdError::is_cancelled);
+    batch_sink.finished(
+        None,
+        ExecMode::Batch,
+        match &batch {
+            Ok(step) => step.status,
+            Err(_) if stopped_by_user => StepStatus::Skipped,
+            Err(_) => StepStatus::Failed,
+        },
+    );
 
     // A cancelled Phase A must **not** fall through to Phase B. Isolating would re-run every
     // package the user just stopped, one at a time — the opposite of what cancelling means.
-    if sink.is_cancelled() {
+    if stopped_by_user {
         let results: Vec<StepResult> = pinned
             .iter()
-            .map(|spec| StepResult {
-                pkg: spec.name.clone(),
-                from: None,
-                to: Some(spec.version.clone()),
-                status: StepStatus::Skipped,
-                code: None,
-                stderr_tail: None,
-            })
+            .map(|spec| row(spec, StepStatus::Skipped))
             .collect();
-        let counts = ExecutionSummary::tally(&results);
-        return Ok(ExecutionSummary {
-            plan_id: plan.id.clone(),
-            phase: ExecMode::Batch,
-            results,
-            check: post_check(engine, env).await,
-            counts,
-            cancelled: true,
-        });
+        return Ok(summary(plan, ExecMode::Batch, results, engine, env, true).await);
     }
-    if batch.status == StepStatus::Ok {
+
+    let failure = match batch {
+        Ok(step) if step.status == StepStatus::Ok => {
+            let results: Vec<StepResult> = pinned
+                .iter()
+                .map(|spec| row(spec, StepStatus::Ok))
+                .collect();
+            return Ok(summary(plan, ExecMode::Batch, results, engine, env, false).await);
+        }
+        Ok(step) => (step.code, step.stderr_tail),
+        Err(e) => (Some(e.code), e.stderr_tail),
+    };
+
+    // Phase B only helps when the failure could be one package's. Offline is offline for every
+    // package, a missing engine is missing for every retry, and a batch the watchdog killed would
+    // be the same hang N times over — so those fail every row with the batch's code, and the trace
+    // is attached once rather than N times.
+    if !isolates(failure.0) {
         let results: Vec<StepResult> = pinned
             .iter()
-            .map(|spec| StepResult {
-                pkg: spec.name.clone(),
-                from: None,
-                to: Some(spec.version.clone()),
-                status: StepStatus::Ok,
-                code: None,
-                stderr_tail: None,
+            .enumerate()
+            .map(|(i, spec)| StepResult {
+                status: StepStatus::Failed,
+                code: failure.0,
+                stderr_tail: if i == 0 { failure.1.clone() } else { None },
+                ..row(spec, StepStatus::Failed)
             })
             .collect();
-        let counts = ExecutionSummary::tally(&results);
-        return Ok(ExecutionSummary {
-            plan_id: plan.id.clone(),
-            phase: ExecMode::Batch,
-            results,
-            check: post_check(engine, env).await,
-            counts,
-            cancelled: false,
-        });
+        return Ok(summary(plan, ExecMode::Batch, results, engine, env, false).await);
     }
 
     // Phase B: isolate. One failure must not cost the user the other fourteen packages.
@@ -583,14 +606,11 @@ pub async fn execute(
         // which is what `Skipped` already means. The one in flight when the token tripped is
         // handled below.
         if sink.is_cancelled() {
-            results.extend(pinned[index..].iter().map(|remaining| StepResult {
-                pkg: remaining.name.clone(),
-                from: None,
-                to: Some(remaining.version.clone()),
-                status: StepStatus::Skipped,
-                code: None,
-                stderr_tail: None,
-            }));
+            results.extend(
+                pinned[index..]
+                    .iter()
+                    .map(|remaining| row(remaining, StepStatus::Skipped)),
+            );
             break;
         }
 
@@ -608,34 +628,29 @@ pub async fn execute(
         // A step that failed *because we killed it* is not the package's failure. Reclassifying
         // here rather than inventing a "cancelled" catalog code keeps the summary honest without
         // widening the error catalog: it was not attempted to completion, so it is Skipped.
-        if sink.is_cancelled() && step.is_err() {
+        if sink.is_cancelled() && step.as_ref().is_err_and(PdError::is_cancelled) {
             step_sink.finished(
                 Some(spec.name.clone()),
                 ExecMode::Isolated,
                 StepStatus::Skipped,
             );
-            results.push(StepResult {
-                pkg: spec.name.clone(),
-                from: None,
-                to: Some(spec.version.clone()),
-                status: StepStatus::Skipped,
-                code: None,
-                stderr_tail: None,
-            });
+            results.push(row(spec, StepStatus::Skipped));
             continue;
         }
 
         let result = match step {
-            Ok(r) => r,
-            // An engine that could not even be spawned is still one package's outcome here;
-            // aborting would discard the packages that already succeeded.
+            Ok(r) => StepResult {
+                from: before.get(&spec.name).map(|v| (*v).clone()),
+                ..r
+            },
+            // An engine that could not even be spawned, or a step its watchdog killed, is still
+            // one package's outcome here; aborting would discard the packages that already
+            // succeeded.
             Err(e) => StepResult {
-                pkg: spec.name.clone(),
-                from: None,
-                to: Some(spec.version.clone()),
                 status: StepStatus::Failed,
                 code: Some(e.code),
                 stderr_tail: e.stderr_tail,
+                ..row(spec, StepStatus::Failed)
             },
         };
         // Every StepStarted gets exactly one StepFinished, whichever way the step ended — the
@@ -644,15 +659,51 @@ pub async fn execute(
         results.push(result);
     }
 
+    let cancelled = sink.is_cancelled();
+    Ok(summary(plan, ExecMode::Isolated, results, engine, env, cancelled).await)
+}
+
+/// Whether retrying package by package could get further than the batch did.
+///
+/// False for failures that are the **environment's**, not one package's: the network (PD-NET-*),
+/// a read-only site-packages, a full disk, an engine that is missing or too old, the watchdog, an
+/// environment that is gone or managed. Every per-package retry would meet the same wall — after
+/// pip's own retry backoff, each time. A failure with no code isolates, as it always did.
+fn isolates(code: Option<Code>) -> bool {
+    !matches!(
+        code,
+        Some(
+            Code::NetUnreachable
+                | Code::NetTlsFailure
+                | Code::PrmSitePackagesReadOnly
+                | Code::SysDiskFull
+                | Code::EngNotFound
+                | Code::EngPipTooOld
+                | Code::EngTimedOut
+                | Code::EnvInterpreterMissing
+                | Code::EnvExternallyManaged
+        )
+    )
+}
+
+/// Assemble a summary: the rows, their tally, and the post-execution check.
+async fn summary(
+    plan: &AcceptedPlan,
+    phase: ExecMode,
+    results: Vec<StepResult>,
+    engine: &dyn Engine,
+    env: &PyEnv,
+    cancelled: bool,
+) -> ExecutionSummary {
     let counts = ExecutionSummary::tally(&results);
-    Ok(ExecutionSummary {
+    ExecutionSummary {
         plan_id: plan.id.clone(),
-        phase: ExecMode::Isolated,
+        phase,
         results,
         check: post_check(engine, env).await,
         counts,
-        cancelled: sink.is_cancelled(),
-    })
+        cancelled,
+    }
 }
 
 /// Run the post-execution check, treating an unrunnable check as "no findings".
@@ -684,7 +735,7 @@ pub async fn execute_rollback(
     env: &PyEnv,
     plan_id: String,
     restore: &crate::snapshot::RollbackPlan,
-    snapshot: SnapshotProof<'_>,
+    _snapshot: SnapshotProof<'_>,
     sink: ProgressSink,
 ) -> Result<ExecutionSummary> {
     let mut results = Vec::new();
@@ -692,18 +743,12 @@ pub async fn execute_rollback(
     // One index space across both halves: the sink's `total` counts the removals and the restores
     // together, so the restores continue where the removals stopped rather than both starting at
     // zero and the live region counting to half.
+    //
+    // The removals are run as steps, not as a nested `execute_uninstall`: that one ends with its
+    // own `pip check`, which here ran between the removals and the restores — a check of a state
+    // that exists for a few seconds, against an environment about to change again.
     if !restore.uninstall.is_empty() {
-        let removed = execute_uninstall(
-            engine,
-            env,
-            plan_id.clone(),
-            &restore.uninstall,
-            snapshot,
-            sink.clone(),
-            0,
-        )
-        .await?;
-        results.extend(removed.results);
+        results.extend(removal_steps(engine, env, &restore.uninstall, &sink, 0).await);
     }
 
     for (index, spec) in restore.install.iter().enumerate() {
@@ -799,6 +844,26 @@ pub async fn execute_uninstall(
     sink: ProgressSink,
     base: usize,
 ) -> Result<ExecutionSummary> {
+    let results = removal_steps(engine, env, names, &sink, base).await;
+    let counts = ExecutionSummary::tally(&results);
+    Ok(ExecutionSummary {
+        plan_id,
+        phase: ExecMode::Isolated,
+        results,
+        check: post_check(engine, env).await,
+        counts,
+        cancelled: sink.is_cancelled(),
+    })
+}
+
+/// The removal loop shared by [`execute_uninstall`] and [`execute_rollback`]'s first half.
+async fn removal_steps(
+    engine: &dyn Engine,
+    env: &PyEnv,
+    names: &[PkgName],
+    sink: &ProgressSink,
+    base: usize,
+) -> Vec<StepResult> {
     let mut results = Vec::with_capacity(names.len());
     for (index, name) in names.iter().enumerate() {
         // Checked before each removal, so a cancelled run reports the rest as never attempted
@@ -858,15 +923,7 @@ pub async fn execute_uninstall(
         results.push(result);
     }
 
-    let counts = ExecutionSummary::tally(&results);
-    Ok(ExecutionSummary {
-        plan_id,
-        phase: ExecMode::Isolated,
-        results,
-        check: post_check(engine, env).await,
-        counts,
-        cancelled: sink.is_cancelled(),
-    })
+    results
 }
 
 #[cfg(test)]
