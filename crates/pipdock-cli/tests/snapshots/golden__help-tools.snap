@@ -13,7 +13,7 @@ Commands:
 
 Options:
       --env <PATH>
-          Interpreter or environment directory. Defaults to the last used env, else an auto-detected `.venv` in the working directory
+          Interpreter or environment directory. Defaults to the one `env use` set, else an auto-detected `.venv` in the working directory
 
       --engine <ENGINE>
           Override the configured engine for this invocation

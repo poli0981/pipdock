@@ -55,6 +55,7 @@ pub fn engine_for(opts: &GlobalOpts) -> Box<dyn Engine> {
 /// override is meant to be hard to reach, and a flag would put it one shell-history search away.
 fn flow_options() -> FlowOptions {
     FlowOptions {
+        cancel: stop_on_ctrl_c(),
         allow_externally_managed: Store::open(&app_data_dir())
             .and_then(|store| settings::load(&store))
             .is_ok_and(|s| s.allow_externally_managed),
@@ -62,6 +63,46 @@ fn flow_options() -> FlowOptions {
             pipdock_core::release::PyPiReleases::new(app_data_dir()),
         )),
         ..FlowOptions::default()
+    }
+}
+
+/// Ctrl-C stops the run rather than the process (CLI-SPEC §5: 130, a partial summary, no orphans).
+///
+/// The first press trips the flow's token: `exec`'s job object kills the engine's whole process
+/// tree, what already ran is summarized with the snapshot to roll back to, and the exit is 130. A
+/// second press exits at once, for a step that is not listening — a probe, a snapshot write. The
+/// CLI installed no handler before 1.4.0, so Ctrl-C killed PipDock mid-batch with no summary and
+/// no word about the snapshot it had just written (X6).
+fn stop_on_ctrl_c() -> CancellationToken {
+    let token = CancellationToken::new();
+    let trip = token.clone();
+    tokio::spawn(async move {
+        if interrupted().await.is_err() {
+            return;
+        }
+        eprintln!("\nstopping — press Ctrl-C again to quit now");
+        trip.cancel();
+        if interrupted().await.is_ok() {
+            std::process::exit(130);
+        }
+    });
+    token
+}
+
+/// The next Ctrl-C — or, on Windows, Ctrl-Break, which is the one a supervising process can send
+/// to a single process group (and the one a terminal's *Break* key sends).
+async fn interrupted() -> std::io::Result<()> {
+    #[cfg(windows)]
+    {
+        let mut brk = tokio::signal::windows::ctrl_break()?;
+        tokio::select! {
+            r = tokio::signal::ctrl_c() => r,
+            _ = brk.recv() => Ok(()),
+        }
+    }
+    #[cfg(not(windows))]
+    {
+        tokio::signal::ctrl_c().await
     }
 }
 
@@ -122,12 +163,24 @@ pub async fn engine_set(opts: &GlobalOpts, engine: EngineArg) -> Result<Exit> {
     let mut settings = settings::load(&store)?;
     settings.engine = id;
     settings::save(&store, &settings)?;
-    println!(
-        "engine set to {} {}",
-        id.as_str(),
-        info.version.unwrap_or_default()
-    );
+    if opts.json {
+        print_json(&info);
+    } else {
+        println!(
+            "engine set to {} {}",
+            id.as_str(),
+            info.version.unwrap_or_default()
+        );
+    }
     Ok(Exit::Success)
+}
+
+/// The one document a `--json` command prints (CLI-SPEC §6).
+fn print_json<T: serde::Serialize + ?Sized>(value: &T) {
+    println!(
+        "{}",
+        serde_json::to_string_pretty(value).unwrap_or_default()
+    );
 }
 
 /// Map a catalog code onto the exit code CLI-SPEC §5 assigns it.
@@ -153,30 +206,54 @@ pub fn exit_for(code: Code) -> Exit {
 
 /// Select the environment to act on.
 ///
-/// CLI-SPEC §2: `--env` wins; otherwise an auto-detected `.venv` in the working directory; the
-/// "last used" fallback arrives with the settings store.
+/// # Errors
+/// As [`select`].
+pub async fn select_env(opts: &GlobalOpts) -> Result<PyEnv> {
+    select(opts).await.map(|p| p.env)
+}
+
+/// Select the environment to act on, and the probe that found it.
+///
+/// CLI-SPEC §2 and `--env`'s own help text: `--env` wins; then the default `env use` set; then a
+/// `.venv` in the working directory. The default was written by `env use` and read by nothing, so
+/// `env use` reported success and every later command ignored it (X3). A default whose interpreter
+/// is gone is said on stderr and skipped, rather than failing a command the user ran somewhere a
+/// `.venv` would have answered.
+///
+/// Returns the probe, not just the `PyEnv`, so a command that needs the listing does not probe a
+/// second time — `list` did, and paid twice on every invocation (X28).
 ///
 /// # Errors
 /// `PD-ENV-001` when nothing usable can be found, so the user gets a code rather than a silent
 /// default that mutates the wrong environment.
-pub async fn select_env(opts: &GlobalOpts) -> Result<PyEnv> {
+pub async fn select(opts: &GlobalOpts) -> Result<envs::ProbeResult> {
     if let Some(path) = &opts.env {
-        let interpreter = interpreter_in(path);
-        return envs::probe(&interpreter, EnvSource::Manual)
-            .await
-            .map(|p| p.env);
+        return envs::probe(&interpreter_in(path), EnvSource::Manual).await;
+    }
+
+    let stored = Store::open(&app_data_dir())
+        .ok()
+        .and_then(|store| store.default_env().ok().flatten());
+    if let Some(default) = stored {
+        let interpreter = PathBuf::from(&default.interpreter);
+        if interpreter.is_file() {
+            return envs::probe(&interpreter, EnvSource::Manual).await;
+        }
+        eprintln!(
+            "warning: the default environment ({}) no longer exists; `pipdock env use` sets another",
+            default.interpreter
+        );
     }
 
     let cwd = std::env::current_dir().unwrap_or_default();
     if let Some(found) = envs::venv_scan(&cwd).into_iter().next() {
-        return envs::probe(&found, EnvSource::VenvScan)
-            .await
-            .map(|p| p.env);
+        return envs::probe(&found, EnvSource::VenvScan).await;
     }
 
     Err(PdError::new(
         Code::EnvInterpreterMissing,
-        "no environment selected: pass --env, or run from a directory containing a .venv",
+        "no environment selected: pass --env, set a default with `pipdock env use`, or run from a \
+         directory containing a .venv",
     ))
 }
 
@@ -280,7 +357,8 @@ pub async fn env_list(opts: &GlobalOpts) -> Result<Exit> {
 /// # Errors
 /// Propagates environment and engine failures with their catalog codes.
 pub async fn list(opts: &GlobalOpts, outdated: bool) -> Result<Exit> {
-    let env = select_env(opts).await?;
+    let probed = select(opts).await?;
+    let env = probed.env.clone();
     let engine = engine_for(opts);
 
     if outdated {
@@ -301,8 +379,7 @@ pub async fn list(opts: &GlobalOpts, outdated: bool) -> Result<Exit> {
     }
 
     // The probe is the richer source: it carries requires_dist, which `list --format=json` does
-    // not, and it is what the reverse-dependency graph is built from.
-    let probed = envs::probe(&env.interpreter, env.source).await?;
+    // not, and it is what the reverse-dependency graph is built from. It is the one `select` made.
     if opts.json {
         println!(
             "{}",
@@ -334,9 +411,16 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
     let env = select_env(opts).await?;
     let pip = PipEngine.info(&env).await;
     let uv = UvEngine.info(&env).await;
-    let check = engine_for(opts).check(&env).await;
+    let engine = engine_for(opts);
+    let check = engine.check(&env).await;
 
-    let pip_ok = pip.available;
+    // The configured engine is what has to work. Requiring pip failed `doctor` on every uv-only
+    // environment — `uv venv` makes them without pip by default — for a tool the user had told
+    // PipDock not to use.
+    let engine_ok = match engine.id() {
+        EngineId::Pip => pip.available,
+        EngineId::Uv => uv.available,
+    };
     let check_ok = check.as_ref().map(|c| c.ok).unwrap_or(false);
 
     // Whether Code Health can run at all. Deliberately **not** part of the exit rule below: Health
@@ -409,7 +493,7 @@ pub async fn doctor(opts: &GlobalOpts) -> Result<Exit> {
     }
 
     // A doctor that found real problems should say so in its exit code, or scripts cannot use it.
-    Ok(if pip_ok && check_ok {
+    Ok(if engine_ok && check_ok {
         Exit::Success
     } else {
         Exit::PartialFailure
@@ -478,10 +562,14 @@ pub async fn snapshot_create(opts: &GlobalOpts) -> Result<Exit> {
         jiff::Timestamp::now(),
     )?;
 
-    println!(
-        "snapshot {} written ({} packages)",
-        snap.meta.id, snap.meta.package_count
-    );
+    if opts.json {
+        print_json(&snap.meta);
+    } else {
+        println!(
+            "snapshot {} written ({} packages)",
+            snap.meta.id, snap.meta.package_count
+        );
+    }
     Ok(Exit::Success)
 }
 
@@ -496,7 +584,9 @@ pub async fn snapshot_diff(opts: &GlobalOpts, id: &str) -> Result<Exit> {
 
     let snap = snapshot::load(&app_data_dir(), &hash, id)?;
     let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
-    let d = snapshot::diff(&current, &snap.entries());
+    // What a rollback with this engine would see, so `diff` and `rollback` cannot disagree about
+    // pip and setuptools across engines (C7).
+    let d = snapshot::restorable_diff(&current, &snap.entries(), snap.meta.engine, engine.id());
 
     if opts.json {
         println!("{}", serde_json::to_string_pretty(&d).unwrap_or_default());
@@ -541,6 +631,16 @@ pub async fn snapshot_diff(opts: &GlobalOpts, id: &str) -> Result<Exit> {
 /// otherwise propagates environment and engine failures. Per-package failures are not errors —
 /// they appear in the summary.
 pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> Result<Exit> {
+    // `update` with neither names nor `--all` is a usage mistake, not a plan with nothing in it:
+    // it used to resolve an empty request and exit 0 saying "nothing to do" (X16).
+    if let Intent::Update {
+        all: false, pkgs, ..
+    } = &intent
+        && pkgs.is_empty()
+    {
+        eprintln!("error: name the packages to update, or pass --all");
+        return Ok(Exit::PlanAborted);
+    }
     let env = select_env(opts).await?;
     let store = Store::open(&app_data_dir())?;
 
@@ -576,18 +676,26 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     let report = loop {
         match step {
             FlowStep::Nothing { reason } => {
+                // The step itself is the document: a script reads `reason` rather than a sentence.
+                if opts.json {
+                    print_json(&FlowStep::Nothing { reason });
+                }
                 return Ok(match reason {
                     NothingReason::NothingToDo => {
-                        println!("nothing to do");
+                        if !opts.json {
+                            println!("nothing to do");
+                        }
                         Exit::Success
                     }
                     NothingReason::EverythingSkipped => {
-                        println!("every package was skipped; nothing to do");
+                        if !opts.json {
+                            println!("every package was skipped; nothing to do");
+                        }
                         Exit::PlanAborted
                     }
                     // CLI-SPEC §5: a user cancel is 130, and nothing ran.
                     NothingReason::Cancelled => {
-                        eprintln!("cancelled before anything was planned");
+                        eprintln!("stopped before anything was planned; nothing ran");
                         Exit::Cancelled
                     }
                 });
@@ -602,17 +710,35 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
         }
     };
 
-    print_preview(opts, &report);
-
-    if dry_run {
+    // **One document per command under `--json`** (CLI-SPEC §6, X5). This printed the report and
+    // then the summary, so `pipdock install x --json | ConvertFrom-Json` failed on the second
+    // document. The report is the document when nothing runs — a dry run, an empty plan, a
+    // declined prompt — and the summary when something does. A person at a terminal still sees the
+    // preview before the prompt: on stderr, beside the prompt itself.
+    if dry_run || report.changes.is_empty() {
+        if opts.json {
+            print_json(&report);
+        } else {
+            print!("{}", preview_text(&report));
+            if !dry_run {
+                println!("no changes to apply");
+            }
+        }
         return Ok(Exit::Success);
     }
-    if report.changes.is_empty() {
-        println!("no changes to apply");
-        return Ok(Exit::Success);
+    if opts.json {
+        if !opts.yes {
+            eprint!("{}", preview_text(&report));
+        }
+    } else {
+        print!("{}", preview_text(&report));
     }
     if !opts.yes && !confirm(&report) {
-        println!("aborted");
+        if opts.json {
+            print_json(&report);
+        } else {
+            println!("aborted");
+        }
         return Ok(Exit::PlanAborted);
     }
 
@@ -627,7 +753,8 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     } else {
         SnapshotPolicy::Take
     };
-    if let Some(meta) = flow.take_snapshot(policy, &app_data_dir()).await?
+    let snap = flow.take_snapshot(policy, &app_data_dir()).await?;
+    if let Some(meta) = &snap
         && !opts.json
     {
         println!("snapshot {} written", meta.id);
@@ -647,11 +774,29 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     let summary = flow.execute(tx).await?;
 
     print_summary(opts, &summary);
-    Ok(if summary.counts.failed > 0 {
+    Ok(finished(&summary, snap.as_ref().map(|m| m.id.as_str())))
+}
+
+/// The exit a finished run earns, and — when it was stopped — how to undo what it did.
+///
+/// CLI-SPEC §5: 130 when the user stopped it, after the partial summary; the snapshot taken before
+/// it is the way back, so its id is said rather than left to `snapshot list`.
+fn finished(summary: &plan::ExecutionSummary, snapshot: Option<&str>) -> Exit {
+    if summary.cancelled {
+        match snapshot {
+            Some(id) => eprintln!(
+                "stopped. What ran is above; `pipdock snapshot rollback {id}` puts back the state \
+                 from before this run."
+            ),
+            None => eprintln!("stopped. What ran is above."),
+        }
+        return Exit::Cancelled;
+    }
+    if summary.counts.failed > 0 {
         Exit::PartialFailure
     } else {
         Exit::Success
-    })
+    }
 }
 
 /// Decide what to do about each package needing a decision.
@@ -675,6 +820,21 @@ fn decide(
         out.insert(held.pkg.clone(), decision);
     }
     if let Some(detail) = &report.impossible {
+        // Said before it is done: off a TTY the default for an impossibility is *skip*, and a
+        // skip that names nothing left the user with "every package was skipped" and no idea
+        // why (X26). On stderr, so `--json`'s stdout stays one document.
+        if !interactive {
+            eprintln!("{}", detail.explanation);
+            eprintln!(
+                "skipping: {}",
+                detail
+                    .packages
+                    .iter()
+                    .map(ToString::to_string)
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            );
+        }
         for pkg in &detail.packages {
             let decision = plan::default_decision(true, false);
             out.insert(pkg.clone(), decision);
@@ -703,15 +863,16 @@ fn blocker_line(b: &plan::Blocker) -> String {
 fn prompt_decision(held: &plan::HeldBack) -> plan::Decision {
     use std::io::Write as _;
 
-    println!(
+    // Prompts go to stderr, with the question, so stdout is only ever the result (CLI-SPEC §6).
+    eprintln!(
         "\n{}  held back at {} (latest {})",
         held.pkg, held.resolved, held.latest
     );
     for blocker in &held.blockers {
-        println!("  — {}", blocker_line(blocker));
+        eprintln!("  — {}", blocker_line(blocker));
     }
-    print!("  [C]ompatible (default)   [S]kip   [F]orce latest: ");
-    let _ = std::io::stdout().flush();
+    eprint!("  [C]ompatible (default)   [S]kip   [F]orce latest: ");
+    let _ = std::io::stderr().flush();
 
     let mut line = String::new();
     if std::io::stdin().read_line(&mut line).is_err() {
@@ -727,7 +888,7 @@ fn prompt_decision(held: &plan::HeldBack) -> plan::Decision {
                 .filter_map(|b| b.by.as_ref().map(ToString::to_string))
                 .collect();
             if !breaks.is_empty() {
-                println!("  this will break: {}", breaks.join(", "));
+                eprintln!("  this will break: {}", breaks.join(", "));
             }
             plan::Decision::ForceLatest
         }
@@ -735,74 +896,81 @@ fn prompt_decision(held: &plan::HeldBack) -> plan::Decision {
     }
 }
 
-/// Render the preview (UI-SPEC §4's three groups, in text).
-fn print_preview(opts: &GlobalOpts, report: &plan::ResolutionReport) {
-    if opts.json {
-        println!(
-            "{}",
-            serde_json::to_string_pretty(report).unwrap_or_default()
-        );
-        return;
+/// The preview as text (UI-SPEC §4's groups). A string, so the caller decides the stream: stdout
+/// normally, stderr beside the prompt under `--json`.
+fn preview_text(report: &plan::ResolutionReport) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    // Infallible: writing to a String cannot fail.
+    macro_rules! line {
+        ($($arg:tt)*) => {{
+            let _ = writeln!(out, $($arg)*);
+        }};
     }
 
     let upgrades: Vec<_> = report.changes.iter().filter(|c| c.from.is_some()).collect();
     let fresh: Vec<_> = report.changes.iter().filter(|c| c.from.is_none()).collect();
 
     if !upgrades.is_empty() {
-        println!("\nWill upgrade:");
+        line!("\nWill upgrade:");
         for c in upgrades {
             let from = c.from.as_ref().map(ToString::to_string).unwrap_or_default();
-            println!("  {:<32} {} -> {}", c.name, from, c.to);
+            line!("  {:<32} {} -> {}", c.name, from, c.to);
         }
     }
     if !fresh.is_empty() {
-        println!("\nNew:");
+        line!("\nNew:");
         for c in fresh {
-            println!("  {:<32} {}", c.name, c.to);
+            line!("  {:<32} {}", c.name, c.to);
         }
     }
     if !report.held_back.is_empty() {
-        println!("\nNeeds decision — held back:");
+        line!("\nNeeds decision — held back:");
         for h in &report.held_back {
-            println!("  {:<32} {} (latest {})", h.pkg, h.resolved, h.latest);
+            line!("  {:<32} {} (latest {})", h.pkg, h.resolved, h.latest);
             for b in &h.blockers {
-                println!("      {}", blocker_line(b));
+                line!("      {}", blocker_line(b));
             }
             if h.blockers.is_empty() {
                 // ARCHITECTURE §3: no culprit is invented, and the row says so plainly rather
                 // than looking like a rendering bug.
-                println!("      (nothing installed explains this)");
+                line!("      (nothing installed explains this)");
             }
         }
     }
     if !report.incompatible.is_empty() {
         // Hard invariant 10: left out, and why, rather than a "not found" for a version that
         // exists.
-        println!("\nLeft out — needs a different Python:");
+        line!("\nLeft out — needs a different Python:");
         for m in &report.incompatible {
-            println!(
+            line!(
                 "  {} {} requires Python {} (this is {})",
-                m.pkg, m.version, m.requires_python, m.python
+                m.pkg,
+                m.version,
+                m.requires_python,
+                m.python
             );
         }
     }
     if !report.forced.is_empty() {
         // DISCLAIMER §2: what forcing breaks is said before anything runs, not discovered after.
-        println!("\nForced — will break:");
+        line!("\nForced — will break:");
         for f in &report.forced {
-            println!("  {:<32} -> {}", f.pkg, f.latest);
+            line!("  {:<32} -> {}", f.pkg, f.latest);
             for b in &f.blockers {
-                println!("      {}", blocker_line(b));
+                line!("      {}", blocker_line(b));
             }
         }
     }
     if let Some(detail) = &report.impossible {
-        println!("\nImpossible:");
-        println!("  {}", detail.explanation);
+        line!("\nImpossible:");
+        line!("  {}", detail.explanation);
     }
     if report.changes.is_empty() && report.held_back.is_empty() {
-        println!("\nno changes");
+        line!("\nno changes");
     }
+    out
 }
 
 /// Ask before touching anything (DATA-FLOW §3's Confirm step).
@@ -814,8 +982,8 @@ fn confirm(report: &plan::ResolutionReport) -> bool {
         eprintln!("error[PD-RES-002]: not a terminal; pass --yes to apply without confirming");
         return false;
     }
-    print!("\nApply {} change(s)? [y/N]: ", report.changes.len());
-    let _ = std::io::stdout().flush();
+    eprint!("\nApply {} change(s)? [y/N]: ", report.changes.len());
+    let _ = std::io::stderr().flush();
     let mut line = String::new();
     if std::io::stdin().read_line(&mut line).is_err() {
         return false;
@@ -853,7 +1021,9 @@ pub async fn env_use(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
         true,
     )?;
 
-    if !opts.quiet {
+    if opts.json {
+        print_json(&probed.env);
+    } else if !opts.quiet {
         println!(
             "default environment set: {} (Python {})",
             interpreter.display(),
@@ -958,9 +1128,9 @@ pub async fn audit(opts: &GlobalOpts) -> Result<Exit> {
 
     let env = select_env(opts).await?;
     let app_data = app_data_dir();
-    let store = Store::open(&app_data)?;
-    let engine = engine::for_id(settings::load(&store)?.engine);
-    drop(store);
+    // `--engine` decides, like everywhere else: pip freezes with `--all` and uv does not, so the
+    // engine changes what is audited, and the flag was being read by everything but this (X14).
+    let engine = engine_for(opts);
 
     // Taken before the venv is touched, so an unreadable environment fails before a 15-second
     // bootstrap rather than after one.
@@ -998,7 +1168,7 @@ pub async fn audit(opts: &GlobalOpts) -> Result<Exit> {
         if !opts.quiet && !opts.json {
             println!(
                 "checking {} packages against the advisory database…",
-                freeze.lines().count()
+                snapshot::parse_freeze(&freeze).len()
             );
         }
         audit::run(&dir, &env, &freeze, &sink.at(synced)).await
@@ -1462,11 +1632,15 @@ pub async fn pip_upgrade(opts: &GlobalOpts) -> Result<Exit> {
     PipEngine.upgrade_pip(&env).await?;
     let after = PipEngine.info(&env).await;
 
-    println!(
-        "pip {} -> {}",
-        before.version.unwrap_or_else(|| "?".into()),
-        after.version.unwrap_or_else(|| "?".into())
-    );
+    if opts.json {
+        print_json(&serde_json::json!({ "before": before, "after": after }));
+    } else {
+        println!(
+            "pip {} -> {}",
+            before.version.unwrap_or_else(|| "?".into()),
+            after.version.unwrap_or_else(|| "?".into())
+        );
+    }
     Ok(Exit::Success)
 }
 
@@ -1486,33 +1660,32 @@ pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
         RollbackFlow::start(env, engine_for(opts), &app_data, id, flow_options()).await?;
     warn_pep668(flow.overrides_pep668());
 
+    // One document under `--json`, as everywhere (X5): the preview when nothing runs, the summary
+    // when something does.
     if preview.restore.is_empty() {
-        println!("environment already matches snapshot {}", preview.target.id);
+        if opts.json {
+            print_json(&preview);
+        } else {
+            println!("environment already matches snapshot {}", preview.target.id);
+        }
         return Ok(Exit::Success);
     }
 
-    println!("Rolling back to {}:", preview.target.id);
-    for name in &preview.restore.uninstall {
-        println!("  remove  {name}");
-    }
-    for spec in &preview.restore.install {
-        println!("  restore {} {}", spec.name, spec.version);
-    }
-
-    // Honesty about what cannot come back, rather than reporting a success that is not one.
-    if !preview.unrestorable.is_empty() {
-        println!(
-            "\nwarning[PD-SNP-002]: {} entr(y/ies) in this snapshot cannot be restored from an \
-             index and will be left as they are:",
-            preview.unrestorable.len()
-        );
-        for line in &preview.unrestorable {
-            println!("  {line}");
+    let text = rollback_text(&preview);
+    if opts.json {
+        if !opts.yes {
+            eprint!("{text}");
         }
+    } else {
+        print!("{text}");
     }
 
     if !opts.yes && !confirm_text(&format!("Apply {} operation(s)?", preview.restore.len())) {
-        println!("aborted");
+        if opts.json {
+            print_json(&preview);
+        } else {
+            println!("aborted");
+        }
         return Ok(Exit::PlanAborted);
     }
 
@@ -1537,11 +1710,34 @@ pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
     let summary = flow.execute(tx).await?;
 
     print_summary(opts, &summary);
-    Ok(if summary.counts.failed > 0 {
-        Exit::PartialFailure
-    } else {
-        Exit::Success
-    })
+    Ok(finished(&summary, Some(&pre.id)))
+}
+
+/// What a rollback would do, as text.
+fn rollback_text(preview: &pipdock_core::flow::RollbackPreview) -> String {
+    use std::fmt::Write as _;
+
+    let mut out = String::new();
+    let _ = writeln!(out, "Rolling back to {}:", preview.target.id);
+    for name in &preview.restore.uninstall {
+        let _ = writeln!(out, "  remove  {name}");
+    }
+    for spec in &preview.restore.install {
+        let _ = writeln!(out, "  restore {} {}", spec.name, spec.version);
+    }
+    // Honesty about what cannot come back, rather than reporting a success that is not one.
+    if !preview.unrestorable.is_empty() {
+        let _ = writeln!(
+            out,
+            "\nwarning[PD-SNP-002]: {} entr(y/ies) in this snapshot cannot be restored from an \
+             index and will be left as they are:",
+            preview.unrestorable.len()
+        );
+        for line in &preview.unrestorable {
+            let _ = writeln!(out, "  {line}");
+        }
+    }
+    out
 }
 
 /// `pipdock self report-bug`
@@ -1575,7 +1771,11 @@ pub async fn report_bug(opts: &GlobalOpts) -> Result<Exit> {
         &os_description(),
     );
 
-    println!("{url}");
+    if opts.json {
+        print_json(&serde_json::json!({ "url": url }));
+    } else {
+        println!("{url}");
+    }
     if !opts.quiet {
         // Concatenated rather than a multi-line literal: a bare string literal keeps the source
         // indentation, which shipped this line with fourteen stray spaces in the middle of a
@@ -1603,8 +1803,8 @@ fn confirm_text(question: &str) -> bool {
         eprintln!("error[PD-RES-002]: not a terminal; pass --yes to proceed without confirming");
         return false;
     }
-    print!("\n{question} [y/N]: ");
-    let _ = std::io::stdout().flush();
+    eprint!("\n{question} [y/N]: ");
+    let _ = std::io::stderr().flush();
     let mut line = String::new();
     if std::io::stdin().read_line(&mut line).is_err() {
         return false;
@@ -1782,16 +1982,18 @@ pub async fn pin_add(opts: &GlobalOpts, pkg: &str, reason: Option<&str>) -> Resu
     let store = Store::open(&app_data_dir())?;
     let name = PkgName::parse(pkg)?;
 
-    pins::add(
-        &store,
-        &envs::env_hash(&env.interpreter),
-        &pins::Pin {
-            pkg: name.clone(),
-            mode: pins::PinMode::Exclude,
-            reason: reason.map(str::to_owned),
-        },
-    )?;
-    println!("pinned {name} (excluded from bulk updates)");
+    let pin = pins::Pin {
+        pkg: name.clone(),
+        mode: pins::PinMode::Exclude,
+        reason: reason.map(str::to_owned),
+    };
+    pins::add(&store, &envs::env_hash(&env.interpreter), &pin)?;
+    if opts.json {
+        print_json(&pin);
+    } else {
+        // DATA-FLOW §9.5: every update, not only bulk ones.
+        println!("pinned {name} (left out of updates until unpinned)");
+    }
     Ok(Exit::Success)
 }
 
@@ -1804,7 +2006,10 @@ pub async fn pin_remove(opts: &GlobalOpts, pkg: &str) -> Result<Exit> {
     let store = Store::open(&app_data_dir())?;
     let name = PkgName::parse(pkg)?;
 
-    if pins::remove(&store, &envs::env_hash(&env.interpreter), &name)? {
+    let removed = pins::remove(&store, &envs::env_hash(&env.interpreter), &name)?;
+    if opts.json {
+        print_json(&serde_json::json!({ "pkg": name, "removed": removed }));
+    } else if removed {
         println!("unpinned {name}");
     } else {
         println!("{name} was not pinned");
@@ -1832,12 +2037,11 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     warn_pep668(flow.overrides_pep668());
 
     if !report.is_clear() {
-        if opts.json {
-            println!(
-                "{}",
-                serde_json::to_string_pretty(&report).unwrap_or_default()
-            );
-        } else {
+        // Under `--json` the guard report is the document only when it ends the command; with
+        // `--force` the summary is, and printing both was two documents (X5).
+        if opts.json && !force {
+            print_json(&report);
+        } else if !opts.json {
             for (pkg, broken) in &report.breaks {
                 // Names alone say what breaks; the specifier says whether the user can live with
                 // it. `pandas 2.1.4 (<2,>=1.26.0)` is checkable against what they know.
@@ -1895,7 +2099,8 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     } else {
         SnapshotPolicy::Take
     };
-    if let Some(meta) = flow.take_snapshot(policy, &app_data_dir()).await?
+    let snap = flow.take_snapshot(policy, &app_data_dir()).await?;
+    if let Some(meta) = &snap
         && !opts.json
     {
         println!("snapshot {} written before removing", meta.id);
@@ -1925,11 +2130,7 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     drop(pump);
 
     print_summary(opts, &summary);
-    Ok(if summary.counts.failed > 0 {
-        Exit::PartialFailure
-    } else {
-        Exit::Success
-    })
+    Ok(finished(&summary, snap.as_ref().map(|m| m.id.as_str())))
 }
 
 /// Render an execution summary (DATA-FLOW §6).
@@ -1973,16 +2174,39 @@ fn print_summary(opts: &GlobalOpts, summary: &plan::ExecutionSummary) {
 /// # Errors
 /// Never; reports availability rather than failing.
 pub async fn engine_status(opts: &GlobalOpts) -> Result<Exit> {
-    let env = select_env(opts).await?;
-    for (id, info) in [
-        (EngineId::Pip, PipEngine.info(&env).await),
-        (EngineId::Uv, UvEngine.info(&env).await),
-    ] {
-        println!(
-            "{:<4} {}",
-            id.as_str(),
-            info.version.unwrap_or_else(|| "not available".into())
-        );
+    // No environment is required (X15). uv is a standalone binary; pip is a module of some
+    // interpreter, so without one it is reported as such rather than failing the command — which
+    // is what happened in any directory without a .venv.
+    let env = select_env(opts).await.ok();
+    let blank = PyEnv {
+        interpreter: PathBuf::new(),
+        prefix: PathBuf::new(),
+        python_version: String::new(),
+        externally_managed: false,
+        hidden_user_site: None,
+        source: EnvSource::Manual,
+    };
+    let pip = match &env {
+        Some(env) => PipEngine.info(env).await,
+        None => pipdock_core::model::EngineInfo {
+            id: EngineId::Pip,
+            version: None,
+            available: false,
+        },
+    };
+    let uv = UvEngine.info(env.as_ref().unwrap_or(&blank)).await;
+
+    if opts.json {
+        print_json(&[&pip, &uv]);
+        return Ok(Exit::Success);
+    }
+    for info in [&pip, &uv] {
+        let detail = match (&info.version, info.id, &env) {
+            (Some(v), _, _) => v.clone(),
+            (None, EngineId::Pip, None) => "no environment selected".to_owned(),
+            (None, _, _) => "not available".to_owned(),
+        };
+        println!("{:<4} {detail}", info.id.as_str());
     }
     Ok(Exit::Success)
 }

@@ -170,7 +170,9 @@ impl PkgName {
 
 impl std::fmt::Display for PkgName {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        // `pad`, not `write_str`: the CLI lays tables out with `{:<32}`, and `write_str` ignores
+        // width — every name column printed unaligned (X27).
+        f.pad(&self.0)
     }
 }
 
@@ -206,7 +208,7 @@ pub struct Version(pub String);
 
 impl std::fmt::Display for Version {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str(&self.0)
+        f.pad(&self.0)
     }
 }
 

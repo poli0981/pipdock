@@ -3227,6 +3227,7 @@ dependencies = [
  "insta",
  "jiff",
  "pipdock-core",
+ "serde",
  "serde_json",
  "tokio",
  "tracing",
