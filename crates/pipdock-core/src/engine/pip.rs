@@ -7,7 +7,7 @@
 use async_trait::async_trait;
 
 use crate::errors::{Code, PdError, Result};
-use crate::exec::Command;
+use crate::exec::{Command, watchdog};
 use crate::model::{
     CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
     StepResult,
@@ -91,6 +91,7 @@ impl Engine for PipEngine {
     async fn info(&self, env: &PyEnv) -> EngineInfo {
         let out = Command::python(&env.interpreter)
             .args(["-m", "pip", "--version"])
+            .timeout(watchdog::QUERY)
             .run()
             .await;
         match out {
@@ -111,6 +112,7 @@ impl Engine for PipEngine {
     async fn list_installed(&self, env: &PyEnv) -> Result<Vec<Dist>> {
         let out = Command::python(&env.interpreter)
             .args(Self::argv_list())
+            .timeout(watchdog::QUERY)
             .run()
             .await?;
         if !out.ok() {
@@ -122,6 +124,7 @@ impl Engine for PipEngine {
     async fn list_outdated(&self, env: &PyEnv) -> Result<Vec<OutdatedDist>> {
         let out = Command::python(&env.interpreter)
             .args(Self::argv_outdated())
+            .timeout(watchdog::OUTDATED)
             .run()
             .await?;
         if !out.ok() {
@@ -137,6 +140,7 @@ impl Engine for PipEngine {
         let requirements = super::plan_argv_specs(req, &installed);
         let out = Command::python(&env.interpreter)
             .args(Self::argv_dry_run(&requirements))
+            .timeout(watchdog::RESOLVE)
             .run()
             .await?;
         if !out.ok() {
@@ -156,6 +160,7 @@ impl Engine for PipEngine {
         argv.extend(specs.iter().map(PinnedSpec::to_requirement));
         let out = Command::python(&env.interpreter)
             .args(argv)
+            .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, single_pkg(specs), mode)
             .await?;
@@ -177,6 +182,7 @@ impl Engine for PipEngine {
         argv.extend(names.iter().map(ToString::to_string));
         let out = Command::python(&env.interpreter)
             .args(argv)
+            .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, names.first().cloned(), ExecMode::Isolated)
             .await?;
@@ -186,6 +192,7 @@ impl Engine for PipEngine {
     async fn check(&self, env: &PyEnv) -> Result<CheckReport> {
         let out = Command::python(&env.interpreter)
             .args(Self::argv_check())
+            .timeout(watchdog::QUERY)
             .run()
             .await?;
         // `pip check` exits non-zero when it finds problems, which is a successful check with
@@ -196,6 +203,7 @@ impl Engine for PipEngine {
     async fn freeze(&self, env: &PyEnv) -> Result<String> {
         let out = Command::python(&env.interpreter)
             .args(Self::argv_freeze())
+            .timeout(watchdog::QUERY)
             .run()
             .await?;
         if !out.ok() {
@@ -257,6 +265,7 @@ impl PipEngine {
     async fn install_latest_pip(interpreter: &std::path::Path) -> Result<crate::exec::Output> {
         Command::python(interpreter)
             .args(["-m", "pip", "install", "-U", "pip"])
+            .timeout(watchdog::INSTALL)
             .run()
             .await
     }
@@ -290,6 +299,7 @@ impl PipEngine {
     async fn ensurepip(interpreter: &std::path::Path) -> Result<()> {
         let out = Command::python(interpreter)
             .args(["-m", "ensurepip", "--upgrade"])
+            .timeout(watchdog::INSTALL)
             .run()
             .await?;
         if out.ok() {

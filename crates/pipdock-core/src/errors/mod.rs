@@ -20,6 +20,11 @@ pub struct PdError {
     /// Tail of the engine's stderr, capped at the 40 lines `docs/ERROR-CATALOG.md` §3 shows.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub stderr_tail: Option<String>,
+    /// Set when this error is a run that was **stopped** rather than one that failed: cancelled by
+    /// its token or killed by its watchdog. Never on the wire -- callers turn it into a skipped
+    /// step or their own timeout code before anything is shown.
+    #[serde(skip)]
+    pub stop: Option<crate::exec::Stop>,
 }
 
 impl PdError {
@@ -30,7 +35,27 @@ impl PdError {
             code,
             message: message.into(),
             stderr_tail: None,
+            stop: None,
         }
+    }
+
+    /// Record that the run behind this error was stopped, and why.
+    #[must_use]
+    pub const fn with_stop(mut self, stop: crate::exec::Stop) -> Self {
+        self.stop = Some(stop);
+        self
+    }
+
+    /// True when the run was stopped by its cancellation token.
+    #[must_use]
+    pub fn is_cancelled(&self) -> bool {
+        self.stop == Some(crate::exec::Stop::Cancelled)
+    }
+
+    /// True when the run was stopped by its watchdog.
+    #[must_use]
+    pub const fn is_timeout(&self) -> bool {
+        matches!(self.stop, Some(crate::exec::Stop::TimedOut(_)))
     }
 
     /// Attach an engine stderr tail, truncated to the last `MAX_STDERR_TAIL_LINES` lines.
