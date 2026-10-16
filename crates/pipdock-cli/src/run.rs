@@ -772,6 +772,16 @@ fn print_preview(opts: &GlobalOpts, report: &plan::ResolutionReport) {
             }
         }
     }
+    if !report.forced.is_empty() {
+        // DISCLAIMER §2: what forcing breaks is said before anything runs, not discovered after.
+        println!("\nForced — will break:");
+        for f in &report.forced {
+            println!("  {:<32} -> {}", f.pkg, f.latest);
+            for b in &f.blockers {
+                println!("      {}", blocker_line(b));
+            }
+        }
+    }
     if let Some(detail) = &report.impossible {
         println!("\nImpossible:");
         println!("  {}", detail.explanation);
