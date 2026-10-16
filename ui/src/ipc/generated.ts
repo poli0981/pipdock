@@ -192,9 +192,16 @@ export interface CheckFinding {
 
 /** Post-execution environment verification. */
 export interface CheckReport {
+  /**
+   * Set when the check could not run at all, with the reason's code; `ok` is false then.
+   *
+   * A check that could not run used to be reported as `ok: true` — "verified" in exactly the
+   * case where nothing was verified, such as a pip broken by the run it was meant to check.
+   */
+  error?: Code | null;
   /** Details when `ok` is false. */
   findings?: CheckFinding[];
-  /** True when the engine reported no broken requirements. */
+  /** True when the check **ran** and the engine reported no broken requirements. */
   ok: boolean;
 }
 
@@ -639,7 +646,8 @@ export type MatchKind =
 /** Why a flow ended before there was anything to confirm. */
 export type NothingReason =
   | 'nothing-to-do'
-  | 'everything-skipped';
+  | 'everything-skipped'
+  | 'cancelled';
 
 /** An installed distribution with a newer release available. */
 export interface OutdatedDist {
@@ -779,6 +787,25 @@ export interface PyEnv {
   source: EnvSource;
 }
 
+/**
+ * A pin the user asked for that cannot install on this environment's Python (`PD-PKG-001`).
+ *
+ * Hard invariant 10 says PipDock enforces `Requires-Python` itself, because the engines disagree:
+ * pip refuses such a pin with the same "No matching distribution" it uses for a typo, and uv
+ * ignores an upper bound and plans it. Structured, not a sentence (invariant 4): the preview shows
+ * the required range against the environment's version, and a catalog cannot un-join a string.
+ */
+export interface PythonMismatch {
+  /** The package. */
+  pkg: PkgName;
+  /** The environment's Python, e.g. `"3.12.4"`. */
+  python: string;
+  /** That release's `Requires-Python`, verbatim. */
+  requiresPython: string;
+  /** The version that was asked for or planned. */
+  version: Version;
+}
+
 /** What a refresh did. */
 export interface RefreshReport {
   /** How long the whole refresh took. */
@@ -803,12 +830,23 @@ export interface RefreshReport {
 export interface ResolutionReport {
   /** Everything that would change if the user confirms. */
   changes?: Change[];
+  /**
+   * Packages the user chose to **force** past what installed dependents allow, each with what
+   * it will break — the "Will break" section of the preview (DISCLAIMER §2).
+   */
+  forced?: HeldBack[];
   /** Packages that could not reach `latest`, with attribution. */
   heldBack?: HeldBack[];
   /** Present when the whole resolution failed. */
   impossible?: ImpossibleDetail | null;
-  /** The engine's untouched output, kept for the log and for bug reports. */
-  raw: string;
+  /** Pins left out because their `Requires-Python` excludes this environment (`PD-PKG-001`). */
+  incompatible?: PythonMismatch[];
+  /**
+   * Yanked releases the plan would install. A warning, not a failure (`PD-PKG-003`, SP-2):
+   * both engines exit 0 and install them. Both adapters parsed these and then dropped them, so
+   * the preview never showed one.
+   */
+  yanked?: YankWarning[];
 }
 
 /** The operations that would restore a snapshot. */
@@ -1040,4 +1078,19 @@ export interface VultureFinding {
   name?: string | null;
   /** As vulture printed it, relative to the project folder. */
   path: string;
+}
+
+/**
+ * A yanked release appearing in a plan.
+ *
+ * SP-2: a yank is **not** a failure. Both engines exit 0 and install it, so this is a preview
+ * warning row, not an error path (`docs/ERROR-CATALOG.md` PD-PKG-003).
+ */
+export interface YankWarning {
+  /** The yanked distribution. */
+  pkg: PkgName;
+  /** Upstream's stated reason, when given. */
+  reason?: string | null;
+  /** The version that was yanked. */
+  version: Version;
 }

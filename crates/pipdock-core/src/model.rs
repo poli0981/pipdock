@@ -439,11 +439,17 @@ pub struct CheckFinding {
 /// Post-execution environment verification.
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct CheckReport {
-    /// True when the engine reported no broken requirements.
+    /// True when the check **ran** and the engine reported no broken requirements.
     pub ok: bool,
     /// Details when `ok` is false.
     #[serde(default)]
     pub findings: Vec<CheckFinding>,
+    /// Set when the check could not run at all, with the reason's code; `ok` is false then.
+    ///
+    /// A check that could not run used to be reported as `ok: true` — "verified" in exactly the
+    /// case where nothing was verified, such as a pip broken by the run it was meant to check.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub error: Option<Code>,
 }
 
 #[cfg(test)]

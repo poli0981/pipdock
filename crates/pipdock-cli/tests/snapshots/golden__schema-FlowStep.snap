@@ -158,12 +158,45 @@ expression: out
           "const": "everything-skipped",
           "description": "Every candidate was skipped while resolving conflicts, so no plan remains.",
           "type": "string"
+        },
+        {
+          "const": "cancelled",
+          "description": "The user stopped the resolve before it finished. Nothing was planned, nothing ran.",
+          "type": "string"
         }
       ]
     },
     "PkgName": {
       "description": "A PEP 503-normalized distribution name.\n\nConstructing one is the *only* way a package name reaches an argv array, which is what makes\nSECURITY §2's \"validated before it reaches argv\" claim structural rather than aspirational.",
       "type": "string"
+    },
+    "PythonMismatch": {
+      "description": "A pin the user asked for that cannot install on this environment's Python (`PD-PKG-001`).\n\nHard invariant 10 says PipDock enforces `Requires-Python` itself, because the engines disagree:\npip refuses such a pin with the same \"No matching distribution\" it uses for a typo, and uv\nignores an upper bound and plans it. Structured, not a sentence (invariant 4): the preview shows\nthe required range against the environment's version, and a catalog cannot un-join a string.",
+      "properties": {
+        "pkg": {
+          "$ref": "#/$defs/PkgName",
+          "description": "The package."
+        },
+        "python": {
+          "description": "The environment's Python, e.g. `\"3.12.4\"`.",
+          "type": "string"
+        },
+        "requiresPython": {
+          "description": "That release's `Requires-Python`, verbatim.",
+          "type": "string"
+        },
+        "version": {
+          "$ref": "#/$defs/Version",
+          "description": "The version that was asked for or planned."
+        }
+      },
+      "required": [
+        "pkg",
+        "version",
+        "requiresPython",
+        "python"
+      ],
+      "type": "object"
     },
     "ResolutionReport": {
       "description": "The normalized dry-run result.\n\n**Both adapters must emit this same shape** — that is the whole point of the `Engine` trait\n(ARCHITECTURE §3). The pip adapter fills it from `--dry-run --report` JSON; the uv adapter from\nuv's text plan output.\n\nThe exact field set is **provisional until spike SP-1** confirms uv's output is rich enough to\npopulate `held_back.blockers`. If it is not, SP-1's go/no-go says v1.0 ships pip-primary with uv\nbehind a beta flag.",
@@ -173,6 +206,13 @@ expression: out
           "description": "Everything that would change if the user confirms.",
           "items": {
             "$ref": "#/$defs/Change"
+          },
+          "type": "array"
+        },
+        "forced": {
+          "description": "Packages the user chose to **force** past what installed dependents allow, each with what\nit will break — the \"Will break\" section of the preview (DISCLAIMER §2).",
+          "items": {
+            "$ref": "#/$defs/HeldBack"
           },
           "type": "array"
         },
@@ -195,19 +235,51 @@ expression: out
           ],
           "description": "Present when the whole resolution failed."
         },
-        "raw": {
-          "description": "The engine's untouched output, kept for the log and for bug reports.",
-          "type": "string"
+        "incompatible": {
+          "description": "Pins left out because their `Requires-Python` excludes this environment (`PD-PKG-001`).",
+          "items": {
+            "$ref": "#/$defs/PythonMismatch"
+          },
+          "type": "array"
+        },
+        "yanked": {
+          "description": "Yanked releases the plan would install. A warning, not a failure (`PD-PKG-003`, SP-2):\nboth engines exit 0 and install them. Both adapters parsed these and then dropped them, so\nthe preview never showed one.",
+          "items": {
+            "$ref": "#/$defs/YankWarning"
+          },
+          "type": "array"
         }
       },
-      "required": [
-        "raw"
-      ],
       "type": "object"
     },
     "Version": {
       "description": "A version string as the engine reported it. Never reshaped or localized (I18N §2).",
       "type": "string"
+    },
+    "YankWarning": {
+      "description": "A yanked release appearing in a plan.\n\nSP-2: a yank is **not** a failure. Both engines exit 0 and install it, so this is a preview\nwarning row, not an error path (`docs/ERROR-CATALOG.md` PD-PKG-003).",
+      "properties": {
+        "pkg": {
+          "$ref": "#/$defs/PkgName",
+          "description": "The yanked distribution."
+        },
+        "reason": {
+          "description": "Upstream's stated reason, when given.",
+          "type": [
+            "string",
+            "null"
+          ]
+        },
+        "version": {
+          "$ref": "#/$defs/Version",
+          "description": "The version that was yanked."
+        }
+      },
+      "required": [
+        "pkg",
+        "version"
+      ],
+      "type": "object"
     }
   },
   "$schema": "https://json-schema.org/draft/2020-12/schema",

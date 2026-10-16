@@ -556,6 +556,11 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
                         println!("every package was skipped; nothing to do");
                         Exit::PlanAborted
                     }
+                    // CLI-SPEC §5: a user cancel is 130, and nothing ran.
+                    NothingReason::Cancelled => {
+                        eprintln!("cancelled before anything was planned");
+                        Exit::Cancelled
+                    }
                 });
             }
             FlowStep::NeedsConfirm { report } | FlowStep::RoundsExhausted { report } => {

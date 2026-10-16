@@ -55,8 +55,7 @@
         "oldlib"
       ],
       "explanation": "no version of oldlib is compatible with python 3.12"
-    },
-    "raw": ""
+    }
   },
   "round": 0,
   "roundsRemaining": 3

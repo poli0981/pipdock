@@ -25,6 +25,17 @@ expression: out
     "CheckReport": {
       "description": "Post-execution environment verification.",
       "properties": {
+        "error": {
+          "anyOf": [
+            {
+              "$ref": "#/$defs/Code"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "description": "Set when the check could not run at all, with the reason's code; `ok` is false then.\n\nA check that could not run used to be reported as `ok: true` — \"verified\" in exactly the\ncase where nothing was verified, such as a pip broken by the run it was meant to check."
+        },
         "findings": {
           "default": [],
           "description": "Details when `ok` is false.",
@@ -34,7 +45,7 @@ expression: out
           "type": "array"
         },
         "ok": {
-          "description": "True when the engine reported no broken requirements.",
+          "description": "True when the check **ran** and the engine reported no broken requirements.",
           "type": "boolean"
         }
       },
