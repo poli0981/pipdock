@@ -16,7 +16,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use pipdock_core::engine::{Engine, ProgressEvent, ProgressSink};
+use pipdock_core::engine::{Engine, InstallSet, ProgressEvent, ProgressSink};
 use pipdock_core::errors::Result;
 use pipdock_core::model::{
     CheckFinding, CheckReport, Dist, EngineId, EngineInfo, EnvSource, ExecMode, OutdatedDist,
@@ -61,6 +61,8 @@ struct FakeEngine {
     check: CheckReport,
     /// How Phase A ends.
     batch: Batch,
+    /// The constraints each install was given, in call order.
+    constraints: Arc<Mutex<Vec<Vec<PinnedSpec>>>>,
 }
 
 impl FakeEngine {
@@ -73,6 +75,7 @@ impl FakeEngine {
                 findings: Vec::new(),
             },
             batch: Batch::Runs,
+            constraints: Arc::new(Mutex::new(Vec::new())),
         }
     }
 
@@ -115,10 +118,15 @@ impl Engine for FakeEngine {
     async fn install(
         &self,
         _env: &PyEnv,
-        specs: &[PinnedSpec],
+        set: &InstallSet,
         mode: ExecMode,
         _sink: ProgressSink,
     ) -> Result<StepResult> {
+        let specs = &set.specs;
+        self.constraints
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .push(set.constraints.clone());
         let names: Vec<String> = specs.iter().map(|s| s.name.to_string()).collect();
         self.calls
             .lock()
@@ -734,6 +742,54 @@ async fn every_row_says_what_it_moved_from() {
             .map(|v| v.0.as_str()),
         Some("0.9")
     );
+}
+
+#[tokio::test]
+async fn an_isolated_step_holds_everything_else_where_the_preview_put_it() {
+    // SP-1's rule was applied to the resolve and nowhere else: Phase B installed each package as a
+    // bare `name==v`, free to move anything as a dependency. Every step now carries the rest of
+    // the plan at its planned versions and the untouched packages at their current ones.
+    let engine = FakeEngine::new(&["badone"]);
+    let installed = [Dist {
+        name: PkgName::parse("bystander").unwrap(),
+        version: Version("1.5".into()),
+        requires_dist: Vec::new(),
+        requires_python: None,
+        size_bytes: None,
+    }];
+    let dir = scratch();
+    let _ = std::fs::remove_dir_all(&dir);
+    let snap = snapshot_for(&dir);
+    let plan = AcceptedPlan::accept(
+        report(&[("alpha", "2.0"), ("badone", "1.0")]),
+        "envhash01".to_owned(),
+        &installed,
+        now(),
+    );
+    let summary = execute(
+        &engine,
+        &env(),
+        &plan,
+        SnapshotProof::Taken(&snap),
+        &installed,
+        now(),
+        sink(),
+    )
+    .await
+    .expect("execute");
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(summary.phase, ExecMode::Isolated);
+
+    let rendered = |set: &[PinnedSpec]| -> Vec<String> {
+        set.iter().map(PinnedSpec::to_requirement).collect()
+    };
+    let constraints = engine.constraints.lock().unwrap().clone();
+    // Phase A: the plan is the requirement, the bystander is held.
+    assert_eq!(rendered(&constraints[0]), ["bystander==1.5"]);
+    // Phase B, alpha: badone at its planned version, and the bystander.
+    assert_eq!(rendered(&constraints[1]), ["badone==1.0", "bystander==1.5"]);
+    // Phase B, badone: alpha at its planned version, and the bystander.
+    assert_eq!(rendered(&constraints[2]), ["alpha==2.0", "bystander==1.5"]);
 }
 
 #[tokio::test]
