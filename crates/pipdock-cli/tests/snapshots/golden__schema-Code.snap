@@ -37,6 +37,11 @@ expression: out
       "type": "string"
     },
     {
+      "const": "PD-ENG-004",
+      "description": "An engine command ran past its watchdog and was stopped.\n\n**Raised by PipDock, never classified from stderr.** Its own code because the alternative\nwas `PD-INT-001`, which is what the shared watchdog reported until 1.4.0: an sdist build\nstill compiling after ten minutes is not \"a PipDock bug\", and in the batch phase that error\naborted the whole run — no summary, no per-package retry.",
+      "type": "string"
+    },
+    {
       "const": "PD-ENG-999",
       "description": "Fallback for engine failures no classifier matched. Always last.",
       "type": "string"

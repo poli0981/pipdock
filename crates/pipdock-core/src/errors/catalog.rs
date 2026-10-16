@@ -88,6 +88,14 @@ pub enum Code {
     /// uv emitted a shape the adapter does not recognize (uv newer than PipDock).
     #[serde(rename = "PD-ENG-003")]
     EngUvShapeUnknown,
+    /// An engine command ran past its watchdog and was stopped.
+    ///
+    /// **Raised by PipDock, never classified from stderr.** Its own code because the alternative
+    /// was `PD-INT-001`, which is what the shared watchdog reported until 1.4.0: an sdist build
+    /// still compiling after ten minutes is not "a PipDock bug", and in the batch phase that error
+    /// aborted the whole run — no summary, no per-package retry.
+    #[serde(rename = "PD-ENG-004")]
+    EngTimedOut,
     /// Fallback for engine failures no classifier matched. Always last.
     #[serde(rename = "PD-ENG-999")]
     EngUnclassified,
@@ -233,6 +241,7 @@ impl Code {
             Self::EngNotFound => "PD-ENG-001",
             Self::EngPipTooOld => "PD-ENG-002",
             Self::EngUvShapeUnknown => "PD-ENG-003",
+            Self::EngTimedOut => "PD-ENG-004",
             Self::EngUnclassified => "PD-ENG-999",
             Self::ResImpossible => "PD-RES-001",
             Self::ResPlanStale => "PD-RES-002",
@@ -274,6 +283,7 @@ impl Code {
             Self::EngNotFound
             | Self::EngPipTooOld
             | Self::EngUvShapeUnknown
+            | Self::EngTimedOut
             | Self::EngUnclassified => Area::Eng,
             Self::ResImpossible
             | Self::ResPlanStale
@@ -310,6 +320,7 @@ impl Code {
         Self::EngNotFound,
         Self::EngPipTooOld,
         Self::EngUvShapeUnknown,
+        Self::EngTimedOut,
         Self::ResImpossible,
         Self::ResPlanStale,
         Self::ResPlanInFlight,
@@ -426,11 +437,26 @@ static CLASSIFIERS: &[Classifier] = &[
         code: Code::BldWheelFailed,
         all_of: &["failed building wheel"],
     },
+    // -- network errors Windows raises as PermissionError -----------------------
+    // Ahead of the permission rules on purpose. A firewall or AV refusing a socket is
+    // `PermissionError: [WinError 10013]`, and "network path not found" is `[WinError 53]` — both
+    // were PD-PRM-001, "use a venv", which is advice about site-packages for a network problem.
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["[winerror 10013]"],
+    },
+    Classifier {
+        code: Code::NetUnreachable,
+        all_of: &["[winerror 53]"],
+    },
     // -- permissions ---------------------------------------------------------
     // Checked before the generic OSError shapes below, which share their prefix.
+    //
+    // **The closing bracket is part of every WinError needle.** Python prints `[WinError N]`, and
+    // without the bracket "winerror 5" also matched 50, 53 and 59 and "winerror 32" matched 321.
     Classifier {
         code: Code::PrmFileLocked,
-        all_of: &["winerror 32"],
+        all_of: &["[winerror 32]"],
     },
     Classifier {
         code: Code::PrmSitePackagesReadOnly,
@@ -438,7 +464,7 @@ static CLASSIFIERS: &[Classifier] = &[
     },
     Classifier {
         code: Code::PrmSitePackagesReadOnly,
-        all_of: &["winerror 5"],
+        all_of: &["[winerror 5]"],
     },
     // -- system --------------------------------------------------------------
     Classifier {
@@ -447,7 +473,7 @@ static CLASSIFIERS: &[Classifier] = &[
     },
     Classifier {
         code: Code::SysDiskFull,
-        all_of: &["winerror 112"],
+        all_of: &["[winerror 112]"],
     },
     Classifier {
         code: Code::SysPathTooLong,
@@ -592,7 +618,7 @@ mod tests {
     fn every_variant_is_listed_in_all() {
         // `ALL` drives the fixture-coverage gate, so a variant missing from it would silently
         // escape that gate. There is no derive for "enumerate variants", hence this count check.
-        assert_eq!(Code::ALL.len(), 34, "add the new variant to Code::ALL");
+        assert_eq!(Code::ALL.len(), 35, "add the new variant to Code::ALL");
     }
 
     #[test]
@@ -686,6 +712,26 @@ mod tests {
     }
 
     #[test]
+    fn a_winerror_number_matches_exactly_and_never_as_a_prefix() {
+        // "winerror 5" used to match `[WinError 53]` — a network path — and report it as a
+        // read-only site-packages.
+        let network_path = r"OSError: [WinError 53] The network path was not found: '\\srv\share'";
+        assert_eq!(classify_stderr(network_path), Code::NetUnreachable);
+
+        let denied = r"ERROR: Could not install packages due to an OSError: [WinError 5] Access is denied: 'C:\Program Files\Python312\Lib\site-packages\x'";
+        assert_eq!(classify_stderr(denied), Code::PrmSitePackagesReadOnly);
+
+        // A firewall refusing the socket is a PermissionError by type and a network problem by
+        // meaning; the user-facing answer is the network one.
+        let socket = "PermissionError: [WinError 10013] An attempt was made to access a socket in \
+                      a way forbidden by its access permissions";
+        assert_eq!(classify_stderr(socket), Code::NetUnreachable);
+
+        let not_locked = "OSError: [WinError 321] something else entirely";
+        assert_ne!(classify_stderr(not_locked), Code::PrmFileLocked);
+    }
+
+    #[test]
     fn incidental_mentions_of_yanking_do_not_hijack_a_different_failure() {
         // pip prefixes an unrelated resolution failure with "Ignored the following yanked
         // versions", which a naive yank rule mis-classified as PD-PKG-003.
@@ -739,9 +785,9 @@ mod tests {
 
     #[test]
     fn every_documented_code_has_exactly_one_variant() {
-        // Rust has 34; docs/ERROR-CATALOG.md tabulates 31, because it folds PD-HLT-001..004 into
+        // Rust has 35; docs/ERROR-CATALOG.md tabulates 32, because it folds PD-HLT-001..004 into
         // one row. Pin the number so the next person adding a code has to notice the docs exist.
-        assert_eq!(Code::ALL.len(), 34);
+        assert_eq!(Code::ALL.len(), 35);
         let wire: HashSet<&str> = Code::ALL.iter().map(|c| c.as_str()).collect();
         assert_eq!(
             wire.len(),
