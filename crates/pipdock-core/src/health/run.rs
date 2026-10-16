@@ -165,9 +165,15 @@ pub async fn run(
             continue;
         }
 
-        match run_one(tools_dir, project, opts, tool).await {
-            Ok(out) => {
-                collect(&mut report, tool, &out)?;
+        // A tool whose output cannot be read is that tool's problem, like one that cannot run. The
+        // `?` this replaced returned from the whole run, so one deptry format change took ruff's
+        // and vulture's findings with it — the skip-and-continue rule, broken at the last step
+        // (H24).
+        match run_one(tools_dir, project, opts, tool)
+            .await
+            .and_then(|out| collect(&mut report, tool, &out))
+        {
+            Ok(()) => {
                 step.finished(Some(name), ExecMode::Isolated, StepStatus::Ok);
             }
             Err(e) => {
@@ -378,7 +384,7 @@ fn collect(report: &mut HealthReport, tool: &str, stdout: &str) -> Result<()> {
 ///
 /// Found by replacing a tool with a non-executable file of the same name — present, so the sync
 /// check said Fresh, and unrunnable, so the run reached this path.
-fn watchdog(e: PdError, tool: &str) -> PdError {
+pub(super) fn watchdog(e: PdError, tool: &str) -> PdError {
     if e.is_timeout() {
         return PdError::new(
             Code::HltTimeout,

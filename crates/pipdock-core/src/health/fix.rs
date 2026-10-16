@@ -60,6 +60,11 @@ pub struct DirtyTree {
 /// Checked rather than reasoned about, and re-check it if the process layer ever changes.
 pub async fn dirty(project: &Path) -> Option<DirtyTree> {
     let out = Command::new("git")
+        // **A repository can name a program for `git status` to run**: `core.fsmonitor` in its
+        // `.git/config`. A project folder the user downloaded rather than cloned carries its own
+        // `.git/config`, so asking "is it safe to write here" would have run whatever it named
+        // (M40). Overridden on the command line, which wins over every config file.
+        .args(["-c", "core.fsmonitor=false"])
         .arg("--no-optional-locks")
         .arg("status")
         .arg("--porcelain")
@@ -234,7 +239,8 @@ pub async fn recheck(
         .cwd(project)
         .timeout(super::TOOL_TIMEOUT)
         .run()
-        .await?;
+        .await
+        .map_err(|e| super::run::watchdog(e, "ruff"))?;
     if !super::is_findings_exit("ruff", out.code) {
         return Err(PdError::new(
             Code::HltToolFailed,
@@ -267,6 +273,7 @@ pub async fn apply(
     project: &Path,
     before: &super::report::RuffFindings,
     consent: FixConsent,
+    opts: &super::RunOptions,
 ) -> Result<FixReport> {
     use super::report::FixApplicability;
 
@@ -289,11 +296,24 @@ pub async fn apply(
     }
 
     let out = Command::new(&exe)
-        .args(["check", ".", "--fix", "--output-format", "json"])
+        .args(fix_argv(opts))
         .cwd(project)
         .timeout(super::TOOL_TIMEOUT)
         .run()
-        .await?;
+        .await
+        .map_err(|e| {
+            // Stopped part-way through is the one outcome a fix cannot report as nothing: ruff
+            // writes as it goes, so some files may already be rewritten.
+            let e = super::run::watchdog(e, "ruff");
+            if e.code == Code::HltTimeout {
+                PdError::new(
+                    Code::HltTimeout,
+                    format!("{} — some files may already have been rewritten", e.message),
+                )
+            } else {
+                e
+            }
+        })?;
     if !super::is_findings_exit("ruff", out.code) {
         return Err(PdError::new(
             Code::HltToolFailed,
@@ -315,9 +335,40 @@ pub async fn apply(
     })
 }
 
+/// The read-only run's argv plus `--fix` — **the same exclusions, by construction**.
+///
+/// The fix ran `check . --fix` with none of them (C4). The preview never looked inside `.venv`,
+/// `node_modules` or a notebook, so the fix rewrote files nobody had been shown: site-packages,
+/// and every `.ipynb` in the tree. `recheck` and the run share `ruff_argv`; now so does this.
+fn fix_argv(opts: &super::RunOptions) -> Vec<String> {
+    let mut argv = super::run::ruff_argv(opts);
+    argv.push("--fix".to_owned());
+    argv
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_fix_excludes_everything_the_preview_excluded() {
+        let opts = super::super::RunOptions {
+            excludes: vec!["generated".to_owned()],
+            ..super::super::RunOptions::default()
+        };
+        let read = super::super::run::ruff_argv(&opts);
+        let fix = fix_argv(&opts);
+        assert_eq!(
+            &fix[..read.len()],
+            read.as_slice(),
+            "the read-only argv, untouched"
+        );
+        assert_eq!(fix.last().map(String::as_str), Some("--fix"));
+        for excluded in ["*.ipynb", ".venv", "node_modules", "generated"] {
+            assert!(fix.iter().any(|a| a == excluded), "{excluded} is excluded");
+        }
+        assert!(!fix.iter().any(|a| a == "--unsafe-fixes"));
+    }
 
     #[test]
     fn a_frontend_claiming_a_clean_tree_against_a_dirty_one_is_refused() {

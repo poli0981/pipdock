@@ -354,7 +354,16 @@ async fn audit_once(audit_dir: &Path, freeze: &str, sink: &ProgressSink) -> Resu
     // `--path <site-packages>` is rejected outright alongside `--no-deps`. Written to the system
     // temp directory rather than into the user's project or the environment being audited, and
     // removed when it drops, on every path.
-    let freeze_file = crate::exec::TempFile::create("pipdock-audit", "txt", freeze)?;
+    //
+    // **Pins only.** An editable install (`-e …`) or a direct reference (`name @ file:///…`) is a
+    // line pip-audit cannot look up on an index, and it failed the whole run over one: an
+    // environment with a single `pip install -e .` could not be audited at all (H21). They are not
+    // on PyPI, so they have no PyPI advisories; the package count says how many were audited.
+    let pins: String = crate::snapshot::parse_freeze(freeze)
+        .iter()
+        .map(|(name, version)| format!("{name}=={version}\n"))
+        .collect();
+    let freeze_file = crate::exec::TempFile::create("pipdock-audit", "txt", &pins)?;
 
     let out = Command::python_tool(&exe)
         .args(argv(freeze_file.path()))

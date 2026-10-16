@@ -407,10 +407,25 @@ pub fn create(
 
 /// Snapshot ids sort lexicographically in time order, which is what makes `latest` cheap and the
 /// timeline correct without reading every sidecar. Also filename-safe: no colons.
+/// `20261016T145809-423560600Z`: fixed width, so ids sort as the times they name.
+///
+/// They were the timestamp with punctuation swapped out, and the timestamp drops trailing zeros
+/// in its fraction — so `…09-42Z` (.42 s) sorted after `…09-4235606Z` (.4235606 s), and a snapshot
+/// taken on an exact second sorted after every other one in that second (M43). [`list`] orders by
+/// `created_at` either way, so ids written before this keep their place.
 fn snapshot_id(now: jiff::Timestamp) -> String {
-    now.to_string()
-        .replace([':', '-'], "")
-        .replace(['.', '+'], "-")
+    format!(
+        "{}-{:09}Z",
+        now.strftime("%Y%m%dT%H%M%S"),
+        now.subsec_nanosecond()
+    )
+}
+
+/// An id is a filename stem PipDock wrote: digits, ASCII letters and `-`. A sidecar edited to
+/// say anything else — `..\\..\\elsewhere` — is not a snapshot to load a freeze file through
+/// (L54).
+fn is_snapshot_id(id: &str) -> bool {
+    !id.is_empty() && id.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'-')
 }
 
 /// List snapshots for an environment, newest first.
@@ -428,10 +443,13 @@ pub fn list(app_data: &Path, env_hash: &str) -> Result<Vec<Meta>> {
         .flatten()
         .filter(|e| e.file_name().to_string_lossy().ends_with(".meta.json"))
         .filter_map(|e| std::fs::read_to_string(e.path()).ok())
-        .filter_map(|raw| serde_json::from_str(&raw).ok())
+        .filter_map(|raw| serde_json::from_str::<Meta>(&raw).ok())
+        .filter(|m| is_snapshot_id(&m.id))
         .collect();
 
-    out.sort_by(|a: &Meta, b: &Meta| b.id.cmp(&a.id));
+    // Newest first, by the time each one records rather than by its id — see `snapshot_id`.
+    let when = |m: &Meta| m.created_at.parse::<jiff::Timestamp>().ok();
+    out.sort_by(|a: &Meta, b: &Meta| when(b).cmp(&when(a)).then_with(|| b.id.cmp(&a.id)));
     Ok(out)
 }
 
@@ -847,5 +865,18 @@ idna==3.4
         );
         let added: Vec<&str> = d.added.iter().map(|s| s.name.as_str()).collect();
         assert_eq!(added, ["setuptools"]);
+    }
+
+    #[test]
+    fn ids_sort_as_the_times_they_name() {
+        let at = |t: &str| snapshot_id(t.parse().expect("timestamp"));
+        let exact = at("2026-10-16T14:58:09Z");
+        let early = at("2026-10-16T14:58:09.42Z");
+        let late = at("2026-10-16T14:58:09.4235606Z");
+        assert_eq!(late, "20261016T145809-423560600Z");
+        assert!(exact < early && early < late, "{exact} {early} {late}");
+        assert!(is_snapshot_id(&late));
+        assert!(!is_snapshot_id(r"..\\..\\elsewhere"));
+        assert!(!is_snapshot_id(""));
     }
 }

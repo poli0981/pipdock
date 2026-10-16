@@ -57,7 +57,7 @@ impl DeclaredSource {
 /// # Errors
 /// `PD-ENV-003` when the path is not a readable directory, or is inside `tools_dir`.
 pub fn validate_project(project: &Path, tools_dir: &Path) -> Result<PathBuf> {
-    let canonical = project.canonicalize().map_err(|e| {
+    let canonical = project.canonicalize().map(plain).map_err(|e| {
         PdError::new(
             Code::EnvProbeFailed,
             format!("cannot read {}: {e}", project.display()),
@@ -70,7 +70,7 @@ pub fn validate_project(project: &Path, tools_dir: &Path) -> Result<PathBuf> {
         ));
     }
     // Compared against the canonical tools path, or `..` walks straight past this.
-    if let Ok(tools) = tools_dir.canonicalize()
+    if let Ok(tools) = tools_dir.canonicalize().map(plain)
         && canonical.starts_with(&tools)
     {
         return Err(PdError::new(
@@ -82,6 +82,28 @@ pub fn validate_project(project: &Path, tools_dir: &Path) -> Result<PathBuf> {
         ));
     }
     Ok(canonical)
+}
+
+/// A canonical path without Windows' verbatim prefix.
+///
+/// `canonicalize` returns `\\?\C:\…`. Used as a tool's working directory, every filename ruff
+/// and vulture reported came back under that prefix — on screen, in the saved report — and the
+/// report's own project path read the same (M47). The drive and UNC forms are the only two a
+/// project folder can take; anything else is returned untouched.
+#[must_use]
+pub fn plain(path: PathBuf) -> PathBuf {
+    let Some(text) = path.to_str() else {
+        return path;
+    };
+    if let Some(rest) = text.strip_prefix(r"\\?\UNC\") {
+        return PathBuf::from(format!(r"\\{rest}"));
+    }
+    if let Some(rest) = text.strip_prefix(r"\\?\")
+        && rest.as_bytes().get(1) == Some(&b':')
+    {
+        return PathBuf::from(rest);
+    }
+    path
 }
 
 pub fn declared_source(project: &Path) -> Result<DeclaredSource> {
@@ -227,5 +249,21 @@ mod tests {
 
     fn write(dir: &Path, name: &str) {
         std::fs::write(dir.join(name), "").expect("write");
+    }
+
+    #[test]
+    fn a_verbatim_path_comes_back_plain() {
+        assert_eq!(
+            plain(PathBuf::from(r"\\?\C:\Dự án\proj")),
+            PathBuf::from(r"C:\Dự án\proj")
+        );
+        assert_eq!(
+            plain(PathBuf::from(r"\\?\UNC\server\share\proj")),
+            PathBuf::from(r"\\server\share\proj")
+        );
+        assert_eq!(plain(PathBuf::from(r"C:\proj")), PathBuf::from(r"C:\proj"));
+        // A volume GUID path has no drive letter to fall back to, so it stays as it is.
+        let guid = r"\\?\Volume{0b1c2d3e-0000-0000-0000-000000000000}\proj";
+        assert_eq!(plain(PathBuf::from(guid)), PathBuf::from(guid));
     }
 }

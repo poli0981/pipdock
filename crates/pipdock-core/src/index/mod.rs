@@ -277,10 +277,12 @@ pub struct RefreshReport {
 pub async fn refresh(app_data: &std::path::Path, now: jiff::Timestamp) -> Result<RefreshReport> {
     let started = std::time::Instant::now();
 
-    let client = http_client()?;
-    let response = client
+    let response = shared_client()?
         .get(SIMPLE_INDEX_URL)
         .header("Accept", PEP691_ACCEPT)
+        // Tens of megabytes. The client's connect and read timeouts catch a dead connection; a
+        // slow one that is still delivering gets this long (M36).
+        .timeout(REFRESH_TIMEOUT)
         .send()
         .await
         .map_err(|e| net_err("could not fetch the package index", &e))?;
@@ -298,34 +300,52 @@ pub async fn refresh(app_data: &std::path::Path, now: jiff::Timestamp) -> Result
         .map_err(|e| net_err("could not read the package index", &e))?;
     let wire_bytes = body.len();
 
-    let doc: serde_json::Value = serde_json::from_slice(&body).map_err(|e| {
+    // Typed, borrowing the names out of the body: a `serde_json::Value` of 700,000 objects is the
+    // whole document again in allocations, for a parse that only wants one field of each (M36).
+    #[derive(serde::Deserialize)]
+    struct Simple<'a> {
+        #[serde(borrow)]
+        projects: Vec<Project<'a>>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Project<'a> {
+        #[serde(borrow)]
+        name: std::borrow::Cow<'a, str>,
+    }
+    let doc: Simple<'_> = serde_json::from_slice(&body).map_err(|e| {
         PdError::new(
             Code::NetIndexRefreshFailed,
-            format!("index is not JSON: {e}"),
+            format!("the package index is not the PEP 691 document: {e}"),
         )
     })?;
-    let projects = doc
-        .get("projects")
-        .and_then(serde_json::Value::as_array)
-        .ok_or_else(|| {
-            PdError::new(
-                Code::NetIndexRefreshFailed,
-                "index JSON has no `projects` array",
-            )
-        })?;
-
-    let rows: Vec<(String, String)> = projects
+    // An empty list is not an index, whatever said it was: a captive portal or a broken mirror.
+    // Ingesting it replaced every name with none, and search found nothing until the next week's
+    // refresh (L55).
+    if doc.projects.is_empty() {
+        return Err(PdError::new(
+            Code::NetIndexRefreshFailed,
+            "the package index listed no projects; the previous index is kept",
+        ));
+    }
+    let rows: Vec<(String, String)> = doc
+        .projects
         .iter()
-        .filter_map(|p| p.get("name")?.as_str())
-        .map(|name| (crate::model::normalize_name(name), name.to_owned()))
+        .map(|p| (crate::model::normalize_name(&p.name), p.name.to_string()))
         .collect();
 
-    // Opened only now, after the download: the ingest is synchronous, so the handle never spans an
-    // await. Holding one open across a multi-second PyPI transfer would block every other command
-    // that wanted the store, for no benefit.
-    let store = Store::open(app_data)?;
-    ingest(&store, &rows)?;
-    store.set(KEY_LAST_REFRESH, &now.to_string())?;
+    // Opened only now, after the download, and on a blocking thread: hundreds of thousands of
+    // inserts are a second of synchronous work, which on an async worker stalls every other task
+    // scheduled there (M36). The handle never spans an await.
+    let app_data = app_data.to_path_buf();
+    let stamp = now.to_string();
+    let rows = tokio::task::spawn_blocking(move || -> Result<Vec<(String, String)>> {
+        let store = Store::open(&app_data)?;
+        ingest(&store, &rows)?;
+        store.set(KEY_LAST_REFRESH, &stamp)?;
+        Ok(rows)
+    })
+    .await
+    .map_err(|e| PdError::new(Code::IntUnexpected, format!("index ingest stopped: {e}")))??;
 
     Ok(RefreshReport {
         projects: rows.len(),
@@ -546,6 +566,9 @@ pub(crate) fn shared_client() -> Result<&'static reqwest::Client> {
     Ok(CLIENT.get_or_init(|| client))
 }
 
+/// The whole-request ceiling for the index download, which is tens of megabytes.
+const REFRESH_TIMEOUT: Duration = Duration::from_secs(600);
+
 /// An HTTPS client restricted to PyPI's hosts.
 ///
 /// SECURITY §4: certificate verification is always on and redirects may not leave `pypi.org` or
@@ -555,6 +578,11 @@ fn http_client() -> Result<reqwest::Client> {
 
     reqwest::Client::builder()
         .user_agent(concat!("pipdock/", env!("CARGO_PKG_VERSION")))
+        // A dead connection is caught by these; a request's own `.timeout` bounds the whole
+        // thing. One 120 s total used to cover both, which a slow link downloading the index
+        // could exceed while making progress the whole time (M36).
+        .connect_timeout(Duration::from_secs(15))
+        .read_timeout(Duration::from_secs(60))
         .timeout(Duration::from_secs(120))
         .redirect(reqwest::redirect::Policy::custom(|attempt| {
             let host_ok = attempt.url().host_str().is_some_and(|h| {
@@ -573,15 +601,36 @@ fn http_client() -> Result<reqwest::Client> {
 }
 
 fn net_err(what: &str, e: &reqwest::Error) -> PdError {
-    // A TLS failure gets its own code because its guidance is different: corporate proxy or AV
-    // interception, and never "turn verification off" (SECURITY §4).
-    let text = e.to_string().to_ascii_lowercase();
-    let code = if text.contains("certificate") || text.contains("tls") || text.contains("ssl") {
+    let chain = error_chain(e);
+    PdError::new(net_code(&chain), format!("{what}: {chain}"))
+}
+
+/// An error and every `source()` beneath it, as one line.
+///
+/// reqwest's own message is "error sending request for url (…)"; the reason — refused, reset,
+/// "invalid peer certificate: UnknownIssuer" — is in the chain beneath it, and reading only the
+/// top made every TLS failure PD-NET-001, so PD-NET-002's corporate-proxy guidance never showed
+/// (M32).
+fn error_chain(e: &dyn std::error::Error) -> String {
+    let mut out = e.to_string();
+    let mut source = e.source();
+    while let Some(s) = source {
+        out.push_str(": ");
+        out.push_str(&s.to_string());
+        source = s.source();
+    }
+    out
+}
+
+/// A TLS failure gets its own code because its guidance is different: corporate proxy or AV
+/// interception, and never "turn verification off" (SECURITY §4).
+fn net_code(chain: &str) -> Code {
+    let text = chain.to_ascii_lowercase();
+    if text.contains("certificate") || text.contains("tls") || text.contains("ssl") {
         Code::NetTlsFailure
     } else {
         Code::NetUnreachable
-    };
-    PdError::new(code, format!("{what}: {e}"))
+    }
 }
 
 #[cfg(test)]
@@ -808,5 +857,42 @@ mod tests {
             .set(KEY_LAST_REFRESH, &now.to_string())
             .expect("write");
         assert_eq!(last_refresh(&store).expect("read"), Some(now));
+    }
+
+    #[test]
+    fn a_tls_failure_below_a_generic_message_is_still_a_tls_failure() {
+        // reqwest says "error sending request"; the certificate is two sources down.
+        #[derive(Debug)]
+        struct Layer(&'static str, Option<Box<Layer>>);
+        impl std::fmt::Display for Layer {
+            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+                f.write_str(self.0)
+            }
+        }
+        impl std::error::Error for Layer {
+            fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+                self.1.as_deref().map(|l| l as _)
+            }
+        }
+        let e = Layer(
+            "error sending request for url (https://pypi.org/simple/)",
+            Some(Box::new(Layer(
+                "client error (Connect)",
+                Some(Box::new(Layer(
+                    "invalid peer certificate: UnknownIssuer",
+                    None,
+                ))),
+            ))),
+        );
+        let chain = error_chain(&e);
+        assert!(
+            chain.ends_with("invalid peer certificate: UnknownIssuer"),
+            "{chain}"
+        );
+        assert_eq!(net_code(&chain), Code::NetTlsFailure);
+        assert_eq!(
+            net_code("error sending request: connection refused"),
+            Code::NetUnreachable
+        );
     }
 }
