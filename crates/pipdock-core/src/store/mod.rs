@@ -5,9 +5,10 @@
 //! lifetime — deleting the app data folder is documented as a complete reset (SECURITY §8), and
 //! that promise is easier to keep with one file than four.
 //!
-//! Migrations are forward-only and idempotent, applied on every open. There is no downgrade path:
-//! an older PipDock opening a newer database is a situation the updater does not create, and
-//! pretending to support it would mean writing migrations nobody can test.
+//! Migrations are forward-only and idempotent, and run only when the database's `user_version` is
+//! older than this build's. There is no downgrade path, but an older PipDock opening a newer
+//! database must not *lower* the version either — it used to set it unconditionally, so the next
+//! newer build re-ran every migration.
 
 use std::path::{Path, PathBuf};
 
@@ -19,7 +20,7 @@ use crate::errors::{Code, PdError, Result};
 pub const DB_FILE: &str = "index.db";
 
 /// Schema version this build expects. Bump when adding a migration.
-pub const SCHEMA_VERSION: i64 = 3;
+pub const SCHEMA_VERSION: i64 = 4;
 
 /// An open store.
 #[derive(Debug)]
@@ -117,10 +118,23 @@ impl Store {
             PdError::new(Code::IntUnexpected, format!("store migration failed: {e}"))
         };
 
+        // Per connection, so every open; everything below is per database, and the database
+        // remembers it. Every open used to run the whole batch — a `journal_mode` write and eight
+        // `CREATE TABLE`s — on a store some paths open twice per metadata lookup (M38).
+        self.conn
+            .execute_batch("PRAGMA foreign_keys = ON;")
+            .map_err(sql)?;
+        let current: i64 = self
+            .conn
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .map_err(sql)?;
+        if current >= SCHEMA_VERSION {
+            return Ok(());
+        }
+
         self.conn
             .execute_batch(
                 "PRAGMA journal_mode = WAL;
-                 PRAGMA foreign_keys = ON;
 
                  CREATE TABLE IF NOT EXISTS names (
                      name        TEXT NOT NULL,
@@ -168,6 +182,16 @@ impl Store {
                  CREATE TABLE IF NOT EXISTS kv (
                      key   TEXT PRIMARY KEY,
                      value TEXT NOT NULL
+                 );
+
+                 -- v4. `Requires-Python` of one release, as PyPI publishes it (crate::release).
+                 -- An uploaded release's metadata never changes, so a row is never refreshed;
+                 -- NULL is the answer \"declares none\", not \"unknown\", which is never stored.
+                 CREATE TABLE IF NOT EXISTS release_meta (
+                     normalized       TEXT NOT NULL,
+                     version          TEXT NOT NULL,
+                     requires_python  TEXT,
+                     PRIMARY KEY (normalized, version)
                  );",
             )
             .map_err(sql)?;
@@ -396,5 +420,42 @@ mod tests {
         assert_eq!(version, SCHEMA_VERSION);
 
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn an_older_build_never_lowers_the_version() {
+        let dir = std::env::temp_dir().join(format!("pd-store-newer-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = Store::open(&dir).expect("open");
+        store
+            .conn()
+            .pragma_update(None, "user_version", SCHEMA_VERSION + 1)
+            .expect("a newer build was here");
+        drop(store);
+
+        let reopened = Store::open(&dir).expect("this build opens it");
+        let version: i64 = reopened
+            .conn()
+            .pragma_query_value(None, "user_version", |r| r.get(0))
+            .expect("version");
+        assert_eq!(version, SCHEMA_VERSION + 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_v3_store_gains_the_release_cache() {
+        let store = Store::in_memory().expect("open");
+        store
+            .conn()
+            .execute_batch("DROP TABLE release_meta; PRAGMA user_version = 3;")
+            .expect("rewind to v3");
+        store.migrate().expect("migrate");
+        store
+            .conn()
+            .execute(
+                "INSERT INTO release_meta (normalized, version, requires_python) VALUES ('a', '1', NULL)",
+                [],
+            )
+            .expect("the v4 table exists");
     }
 }

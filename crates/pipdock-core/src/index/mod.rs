@@ -532,6 +532,20 @@ async fn fetch_metadata(name: &PkgName) -> Result<PackageMeta> {
     })
 }
 
+/// One PyPI client for the process, for the many small requests a plan's lookups make — each
+/// [`http_client`] call builds a connection pool and a TLS configuration from scratch.
+///
+/// # Errors
+/// `PD-INT-001` when the client cannot be built.
+pub(crate) fn shared_client() -> Result<&'static reqwest::Client> {
+    static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+    if let Some(client) = CLIENT.get() {
+        return Ok(client);
+    }
+    let client = http_client()?;
+    Ok(CLIENT.get_or_init(|| client))
+}
+
 /// An HTTPS client restricted to PyPI's hosts.
 ///
 /// SECURITY §4: certificate verification is always on and redirects may not leave `pypi.org` or

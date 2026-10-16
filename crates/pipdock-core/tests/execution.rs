@@ -125,6 +125,7 @@ impl Engine for FakeEngine {
             forced: Vec::new(),
             yanked: Vec::new(),
             raw: String::new(),
+            declared_python: Default::default(),
         })
     }
     async fn install(
@@ -291,6 +292,7 @@ fn report(packages: &[(&str, &str)]) -> ResolutionReport {
         forced: Vec::new(),
         yanked: Vec::new(),
         raw: String::new(),
+        declared_python: Default::default(),
     }
 }
 

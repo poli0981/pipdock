@@ -308,6 +308,7 @@ mod tests {
             forced: Vec::new(),
             yanked: Vec::new(),
             raw: String::new(),
+            declared_python: Default::default(),
         }
     }
 

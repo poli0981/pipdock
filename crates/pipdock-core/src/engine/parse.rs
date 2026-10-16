@@ -104,6 +104,7 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
 
     let mut changes = Vec::new();
     let mut yanked = Vec::new();
+    let mut declared_python = std::collections::BTreeMap::new();
 
     for entry in doc
         .get("install")
@@ -128,6 +129,13 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
             continue;
         }
         let to = Version(raw_version.to_owned());
+        if let Some(requires) = meta
+            .get("requires_python")
+            .and_then(serde_json::Value::as_str)
+            .filter(|s| !s.trim().is_empty())
+        {
+            declared_python.insert(name.clone(), requires.to_owned());
+        }
 
         if entry.get("is_yanked").and_then(serde_json::Value::as_bool) == Some(true) {
             yanked.push(YankWarning {
@@ -166,6 +174,7 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
             // pip's stderr — its warnings — not the `--report` document on stdout, which carries
             // every package's README and is already parsed above.
             raw: stderr.to_owned(),
+            declared_python,
         },
         yanked,
     })
@@ -436,6 +445,7 @@ pub fn uv_plan(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedP
             forced: Vec::new(),
             yanked: Vec::new(),
             raw: text.to_owned(),
+            declared_python: Default::default(),
         },
         yanked: uv_yank_warnings(text),
     })
