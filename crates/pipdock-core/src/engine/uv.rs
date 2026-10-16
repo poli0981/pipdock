@@ -18,7 +18,7 @@
 use async_trait::async_trait;
 
 use crate::errors::Result;
-use crate::exec::Command;
+use crate::exec::{Command, watchdog};
 use crate::model::{
     CheckReport, Dist, EngineId, EngineInfo, ExecMode, OutdatedDist, PinnedSpec, PkgName, PyEnv,
     StepResult,
@@ -85,7 +85,12 @@ impl Engine for UvEngine {
     async fn info(&self, _env: &PyEnv) -> EngineInfo {
         // uv is a standalone binary on PATH, not a module inside the environment, so this is the
         // one engine query that does not involve the interpreter.
-        match Command::new("uv").arg("--version").run().await {
+        match Command::new("uv")
+            .arg("--version")
+            .timeout(watchdog::QUERY)
+            .run()
+            .await
+        {
             Ok(o) if o.ok() => EngineInfo {
                 id: EngineId::Uv,
                 // "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)" -> "0.11.32"
@@ -104,6 +109,7 @@ impl Engine for UvEngine {
         let python = env.interpreter.display().to_string();
         let out = Command::new("uv")
             .args(Self::argv_list(&python))
+            .timeout(watchdog::QUERY)
             .run()
             .await?;
         if !out.ok() {
@@ -123,6 +129,7 @@ impl Engine for UvEngine {
                 "--python".to_owned(),
                 python,
             ])
+            .timeout(watchdog::OUTDATED)
             .run()
             .await?;
         if !out.ok() {
@@ -139,6 +146,7 @@ impl Engine for UvEngine {
         let python = env.interpreter.display().to_string();
         let out = Command::new("uv")
             .args(Self::argv_dry_run(&python, &requirements))
+            .timeout(watchdog::RESOLVE)
             .run()
             .await?;
         // uv exits non-zero on an unsatisfiable set, but its message is the most useful thing it
@@ -163,6 +171,7 @@ impl Engine for UvEngine {
         argv.extend(specs.iter().map(PinnedSpec::to_requirement));
         let out = Command::new("uv")
             .args(argv)
+            .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, single_pkg(specs), mode)
             .await?;
@@ -185,6 +194,7 @@ impl Engine for UvEngine {
         argv.extend(names.iter().map(ToString::to_string));
         let out = Command::new("uv")
             .args(argv)
+            .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, names.first().cloned(), ExecMode::Isolated)
             .await?;
@@ -200,6 +210,7 @@ impl Engine for UvEngine {
                 "--python".to_owned(),
                 python,
             ])
+            .timeout(watchdog::QUERY)
             .run()
             .await?;
         // uv reports findings on stderr where pip uses stdout, so both are given to the parser.
@@ -211,6 +222,7 @@ impl Engine for UvEngine {
         let python = env.interpreter.display().to_string();
         let out = Command::new("uv")
             .args(Self::argv_freeze(&python))
+            .timeout(watchdog::QUERY)
             .run()
             .await?;
         if !out.ok() {

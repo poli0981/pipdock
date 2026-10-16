@@ -17,16 +17,52 @@ use std::path::{Path, PathBuf};
 use std::process::Stdio;
 use std::time::Duration;
 
-use tokio::io::{AsyncBufReadExt, BufReader};
+use tokio::io::{AsyncBufReadExt, AsyncRead, BufReader};
 use tokio::process::Command as TokioCommand;
 use tokio_util::sync::CancellationToken;
 
-use crate::engine::{ProgressEvent, ProgressSink, Stream};
+use crate::engine::{EventSink, ProgressEvent, ProgressSink, Stream};
 use crate::errors::{Code, PdError, Result};
 use crate::model::{ExecMode, PkgName};
 
-/// Default watchdog. Long resolves on a big environment are normal; hangs are not.
-pub const DEFAULT_TIMEOUT: Duration = Duration::from_secs(600);
+/// Default watchdog, for anything that does not name its own in [`watchdog`].
+pub const DEFAULT_TIMEOUT: Duration = watchdog::RESOLVE;
+
+/// Watchdogs by kind of work.
+///
+/// One 600 s budget used to cover everything, which was wrong in both directions: a hung `py -0p`
+/// held the Environments screen for ten minutes, and a source build of scipy -- legitimately slow
+/// -- was killed at the same ten. A watchdog is a unit, not a number (CLAUDE.md, from P1-1): each
+/// constant here is sized for one kind of operation.
+pub mod watchdog {
+    use std::time::Duration;
+
+    /// `pip install` / `uv pip install` / uninstall. Building an sdist can take many minutes.
+    pub const INSTALL: Duration = Duration::from_secs(30 * 60);
+    /// A dry-run resolve, including pip's backtracking on a large environment.
+    pub const RESOLVE: Duration = Duration::from_secs(10 * 60);
+    /// `list --outdated`, which makes one index request per installed package.
+    pub const OUTDATED: Duration = Duration::from_secs(10 * 60);
+    /// Local queries: `list`, `freeze`, `check`, `--version`.
+    pub const QUERY: Duration = Duration::from_secs(3 * 60);
+    /// `probe.py` against one interpreter. It reads metadata files and nothing else.
+    pub const PROBE: Duration = Duration::from_secs(60);
+    /// Discovery listings: `py -0p`, `uv python list`.
+    pub const DISCOVERY: Duration = Duration::from_secs(30);
+}
+
+/// Why a run ended before its program did.
+///
+/// Carried on the [`PdError`] such a run returns ([`PdError::stop`]), so a caller asks a typed
+/// question. Three modules used to read the *message* back instead -- `"cancelled:"`, `"timed
+/// out"` -- each with its own copy of the prefixes `Command::stopped` happened to write.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Stop {
+    /// The command's [`CancellationToken`] was tripped.
+    Cancelled,
+    /// The watchdog fired after this long.
+    TimedOut(Duration),
+}
 
 /// Wait for cancellation, or never, when no token was supplied.
 ///
@@ -78,6 +114,9 @@ pub struct Command {
     env: HashMap<String, String>,
     timeout: Duration,
     cancel: Option<CancellationToken>,
+    /// The program is a Python interpreter, so "not found" means the environment is gone
+    /// (`PD-ENV-001`) rather than that an engine needs installing (`PD-ENG-001`).
+    interpreter: bool,
 }
 
 impl Command {
@@ -91,6 +130,7 @@ impl Command {
             env: HashMap::new(),
             timeout: DEFAULT_TIMEOUT,
             cancel: None,
+            interpreter: false,
         }
     }
 
@@ -99,9 +139,27 @@ impl Command {
     /// Use this for **every** `python -m pip …` and `probe.py` call. `PYTHONUTF8=1` covers the
     /// interpreter's own text handling and `PYTHONIOENCODING=utf-8` covers the stdio streams pip's
     /// vendored `rich` writes through.
+    ///
+    /// **Not enough on its own for a `-I` run.** Isolated mode implies `-E`, which ignores every
+    /// `PYTHON*` variable, so `probe.py` must also pass `-X utf8` (see `envs::probe`).
     #[must_use]
     pub fn python(interpreter: impl Into<PathBuf>) -> Self {
-        Self::new(interpreter)
+        let mut cmd = Self::new(interpreter)
+            .env("PYTHONIOENCODING", "utf-8")
+            .env("PYTHONUTF8", "1");
+        cmd.interpreter = true;
+        cmd
+    }
+
+    /// Invoke a Python **console script** -- vulture, deptry, pip-audit -- with the same mitigation.
+    ///
+    /// Their `.exe` is a launcher for the tools venv's interpreter, so the variables reach Python
+    /// exactly as they do for [`Command::python`]. Spawned with [`Command::new`] they were missing:
+    /// a non-ASCII file name in the user's project could crash vulture's report on cp1252 and read
+    /// as PD-HLT-002, "the tool stopped with an error".
+    #[must_use]
+    pub fn python_tool(exe: impl Into<PathBuf>) -> Self {
+        Self::new(exe)
             .env("PYTHONIOENCODING", "utf-8")
             .env("PYTHONUTF8", "1")
     }
@@ -156,11 +214,39 @@ impl Command {
     }
 
     /// Why a run ended early. Both arms kill the child on the way out.
-    fn stopped(&self, reason: &str) -> PdError {
-        PdError::new(
-            Code::IntUnexpected,
-            format!("{reason}: {}", self.program.display()),
-        )
+    ///
+    /// The message keeps its old wording for the log, but nothing may read it: the typed answer is
+    /// [`PdError::stop`]. A cancellation keeps `PD-INT-001` because it is never meant to reach a
+    /// user -- every caller turns a cancelled step into a *skipped* one -- while a timeout is
+    /// `PD-ENG-004`, which callers on other paths (Code Health, the audit) remap to their own code.
+    fn stopped(&self, stop: Stop) -> PdError {
+        let program = self.program.display();
+        match stop {
+            Stop::Cancelled => PdError::new(Code::IntUnexpected, format!("cancelled: {program}")),
+            Stop::TimedOut(after) => PdError::new(
+                Code::EngTimedOut,
+                format!("timed out after {after:?}: {program}"),
+            ),
+        }
+        .with_stop(stop)
+    }
+
+    /// Map a failure to *start* the program onto the code whose advice fits.
+    ///
+    /// Everything used to be `PD-ENG-001`, "install the engine": for a deleted venv's
+    /// `python.exe` that should be `PD-ENV-001`, and for a command line past Windows' 32,767
+    /// characters (`ERROR_FILENAME_EXCED_RANGE`, 206) it is a path-length problem.
+    fn spawn_error(&self, e: &std::io::Error) -> PdError {
+        const ERROR_FILENAME_EXCED_RANGE: i32 = 206;
+        let program = self.program.display();
+        let code = if e.raw_os_error() == Some(ERROR_FILENAME_EXCED_RANGE) {
+            Code::SysPathTooLong
+        } else if e.kind() == std::io::ErrorKind::NotFound && self.interpreter {
+            Code::EnvInterpreterMissing
+        } else {
+            Code::EngNotFound
+        };
+        PdError::new(code, format!("could not run {program}: {e}"))
     }
 
     /// The argv this command would run, for logging and for the bug-report ring buffer.
@@ -205,28 +291,23 @@ impl Command {
     pub async fn run(&self) -> Result<Output> {
         // Spawned rather than `.output()`ed, so the child can be put in a job before it is waited
         // on. `.output()` owns the child and never lends out a handle.
-        let child = self.build().spawn().map_err(|e| {
-            PdError::new(
-                Code::EngNotFound,
-                format!("could not run {}: {e}", self.program.display()),
-            )
-        })?;
+        let child = self.build().spawn().map_err(|e| self.spawn_error(&e))?;
         let tree = TreeGuard::attach(&child);
 
         let out = tokio::select! {
             out = child.wait_with_output() => out,
             () = tokio::time::sleep(self.timeout) => {
-                return Err(self.stopped(&format!("timed out after {:?}", self.timeout)));
+                return Err(self.stopped(Stop::TimedOut(self.timeout)));
             }
             () = cancelled(self.cancel.as_ref()) => {
-                return Err(self.stopped("cancelled"));
+                return Err(self.stopped(Stop::Cancelled));
             }
         };
         drop(tree);
         let out = out.map_err(|e| {
             PdError::new(
-                Code::EngNotFound,
-                format!("could not run {}: {e}", self.program.display()),
+                Code::IntUnexpected,
+                format!("waiting on {} failed: {e}", self.program.display()),
             )
         })?;
         Ok(Output {
@@ -252,78 +333,37 @@ impl Command {
         // The step index comes from the caller's sink rather than a parameter: an adapter cannot
         // know its own position in the plan, which is why every call site used to pass 0.
         let step = sink.step;
-        let mut child = self.build().spawn().map_err(|e| {
-            PdError::new(
-                Code::EngNotFound,
-                format!("could not run {}: {e}", self.program.display()),
-            )
-        })?;
+        let mut child = self.build().spawn().map_err(|e| self.spawn_error(&e))?;
         // Held until this function returns. Dropping it — which the timeout and cancel arms below
         // do by returning — terminates the whole tree, not just `child`.
         let _tree = TreeGuard::attach(&child);
 
         let stdout = child.stdout.take();
         let stderr = child.stderr.take();
-
-        let pump = |reader: Option<tokio::process::ChildStdout>| {
-            let sink = sink.tx.clone();
-            let pkg = pkg.clone();
-            async move {
-                let mut buf = String::new();
-                if let Some(r) = reader {
-                    let mut lines = BufReader::new(r).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        // Send failure means the UI stopped listening; keep capturing regardless
-                        // so the summary and the log are still complete.
-                        let _ = sink.send(ProgressEvent::Line {
-                            step,
-                            pkg: pkg.clone(),
-                            phase,
-                            stream: Stream::Stdout,
-                            line: line.clone(),
-                        });
-                        buf.push_str(&line);
-                        buf.push('\n');
-                    }
-                }
-                buf
-            }
-        };
-        let pump_err = |reader: Option<tokio::process::ChildStderr>| {
-            let sink = sink.tx.clone();
-            let pkg = pkg.clone();
-            async move {
-                let mut buf = String::new();
-                if let Some(r) = reader {
-                    let mut lines = BufReader::new(r).lines();
-                    while let Ok(Some(line)) = lines.next_line().await {
-                        let _ = sink.send(ProgressEvent::Line {
-                            step,
-                            pkg: pkg.clone(),
-                            phase,
-                            stream: Stream::Stderr,
-                            line: line.clone(),
-                        });
-                        buf.push_str(&line);
-                        buf.push('\n');
-                    }
-                }
-                buf
-            }
+        let tag = |stream| LineTag {
+            tx: sink.tx.clone(),
+            step,
+            pkg: pkg.clone(),
+            phase,
+            stream,
         };
 
         let run = async {
-            let (out, err, status) = tokio::join!(pump(stdout), pump_err(stderr), child.wait());
+            let (out, err, status) = tokio::join!(
+                pump(stdout, tag(Stream::Stdout)),
+                pump(stderr, tag(Stream::Stderr)),
+                child.wait()
+            );
             (out, err, status)
         };
 
         let (stdout, stderr, status) = tokio::select! {
             triple = run => triple,
             () = tokio::time::sleep(self.timeout) => {
-                return Err(self.stopped(&format!("timed out after {:?}", self.timeout)));
+                return Err(self.stopped(Stop::TimedOut(self.timeout)));
             }
             () = cancelled(self.cancel.as_ref()) => {
-                return Err(self.stopped("cancelled"));
+                return Err(self.stopped(Stop::Cancelled));
             }
         };
 
@@ -337,6 +377,52 @@ impl Command {
             stderr,
         })
     }
+}
+
+/// Where one stream's lines are sent, and what each is tagged with.
+struct LineTag {
+    tx: EventSink,
+    step: usize,
+    pkg: Option<PkgName>,
+    phase: ExecMode,
+    stream: Stream,
+}
+
+/// Read one stream to its end, forwarding each line to the drawer, and return it whole.
+///
+/// **Bytes, decoded lossily -- never `lines()`.** tokio's `Lines` returns an error at the first
+/// byte that is not UTF-8, and the loop this replaced treated that as end of stream: it stopped
+/// reading and dropped the pipe, so the child died on a broken pipe mid-install and the stderr the
+/// classifier needed was cut off at that point. MSVC writes its diagnostics in the OEM code page,
+/// so a non-English Windows was one failed source build away from it.
+async fn pump<R: AsyncRead + Unpin>(reader: Option<R>, tag: LineTag) -> String {
+    let mut buf = String::new();
+    let Some(reader) = reader else {
+        return buf;
+    };
+    let mut reader = BufReader::new(reader);
+    let mut raw = Vec::new();
+    loop {
+        raw.clear();
+        match reader.read_until(b'\n', &mut raw).await {
+            Ok(0) | Err(_) => break,
+            Ok(_) => {}
+        }
+        let text = String::from_utf8_lossy(&raw);
+        let line = text.trim_end_matches(['\n', '\r']);
+        // Send failure means the UI stopped listening; keep capturing regardless so the summary
+        // and the log are still complete.
+        let _ = tag.tx.send(ProgressEvent::Line {
+            step: tag.step,
+            pkg: tag.pkg.clone(),
+            phase: tag.phase,
+            stream: tag.stream,
+            line: line.to_owned(),
+        });
+        buf.push_str(line);
+        buf.push('\n');
+    }
+    buf
 }
 
 /// Kills a spawned command **and everything it spawned** when dropped.
@@ -387,29 +473,108 @@ impl TreeGuard {
     }
 }
 
-/// Write `contents` to a uniquely named temp file and return its path.
+/// A file in the temp directory that is deleted when this is dropped.
 ///
-/// SECURITY §2: `probe.py` is written with a random name per invocation and never installed into
-/// the environment. The caller removes it; a leaked file in the temp directory is harmless, an
-/// overwritten one would not be.
-///
-/// # Errors
-/// `PD-SYS-002` when the file cannot be written.
-pub fn write_temp(prefix: &str, extension: &str, contents: &str) -> Result<PathBuf> {
-    use std::hash::{BuildHasher as _, RandomState};
+/// SECURITY §2: what PipDock hands an interpreter or an engine -- `probe.py`, a requirements file,
+/// a freeze for pip-audit -- is written under a fresh random name and never installed anywhere.
+/// The name is created with `create_new`, so an existing file is never written through: a leaked
+/// temp file is harmless, an overwritten one would not be. (The function this replaced documented
+/// that rule and then called `fs::write`, which overwrites.)
+#[derive(Debug)]
+pub struct TempFile {
+    path: PathBuf,
+}
 
-    let dir = std::env::temp_dir();
-    // RandomState is seeded by the OS per process; hashing a fresh allocation's address plus a
-    // counter gives a unique-enough name without pulling in a rand dependency.
-    let nonce = RandomState::new().hash_one(std::time::Instant::now().elapsed().as_nanos());
-    let path = dir.join(format!("{prefix}-{nonce:016x}.{extension}"));
-    std::fs::write(&path, contents).map_err(|e| {
-        PdError::new(
-            Code::SysDiskFull,
-            format!("could not write {}: {e}", path.display()),
-        )
-    })?;
-    Ok(path)
+impl TempFile {
+    /// Write `contents` to a new, uniquely named file.
+    ///
+    /// # Errors
+    /// `PD-SYS-002` when the temp directory is full, `PD-SYS-001` for a path Windows refuses as too
+    /// long, `PD-PRM-001` when it is not writable, `PD-INT-001` otherwise.
+    pub fn create(prefix: &str, extension: &str, contents: &str) -> Result<Self> {
+        use std::io::Write as _;
+
+        let dir = std::env::temp_dir();
+        let mut last = None;
+        // A collision needs the same 64-bit nonce twice; the retry is for that theoretical case
+        // and for a planted file, which `create_new` refuses rather than writes through.
+        for _ in 0..8 {
+            let path = dir.join(format!("{prefix}-{:016x}.{extension}", nonce()));
+            match std::fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&path)
+            {
+                Ok(mut file) => {
+                    return match file.write_all(contents.as_bytes()) {
+                        Ok(()) => Ok(Self { path }),
+                        Err(e) => {
+                            drop(file);
+                            let _ = std::fs::remove_file(&path);
+                            Err(io_error(&path, &e))
+                        }
+                    };
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => last = Some(e),
+                Err(e) => return Err(io_error(&path, &e)),
+            }
+        }
+        Err(PdError::new(
+            Code::IntUnexpected,
+            format!(
+                "could not create a unique temp file in {}: {}",
+                dir.display(),
+                last.map(|e| e.to_string()).unwrap_or_default()
+            ),
+        ))
+    }
+
+    /// Where the file is.
+    #[must_use]
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+}
+
+impl Drop for TempFile {
+    fn drop(&mut self) {
+        // Best effort: a file the OS still holds open (an antivirus scan, say) stays behind,
+        // which is untidy and harmless.
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
+/// A per-call nonce: the process id, a process-wide counter and the clock, hashed with a
+/// `RandomState` (randomly keyed per process). Unique without a `rand` dependency.
+fn nonce() -> u64 {
+    use std::hash::{BuildHasher as _, RandomState};
+    use std::sync::atomic::{AtomicU64, Ordering};
+
+    static COUNTER: AtomicU64 = AtomicU64::new(0);
+    let count = COUNTER.fetch_add(1, Ordering::Relaxed);
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map_or(0, |d| d.as_nanos());
+    RandomState::new().hash_one((std::process::id(), count, now))
+}
+
+/// Map a filesystem failure onto the catalog code whose advice fits it.
+///
+/// Shared so the shell stops answering every read or write failure with "not enough free disk
+/// space" (`PD-SYS-002`), which it did for permission errors and missing files alike.
+#[must_use]
+pub fn io_error(path: &Path, e: &std::io::Error) -> PdError {
+    const ERROR_DISK_FULL: i32 = 112;
+    const ERROR_FILENAME_EXCED_RANGE: i32 = 206;
+    let code = match (e.raw_os_error(), e.kind()) {
+        (Some(ERROR_DISK_FULL), _) | (_, std::io::ErrorKind::StorageFull) => Code::SysDiskFull,
+        (Some(ERROR_FILENAME_EXCED_RANGE), _) => Code::SysPathTooLong,
+        (_, std::io::ErrorKind::PermissionDenied | std::io::ErrorKind::ReadOnlyFilesystem) => {
+            Code::PrmSitePackagesReadOnly
+        }
+        _ => Code::IntUnexpected,
+    };
+    PdError::new(code, format!("{}: {e}", path.display()))
 }
 
 /// Canonicalize an interpreter path for identity purposes.
@@ -699,8 +864,63 @@ mod tests {
         // does not become the only one.
         let cmd = a_slow_command().timeout(Duration::from_millis(300));
         let err = cmd.run().await.expect_err("must time out");
-        assert_eq!(err.code, Code::IntUnexpected);
-        assert!(err.message.contains("timed out"), "{}", err.message);
+        // An engine timeout, not "PipDock hit an internal error" — and said in the type, so no
+        // caller has to read the message to know.
+        assert_eq!(err.code, Code::EngTimedOut);
+        assert!(err.is_timeout(), "{err:?}");
+        assert!(!err.is_cancelled());
+    }
+
+    #[tokio::test]
+    async fn a_cancelled_run_says_so_in_its_type() {
+        let token = CancellationToken::new();
+        let cmd = a_slow_command().cancel(token.clone());
+        let handle = tokio::spawn(async move { cmd.run().await });
+        tokio::time::sleep(Duration::from_millis(200)).await;
+        token.cancel();
+        let err = handle
+            .await
+            .expect("task joins")
+            .expect_err("a cancelled run must not report success");
+        assert!(err.is_cancelled(), "{err:?}");
+        assert!(!err.is_timeout());
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    async fn the_pump_reads_past_bytes_that_are_not_utf8() {
+        // The bug: tokio's `lines()` errors at the first non-UTF-8 byte, the old loop took that as
+        // end of stream and dropped the pipe — so everything after it was lost, and a real child
+        // would die writing to a closed pipe. MSVC prints in the OEM code page, so this is a
+        // source build on a non-English Windows. `type` writes the bytes back verbatim.
+        let file = TempFile::create("pd-test-bytes", "txt", "").expect("temp file");
+        std::fs::write(
+            file.path(),
+            b"before\r\nL\xf6sung \xe0 \x81\x8d broken\r\nafter the bad line\r\n",
+        )
+        .expect("write raw bytes");
+
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+        let sink = ProgressSink::new(tx, 1, CancellationToken::new());
+        let out = Command::new("cmd")
+            .args(["/C", "type", &file.path().display().to_string()])
+            .run_streaming(&sink, None, ExecMode::Batch)
+            .await
+            .expect("the command runs");
+        drop(sink);
+
+        assert!(
+            out.stdout.contains("after the bad line"),
+            "output after the invalid bytes was lost: {:?}",
+            out.stdout
+        );
+        let mut lines = 0;
+        while let Some(event) = rx.recv().await {
+            if matches!(event, ProgressEvent::Line { .. }) {
+                lines += 1;
+            }
+        }
+        assert_eq!(lines, 3, "every line reaches the drawer, lossily decoded");
     }
 
     #[tokio::test]
@@ -726,13 +946,54 @@ mod tests {
         assert_eq!(err.code, Code::EngNotFound);
     }
 
+    #[tokio::test]
+    async fn a_missing_interpreter_is_an_environment_error() {
+        // A deleted venv's python.exe used to be PD-ENG-001, "install the engine". The engine is
+        // fine; the environment is gone.
+        let err = Command::python(r"C:\pipdock\no\such\venv\Scripts\python.exe")
+            .arg("--version")
+            .run()
+            .await
+            .expect_err("missing interpreter must fail");
+        assert_eq!(err.code, Code::EnvInterpreterMissing);
+    }
+
     #[test]
-    fn temp_files_get_unique_names() {
-        let a = write_temp("pd-test", "txt", "a").expect("write");
-        let b = write_temp("pd-test", "txt", "b").expect("write");
-        assert_ne!(a, b, "two probe writes must not collide");
-        let _ = std::fs::remove_file(a);
-        let _ = std::fs::remove_file(b);
+    fn temp_files_get_unique_names_and_go_away_on_drop() {
+        let a = TempFile::create("pd-test", "txt", "a").expect("write");
+        let b = TempFile::create("pd-test", "txt", "b").expect("write");
+        assert_ne!(a.path(), b.path(), "two probe writes must not collide");
+        assert_eq!(std::fs::read_to_string(a.path()).expect("read"), "a");
+        let (pa, pb) = (a.path().to_path_buf(), b.path().to_path_buf());
+        drop(a);
+        drop(b);
+        assert!(
+            !pa.exists() && !pb.exists(),
+            "dropping a TempFile removes it"
+        );
+    }
+
+    #[test]
+    fn filesystem_failures_carry_the_code_whose_advice_fits() {
+        use std::io::{Error, ErrorKind};
+        let p = Path::new(r"C:\x");
+        assert_eq!(
+            io_error(p, &Error::from_raw_os_error(112)).code,
+            Code::SysDiskFull
+        );
+        assert_eq!(
+            io_error(p, &Error::from_raw_os_error(206)).code,
+            Code::SysPathTooLong
+        );
+        assert_eq!(
+            io_error(p, &Error::from(ErrorKind::PermissionDenied)).code,
+            Code::PrmSitePackagesReadOnly
+        );
+        // A missing file is not "the disk is full", which every shell command used to say.
+        assert_eq!(
+            io_error(p, &Error::from(ErrorKind::NotFound)).code,
+            Code::IntUnexpected
+        );
     }
 
     #[test]

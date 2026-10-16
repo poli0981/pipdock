@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 
 use crate::compat::PyVersion;
 use crate::errors::{Code, PdError, Result};
-use crate::exec::{Command, canonical_interpreter, write_temp};
+use crate::exec::{Command, TempFile, canonical_interpreter, watchdog};
 use crate::model::{Dist, EnvSource, PkgName, PyEnv, Version};
 
 /// The embedded introspection helper, executed as `<env-python> -I probe.py --json`.
@@ -75,17 +75,21 @@ pub async fn probe(interpreter: &Path, source: EnvSource) -> Result<ProbeResult>
         ));
     }
 
-    let script = write_temp("pipdock-probe", "py", PROBE_PY)?;
-    // The probe is removed whatever happens; a leaked temp file is harmless but untidy, and
+    // Removed when it drops, whatever happens; a leaked temp file is harmless but untidy, and
     // leaving one behind after every scan is not.
-    let result = Command::python(interpreter)
-        .arg("-I")
-        .arg(script.display().to_string())
+    let script = TempFile::create("pipdock-probe", "py", PROBE_PY)?;
+    // **`-X utf8` is not redundant with `Command::python`'s environment.** `-I` implies `-E`, so
+    // PYTHONUTF8 and PYTHONIOENCODING are ignored and stdout falls back to the ANSI code page. The
+    // probe prints paths with `ensure_ascii=False`, so a venv under `C:\Dự án\` crashed it with a
+    // UnicodeEncodeError (PD-ENV-003) and a `Jürgen` came back as mojibake. `-X` is a command-line
+    // option, which isolated mode honours. Reproduced before fixing.
+    let out = Command::python(interpreter)
+        .args(["-X", "utf8", "-I"])
+        .arg(script.path().display().to_string())
         .arg("--json")
+        .timeout(watchdog::PROBE)
         .run()
-        .await;
-    let _ = std::fs::remove_file(&script);
-    let out = result?;
+        .await?;
 
     if !out.ok() {
         return Err(
@@ -339,7 +343,12 @@ pub fn registry_interpreters() -> Vec<PathBuf> {
 
 /// Interpreters reported by the `py` launcher (`py -0p`).
 pub async fn py_launcher_interpreters() -> Vec<PathBuf> {
-    let Ok(out) = Command::new("py").arg("-0p").run().await else {
+    let Ok(out) = Command::new("py")
+        .arg("-0p")
+        .timeout(watchdog::DISCOVERY)
+        .run()
+        .await
+    else {
         return Vec::new();
     };
     if !out.ok() {
@@ -354,7 +363,12 @@ pub async fn py_launcher_interpreters() -> Vec<PathBuf> {
 /// `<download available>` where a path would be, and must be dropped — offering to manage a
 /// Python that is not on the machine would be nonsense.
 pub async fn uv_interpreters() -> Vec<PathBuf> {
-    let Ok(out) = Command::new("uv").args(["python", "list"]).run().await else {
+    let Ok(out) = Command::new("uv")
+        .args(["python", "list"])
+        .timeout(watchdog::DISCOVERY)
+        .run()
+        .await
+    else {
         return Vec::new();
     };
     if !out.ok() {

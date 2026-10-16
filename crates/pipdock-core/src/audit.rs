@@ -353,11 +353,11 @@ async fn audit_once(audit_dir: &Path, freeze: &str, sink: &ProgressSink) -> Resu
     // The environment reaches pip-audit as a *document*, never as a directory: SP-4 found that
     // `--path <site-packages>` is rejected outright alongside `--no-deps`. Written to the system
     // temp directory rather than into the user's project or the environment being audited, and
-    // removed on both paths.
-    let freeze_path = crate::exec::write_temp("pipdock-audit", "txt", freeze)?;
+    // removed when it drops, on every path.
+    let freeze_file = crate::exec::TempFile::create("pipdock-audit", "txt", freeze)?;
 
-    let out = Command::new(&exe)
-        .args(argv(&freeze_path))
+    let out = Command::python_tool(&exe)
+        .args(argv(freeze_file.path()))
         .timeout(AUDIT_TIMEOUT)
         .cancel(sink.cancel.clone())
         .run()
@@ -372,8 +372,7 @@ async fn audit_once(audit_dir: &Path, freeze: &str, sink: &ProgressSink) -> Resu
         Ok(out) => parse(&out.stdout).map_err(|e| e.with_stderr(&out.stderr)),
         Err(e) => Err(e),
     };
-
-    let _ = std::fs::remove_file(&freeze_path);
+    drop(freeze_file);
     parsed
 }
 
@@ -394,12 +393,12 @@ fn argv(freeze: &Path) -> Vec<String> {
 
 /// Did the user stop it, or did it break?
 ///
-/// `exec` reports both through `Code::IntUnexpected`, distinguished only by the message it built
-/// (`exec::Command::stopped`). Reading the message is unlovely, and it is what P4 warned about
-/// when it recorded that wiring the token alone would render *"PipDock hit an internal error"* for
-/// a cancel — the mapping has to be done, not merely enabled.
+/// Asked of the typed [`PdError::stop`], not of the message. P4 recorded that wiring the token
+/// alone would render *"PipDock hit an internal error"* for a cancel — the mapping has to be done,
+/// not merely enabled — and until 1.4.0 it was done by matching the `"cancelled:"` prefix
+/// `exec::Command::stopped` happened to write.
 fn is_cancellation(e: &PdError) -> bool {
-    e.code == Code::IntUnexpected && e.message.starts_with("cancelled:")
+    e.is_cancelled()
 }
 
 /// Translate `exec`'s vocabulary into this path's.
@@ -408,7 +407,7 @@ fn is_cancellation(e: &PdError) -> bool {
 /// an internal error, and a tool that will not start is not a missing engine the user should be
 /// told to go and install. Health's `run_one` needed the same translation for the same reason.
 fn watchdog(e: PdError) -> PdError {
-    if e.code == Code::IntUnexpected && e.message.contains("timed out") {
+    if e.is_timeout() {
         return PdError::new(
             Code::HltTimeout,
             format!("{TOOL} exceeded its {AUDIT_TIMEOUT:?} watchdog; its results are missing"),

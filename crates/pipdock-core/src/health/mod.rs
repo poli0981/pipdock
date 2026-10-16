@@ -804,17 +804,13 @@ async fn reported_version(path: &Path) -> Option<String> {
 
 /// Re-read a failure out of `exec` before it reaches the user.
 ///
-/// `exec::Command::stopped` raises `PD-INT-001` for **both** its watchdog and cancellation, so
-/// every timeout anywhere in PipDock currently says "PipDock hit an internal error". That is a
-/// pre-existing defect and bigger than this module, but it must not be inherited here: a bootstrap
-/// that stalled for ten minutes is a reachability failure, not a bug report.
-fn is_timeout(e: &PdError) -> bool {
-    e.code == Code::IntUnexpected && e.message.contains("timed out")
-}
-
+/// `exec` reports its watchdog as `PD-ENG-004`, an *engine* timeout, and this path is not an
+/// engine: a bootstrap that stalled is a reachability failure, a venv that would not build is the
+/// interpreter's, and a tool's `--version` hanging is Code Health's. The question is asked of the
+/// typed [`PdError::is_timeout`] — it used to be a substring of the message.
 /// Remap an `exec` failure from the install step.
 fn bootstrap_failure(e: PdError) -> PdError {
-    if is_timeout(&e) {
+    if e.is_timeout() {
         return PdError::new(
             Code::NetToolsBootstrapFailed,
             format!("tools venv bootstrap timed out ({})", e.message),
@@ -825,7 +821,7 @@ fn bootstrap_failure(e: PdError) -> PdError {
 
 /// Remap an `exec` failure from the venv step.
 fn venv_failure(e: PdError, base_python: &Path) -> PdError {
-    if is_timeout(&e) {
+    if e.is_timeout() {
         return PdError::new(
             Code::HltVenvCreateFailed,
             format!("`{} -m venv` timed out", base_python.display()),
@@ -836,7 +832,7 @@ fn venv_failure(e: PdError, base_python: &Path) -> PdError {
 
 /// Remap an `exec` failure from a tool's `--version`.
 fn tool_failure(e: PdError, tool: &str) -> PdError {
-    if is_timeout(&e) {
+    if e.is_timeout() {
         return PdError::new(
             Code::HltTimeout,
             format!("{tool} --version exceeded its {TOOL_TIMEOUT:?} watchdog"),
@@ -1234,11 +1230,15 @@ mod tests {
         );
     }
 
-    /// `exec::Command::stopped` raises PD-INT-001 for both its watchdog and cancellation, so the
-    /// remaps below are the only thing standing between a stalled download and a bug report.
+    /// `exec`'s watchdog is an engine timeout (`PD-ENG-004`); none of these paths is an engine, so
+    /// the remaps below decide what a stalled download or venv build actually says.
     #[test]
     fn a_watchdog_never_reaches_the_user_as_an_internal_error() {
-        let timed_out = || PdError::new(Code::IntUnexpected, "timed out after 600s: pip.exe");
+        let timed_out = || {
+            PdError::new(Code::EngTimedOut, "timed out after 600s: pip.exe").with_stop(
+                crate::exec::Stop::TimedOut(std::time::Duration::from_secs(600)),
+            )
+        };
 
         assert_eq!(
             bootstrap_failure(timed_out()).code,
@@ -1253,11 +1253,19 @@ mod tests {
 
     #[test]
     fn a_cancellation_is_not_mistaken_for_a_watchdog() {
-        // `stopped` builds both from the same constructor; only the message tells them apart, and
-        // a cancel must not be reported as a bootstrap failure.
-        let cancelled = PdError::new(Code::IntUnexpected, "cancelled: pip.exe");
+        // A cancel must not be reported as a bootstrap failure.
+        let cancelled = PdError::new(Code::IntUnexpected, "cancelled: pip.exe")
+            .with_stop(crate::exec::Stop::Cancelled);
 
         assert_eq!(bootstrap_failure(cancelled).code, Code::IntUnexpected);
+    }
+
+    #[test]
+    fn the_message_alone_no_longer_decides() {
+        // The remap used to be `message.contains("timed out")`, so any error whose text happened
+        // to say so — pip's own "Read timed out" is a network failure — was relabelled a watchdog.
+        let pips_own = PdError::new(Code::NetUnreachable, "pip: Read timed out.");
+        assert_eq!(bootstrap_failure(pips_own).code, Code::NetUnreachable);
     }
 
     #[test]

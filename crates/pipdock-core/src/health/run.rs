@@ -224,7 +224,7 @@ async fn run_one(
         })?;
     }
 
-    let out = Command::new(&exe)
+    let out = Command::python_tool(&exe)
         .args(argv(tool, opts, &report_path))
         .cwd(project)
         .timeout(TOOL_TIMEOUT)
@@ -379,7 +379,7 @@ fn collect(report: &mut HealthReport, tool: &str, stdout: &str) -> Result<()> {
 /// Found by replacing a tool with a non-executable file of the same name — present, so the sync
 /// check said Fresh, and unrunnable, so the run reached this path.
 fn watchdog(e: PdError, tool: &str) -> PdError {
-    if e.code == Code::IntUnexpected && e.message.contains("timed out") {
+    if e.is_timeout() {
         return PdError::new(
             Code::HltTimeout,
             format!("{tool} exceeded its {TOOL_TIMEOUT:?} watchdog; its results are missing"),
@@ -535,7 +535,8 @@ mod tests {
     }
     #[test]
     fn a_watchdog_reads_as_the_health_code_not_an_internal_error() {
-        let timed_out = PdError::new(Code::IntUnexpected, "timed out after 120s: ruff.exe");
+        let timed_out = PdError::new(Code::EngTimedOut, "timed out after 120s: ruff.exe")
+            .with_stop(crate::exec::Stop::TimedOut(TOOL_TIMEOUT));
         assert_eq!(watchdog(timed_out, "ruff").code, Code::HltTimeout);
     }
 
@@ -582,7 +583,8 @@ mod tests {
 
     #[test]
     fn a_cancellation_is_not_a_watchdog() {
-        let cancelled = PdError::new(Code::IntUnexpected, "cancelled: ruff.exe");
+        let cancelled = PdError::new(Code::IntUnexpected, "cancelled: ruff.exe")
+            .with_stop(crate::exec::Stop::Cancelled);
         assert_eq!(watchdog(cancelled, "ruff").code, Code::IntUnexpected);
     }
 
