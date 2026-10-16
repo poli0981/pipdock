@@ -146,7 +146,8 @@ export function PdConflictRow({
                 setConfirmingForce(false)
                 onChoose('force-latest')
               }}
-              className="rounded-pd bg-danger/20 px-2 py-0.5 text-data text-danger"
+              // Outlined, not filled: a fill inside the confirm's own danger tint read at 4.03:1.
+              className="rounded-pd border border-danger px-2 py-0.5 text-data text-danger"
             >
               {t('plan.decision.force-latest')}
             </button>

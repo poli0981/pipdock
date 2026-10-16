@@ -16,7 +16,7 @@ export const colors = {
   text: '#E7F0EA',
   textDim: '#8AA394',
   warn: '#F5B94A',
-  danger: '#F0574F',
+  danger: '#F26A63',
   info: '#5BC0DE',
 } as const
 

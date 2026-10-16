@@ -22,7 +22,7 @@ import { useSettingsStore } from '@/stores'
 const ENGINES = ['pip', 'uv'] as const
 
 export function PdSettings() {
-  const { t, i18n } = useTranslation()
+  const { t } = useTranslation()
   const {
     engine,
     allowExternallyManaged,
@@ -87,9 +87,8 @@ export function PdSettings() {
                 name="locale"
                 checked={locale === code}
                 onChange={() => {
-                  setLocale(code)
-                  // I18N §2: applied live, not on restart.
-                  void i18n.changeLanguage(code)
+                  // I18N §2: applied live — and stored, so it is still the language tomorrow.
+                  void setLocale(code)
                 }}
                 className="accent-[var(--color-accent)]"
               />

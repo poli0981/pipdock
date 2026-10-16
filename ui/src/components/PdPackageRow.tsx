@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next'
 
 import { PdBadge } from '@/components/PdBadge'
 import { PdPinChip } from '@/components/PdPinChip'
+import { COLUMNS } from '@/components/packageColumns'
 import { formatBytes, rowState, type LoadState, type PackageRow } from '@/screens/rows'
 
 /** Fixed row height, in px. Mono data at one line, so the virtualizer never has to measure. */
@@ -106,7 +107,7 @@ function Row({
         }
       }}
       style={style}
-      className={`absolute top-0 left-0 flex w-full items-center gap-3 border-b border-border px-3 ${
+      className={`absolute top-0 left-0 w-full ${COLUMNS.row} border-b border-border ${
         // UI-SPEC §4: up-to-date rows are dimmed. `unknown` is deliberately not dimmed —
         // see rowState.
         state === 'current' ? 'text-text-dim' : 'text-text'
@@ -124,24 +125,24 @@ function Row({
         aria-label={row.name}
         // Not a tab stop: the row is (see onKeyDown above). Still clickable and still announced.
         tabIndex={-1}
-        className="shrink-0 accent-accent disabled:opacity-40"
+        className={`${COLUMNS.checkbox} accent-accent disabled:opacity-40`}
       />
 
-      <code role="gridcell" className="min-w-0 flex-1 truncate font-mono text-data">
+      <code role="gridcell" className={`${COLUMNS.name} font-mono text-data`}>
         {row.name}
       </code>
-      <span role="gridcell" className="w-28 shrink-0 font-mono text-data">
+      <span role="gridcell" className={`${COLUMNS.version} font-mono text-data`}>
         {row.version}
       </span>
-      <span role="gridcell" className="w-28 shrink-0 font-mono text-data">
+      <span role="gridcell" className={`${COLUMNS.latest} font-mono text-data`}>
         {/* An em dash, not "0" or a blank: latest is unknown until pkg_outdated resolves. */}
         {row.latest ?? '—'}
       </span>
-      <span role="gridcell" className="w-24 shrink-0 text-right font-mono text-data">
+      <span role="gridcell" className={`${COLUMNS.size} font-mono text-data`}>
         {row.sizeBytes === undefined ? '—' : formatBytes(row.sizeBytes, i18n.language)}
       </span>
 
-      <span role="gridcell" className="flex w-40 shrink-0 items-center gap-1">
+      <span role="gridcell" className={COLUMNS.status}>
         {state === 'outdated' ? <PdBadge tone="warn" label={t('packages.badge.update')} /> : null}
         {row.pin === undefined ? null : <PdPinChip mode={row.pin} />}
       </span>
@@ -159,44 +160,46 @@ function Row({
           A third inline button costs nothing instead. The row is the only tab stop (see
           onKeyDown), so the controls are a roving sequence rather than tab stops — a third one
           adds a left/right step, not 200 more stops. Ordered non-destructive first: details, pin,
-          remove. */}
-      <button
-        type="button"
-        tabIndex={-1}
-        onClick={() => {
-          onDetails(row.name)
-        }}
-        aria-label={t('packages.actions.details')}
-        title={t('packages.actions.details')}
-        className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
-      >
-        {'⇄'}
-      </button>
-      <button
-        type="button"
-        tabIndex={-1}
-        onClick={() => {
-          onPinToggle(row.name)
-        }}
-        aria-label={pinned ? t('packages.actions.unpin') : t('packages.actions.pin')}
-        title={pinned ? t('packages.actions.unpin') : t('packages.actions.pin')}
-        className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
-      >
-        {pinned ? '–' : '+'}
-      </button>
-      <button
-        type="button"
-        tabIndex={-1}
-        onClick={() => {
-          onUninstall(row.name)
-        }}
-        data-action="uninstall"
-        aria-label={t('packages.actions.uninstall')}
-        title={t('packages.actions.uninstall')}
-        className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
-      >
-        {'✕'}
-      </button>
+          remove. One cell holding all three, at the width the header reserves for them. */}
+      <span role="gridcell" className={COLUMNS.actions}>
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => {
+            onDetails(row.name)
+          }}
+          aria-label={t('packages.actions.details')}
+          title={t('packages.actions.details')}
+          className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
+        >
+          {'⇄'}
+        </button>
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => {
+            onPinToggle(row.name)
+          }}
+          aria-label={pinned ? t('packages.actions.unpin') : t('packages.actions.pin')}
+          title={pinned ? t('packages.actions.unpin') : t('packages.actions.pin')}
+          className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
+        >
+          {pinned ? '–' : '+'}
+        </button>
+        <button
+          type="button"
+          tabIndex={-1}
+          onClick={() => {
+            onUninstall(row.name)
+          }}
+          data-action="uninstall"
+          aria-label={t('packages.actions.uninstall')}
+          title={t('packages.actions.uninstall')}
+          className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"
+        >
+          {'✕'}
+        </button>
+      </span>
     </div>
   )
 }

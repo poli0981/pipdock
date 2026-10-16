@@ -9,15 +9,9 @@
  * (`pipdock/no-jsx-literals`), which is the rule that keeps I18N §1 honest.
  */
 
-export type BadgeTone = 'warn' | 'info' | 'danger' | 'accent' | 'dim'
+import { BADGE_TONES as TONES, type BadgeTone } from '@/components/badgeTones'
 
-const TONES: Record<BadgeTone, string> = {
-  warn: 'bg-warn/20 text-warn',
-  info: 'bg-info/20 text-info',
-  danger: 'bg-danger/20 text-danger',
-  accent: 'bg-accent/20 text-accent',
-  dim: 'border border-border text-text-dim',
-}
+export type { BadgeTone }
 
 interface PdBadgeProps {
   tone: BadgeTone

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
+import { isBrowserShortcut } from '@/components/browserKeys'
 import { NAV_KEYS } from '@/components/nav'
 import { PdLegalGate } from '@/components/PdLegalGate'
 import { PdOfflineBanner } from '@/components/PdOfflineBanner'
@@ -83,21 +84,45 @@ export function App() {
     void checkConsent()
   }, [checkConsent])
 
-  // Settings are the app's, not the Settings screen's: the status line names the engine and the
-  // PEP 668 chip reads the override. Loaded only when Settings mounted, so both showed the
-  // defaults — "pip", and no chip — until someone happened to open Settings (U13).
+  // Settings are the app's, not the Settings screen's: the status line names the engine, the
+  // PEP 668 chip reads the override, and the language is the user's. Loaded only when Settings
+  // mounted, so all three showed the defaults until someone opened Settings (U13) — and loaded
+  // before the legal gate rather than after it, so the gate is in the language they chose (U3).
   const loadSettings = useSettingsStore((s) => s.load)
   useEffect(() => {
-    if (accepted === true) void loadSettings()
-  }, [accepted, loadSettings])
+    void loadSettings()
+  }, [loadSettings])
+
+  // U20: a release build has no reload, print or find to offer — see `browserKeys`. Capture phase
+  // and above the gate's early return, so no screen and no modal can let one through.
+  useEffect(() => {
+    if (!import.meta.env.PROD) return undefined
+    const swallow = (e: KeyboardEvent) => {
+      if (isBrowserShortcut(e)) e.preventDefault()
+    }
+    window.addEventListener('keydown', swallow, { capture: true })
+    return () => {
+      window.removeEventListener('keydown', swallow, { capture: true })
+    }
+  }, [])
 
   // UI-SPEC §8's "full keyboard traversal": after Ctrl+3 the focus was still on whatever the user
   // last clicked, so the next Tab resumed in the old screen and a screen reader announced nothing.
   // Moving it to the new screen's heading is the smallest thing that makes the shortcut complete.
   // `key={nav}` on <main> forces a remount, so this fires on every change rather than only the
   // first — and the heading takes `tabIndex={-1}` from the CSS-free `[tabindex]` below.
+  //
+  // A screen that names its own first stop with `data-autofocus` gets that instead. Search's field
+  // is UI-SPEC §5's first click, and PdSearch focused it — then this effect, which runs after its
+  // children's, moved focus to the heading on every arrival (U12).
   useEffect(() => {
-    const heading = mainRef.current?.querySelector('h1')
+    const main = mainRef.current
+    const own = main?.querySelector<HTMLElement>('[data-autofocus]')
+    if (own !== null && own !== undefined) {
+      own.focus()
+      return
+    }
+    const heading = main?.querySelector('h1')
     if (heading === null || heading === undefined) return
     heading.setAttribute('tabindex', '-1')
     heading.focus()
@@ -141,13 +166,21 @@ export function App() {
         target?.tagName === 'INPUT' || target?.tagName === 'TEXTAREA' || target?.isContentEditable
       if (e.key === '/' && !e.ctrlKey && !e.altKey && !e.metaKey && typing !== true) {
         e.preventDefault()
-        setNav('search')
+        // Already on Search, `nav` does not change and the focus effect above does not run, so
+        // `/` did nothing at all from the very screen it names.
+        if (nav === 'search') {
+          mainRef.current?.querySelector<HTMLElement>('[data-autofocus]')?.focus()
+        } else {
+          setNav('search')
+        }
         return
       }
 
       if (!e.ctrlKey || e.altKey || e.metaKey) return
-      const index = Number.parseInt(e.key, 10) - 1
-      const key = NAV_KEYS[index]
+      // By physical key (U49): `e.key` is what the layout types, and on AZERTY Ctrl+1 reports `&`,
+      // so the tab shortcuts did nothing for every French keyboard.
+      const digit = /^(?:Digit|Numpad)([1-9])$/.exec(e.code)?.[1]
+      const key = digit === undefined ? undefined : NAV_KEYS[Number(digit) - 1]
       if (key !== undefined) {
         e.preventDefault()
         setNav(key)
@@ -157,7 +190,7 @@ export function App() {
     return () => {
       window.removeEventListener('keydown', onKey)
     }
-  }, [setNav, guardOpen, planPhase, accepted, review])
+  }, [nav, setNav, guardOpen, planPhase, accepted, review])
 
   // Nothing is usable before the documents are accepted, so the gate replaces the shell rather
   // than overlaying a working app (UI-SPEC §4).
@@ -184,7 +217,12 @@ export function App() {
         {/* Each screen owns its own scroll container. A virtualizer needs a scroll element it
             can observe, and nesting one inside an already-scrolling <main> gives two scrollbars
             and an outer one whose content is already the virtualizer's full height. */}
-        <main key={nav} ref={mainRef} className="flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* `mx-auto max-w-content`: the window maximizes, the column does not (UI-SPEC §5). */}
+        <main
+          key={nav}
+          ref={mainRef}
+          className="mx-auto flex min-w-0 max-w-content flex-1 flex-col overflow-hidden"
+        >
           {PANEL_PHASES.has(planPhase) ? (
             <PdPlanPanel
               onFinished={(changed) => {

@@ -127,14 +127,8 @@ export interface PdError {
  * *usually* a `PdError` — but a panic or a serialization failure arrives as something else.
  * Narrowing here means no screen has to guess.
  */
-export function isPdError(value: unknown): value is PdError {
-  return (
-    typeof value === 'object' &&
-    value !== null &&
-    typeof (value as PdError).code === 'string' &&
-    typeof (value as PdError).message === 'string'
-  )
-}
+// In a module of its own so the test mock can import the real predicate without Tauri.
+export { isPdError } from '@/ipc/errors'
 
 /** What the shell reports about itself. */
 export interface AppInfo {

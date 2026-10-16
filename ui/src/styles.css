@@ -52,7 +52,7 @@
   --color-text: #e7f0ea;
   --color-text-dim: #8aa394;
   --color-warn: #f5b94a;
-  --color-danger: #f0574f;
+  --color-danger: #f26a63;
   --color-info: #5bc0de;
 
   --font-sans: 'Inter', system-ui, sans-serif;
@@ -62,6 +62,10 @@
   --text-data: 0.8125rem; /* 13px mono data */
 
   --radius-pd: 6px;
+
+  /* The content column's widest. The window may be maximized (UI-SPEC §5); the column is what
+     stops a table from stretching across a 4K panel. */
+  --container-content: 87.5rem;
 
   /* UI-SPEC §2: motion is 120–160 ms ease-out. */
   --ease-pd: cubic-bezier(0.16, 1, 0.3, 1);

@@ -17,6 +17,7 @@ import { useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdPackageRow, ROW_HEIGHT } from '@/components/PdPackageRow'
+import { COLUMNS } from '@/components/packageColumns'
 import type { LoadState, PackageRow } from '@/screens/rows'
 
 interface PdPackageTableProps {
@@ -77,7 +78,10 @@ export function PdPackageTable({
       role="grid"
       aria-label={t('packages.tableLabel')}
       aria-rowcount={rows.length + 1}
-      className="flex min-h-0 flex-1 flex-col"
+      // Focusable but not a tab stop: the rows are (Sonar S6852, the ARIA grid pattern).
+      tabIndex={-1}
+      // `@container`: the columns size against the table's width, not the window's (U22).
+      className="@container flex min-h-0 flex-1 flex-col"
       onKeyDown={(e) => {
         // Ctrl+A selects all (UI-SPEC §8). Guarded against text inputs: none exist on these
         // screens yet, but Search lands in S4 and this is the cheap moment to get it right.
@@ -89,32 +93,36 @@ export function PdPackageTable({
         }
       }}
     >
+      {/* The same `COLUMNS` as every row, so the two cannot drift (U23). Outside the scroller, so
+          it stays put — and given the scroller's gutter, so a scrollbar appearing does not push
+          every cell left of its heading: `overflow-hidden` plus a stable gutter reserves the same
+          width a scrollbar would take. */}
       <div
         role="row"
         aria-rowindex={1}
-        className="flex shrink-0 items-center gap-3 border-b border-border px-3 py-1 text-data text-text-dim"
+        className={`${COLUMNS.row} shrink-0 overflow-hidden border-b border-border py-1 text-data text-text-dim [scrollbar-gutter:stable]`}
       >
         {/* Aligns with the row checkbox, which has no header of its own. */}
-        <span aria-hidden="true" className="w-[13px] shrink-0" />
-        <span role="columnheader" className="min-w-0 flex-1">
+        <span aria-hidden="true" className={COLUMNS.checkbox} />
+        <span role="columnheader" className={COLUMNS.name}>
           {t('packages.column.name')}
         </span>
-        <span role="columnheader" className="w-28 shrink-0">
+        <span role="columnheader" className={COLUMNS.version}>
           {t('packages.column.version')}
         </span>
-        <span role="columnheader" className="w-28 shrink-0">
+        <span role="columnheader" className={COLUMNS.latest}>
           {t('packages.column.latest')}
         </span>
-        <span role="columnheader" className="w-24 shrink-0 text-right">
+        <span role="columnheader" className={COLUMNS.size}>
           {t('packages.column.size')}
         </span>
-        <span role="columnheader" className="w-40 shrink-0">
+        <span role="columnheader" className={COLUMNS.status}>
           {t('packages.column.status')}
         </span>
-        <span aria-hidden="true" className="w-8 shrink-0" />
+        <span aria-hidden="true" className={COLUMNS.actions} />
       </div>
 
-      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto">
+      <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">
         <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
           {virtualizer.getVirtualItems().map((item) => {
             const row = rows[item.index]

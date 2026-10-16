@@ -5,7 +5,7 @@
  * documents' hash, so a bump re-triggers this (`docs_hash`, computed at build time).
  *
  * The links are opened by Rust, not by the webview: `connect-src` in `tauri.conf.json` allows only
- * `'self'` and the IPC origin, and the `opener` capability is scoped to three hosts (SECURITY §4).
+ * `'self'` and the IPC origin, and the `opener` capability is scoped to four hosts (SECURITY §4).
  * A failure to open is shown rather than swallowed — the documents are the thing the user is being
  * asked to agree to, so silently failing to show them is not acceptable. That rule is now the
  * shared `useOpenExternal`, and the rest of the app follows it too.
@@ -21,6 +21,7 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { LEGAL_DOCUMENTS } from '@/components/legal'
+import { PdErrorRow } from '@/components/PdErrorRow'
 import { useOpenExternal } from '@/components/useOpenExternal'
 import { useLegalStore } from '@/stores'
 
@@ -33,6 +34,9 @@ export function PdLegalGate({
 } = {}) {
   const { t } = useTranslation()
   const accept = useLegalStore((s) => s.accept)
+  // U29: a consent that cannot be read or written was stored and never shown, so Accept looked
+  // like a button that did nothing.
+  const error = useLegalStore((s) => s.error)
   const [checked, setChecked] = useState(false)
   const { open, failed: openFailed } = useOpenExternal()
 
@@ -73,6 +77,12 @@ export function PdLegalGate({
         ) : null}
 
         <p className="mt-4 border-l-2 border-border pl-3 text-text-dim">{t('legal.summary')}</p>
+
+        {error === null ? null : (
+          <div className="mt-4">
+            <PdErrorRow error={error} />
+          </div>
+        )}
 
         {review ? (
           <div className="mt-5 flex gap-2">

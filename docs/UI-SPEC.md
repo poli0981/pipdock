@@ -21,7 +21,7 @@ Anti-goals: gradients-everywhere SaaS look, rounded-blob cards, decorative glow.
 | `--color-text` | `#E7F0EA` | primary text |
 | `--color-text-dim` | `#8AA394` | secondary text, **dimmed up-to-date rows** |
 | `--color-warn` | `#F5B94A` | held-back, warnings |
-| `--color-danger` | `#F0574F` | impossible, failures, force actions |
+| `--color-danger` | `#F26A63` | impossible, failures, force actions. `#F0574F` until 1.4.0, which read at 3.92:1 on its own badge tint over a selected row |
 | `--color-info` | `#5BC0DE` | pinned, informational chips |
 
 Type: **Inter** (UI), **JetBrains Mono** (package names, versions, console, status line — both OFL-licensed, bundled). Base 14 px, mono data 13 px. Radius 6 px; borders 1 px; shadows minimal. Motion: 120–160 ms ease-out; live-activity pulse on the status-line engine badge during execution; `prefers-reduced-motion` respected.
@@ -236,9 +236,16 @@ guarded neither. Nothing looked wrong — the sidebar was disabled and the panel
 until the plan finished and dropped the user on a tab they never chose. The shortcuts now also
 refuse while the legal gate is on screen, which matters once About can re-open it.
 
-**The window is bounded at 1600×1100 and cannot be maximized or go fullscreen.** The layout is a
-fixed sidebar plus one scrolling column; stretched across a 4K panel it is a column of text beside
-a metre of empty surface. Still resizable, and `minWidth`/`minHeight` are unchanged.
+**The window maximizes and snaps; the content column does not stretch.** Until 1.4.0 the window
+was bounded at 1600×1100 and could not be maximized, because the layout — a fixed sidebar plus one
+scrolling column — stretched across a 4K panel is a column of text beside a metre of empty surface.
+That answered the right worry with the wrong control: the column now stops at `max-w-content`
+(87.5rem) and centres in what is left, and the window is the user's to size. Fullscreen stays off.
+
+**The window opens at a size that fits.** 1180×760 is taller than the work area of a 1920×1080 panel
+at 150 % and of a 1366×768 laptop, so the status line and the plan panel's Confirm opened under the
+taskbar. The window is created hidden and `src-tauri/src/window.rs` shrinks it to the monitor's work
+area — never below `minWidth`/`minHeight`, 900×560 — centres it there, then shows it.
 
 ## 6. Component inventory (prefix `Pd`)
 

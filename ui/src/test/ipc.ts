@@ -24,6 +24,8 @@
 
 import { vi } from 'vitest'
 
+import { isPdError } from '@/ipc/errors'
+
 /** The wrappers a test can drive. Add one when a test needs it, not before. */
 export interface IpcMock {
   pkgList: ReturnType<typeof vi.fn>
@@ -92,6 +94,9 @@ export function ipcMock(): IpcMock {
       database: { bytes: 0, path: 'C:/data/index.db', exists: false },
       snapshots: { bytes: 0, path: 'C:/data/snapshots', exists: false },
       tools: { bytes: 0, path: 'C:/data/tools', exists: false },
+      // The fourth target since the Security tab. Missing here, so any test reading it got
+      // `undefined` from a shape the app never sends.
+      audit: { bytes: 0, path: 'C:/data/audit', exists: false },
       snapshotCount: 0,
     }),
     cacheClear: vi.fn().mockResolvedValue(0),
@@ -149,8 +154,8 @@ export function ipcMock(): IpcMock {
     }),
     settingsSet: vi.fn(),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
-    // and a stub that always answered one way would make every error test agree with itself.
-    isPdError: (value: unknown): boolean =>
-      typeof value === 'object' && value !== null && 'code' in value && 'message' in value,
+    // and a stub that always answered one way would make every error test agree with itself. And
+    // the real one, not a lookalike — the lookalike accepted `{ code: 1, message: null }`.
+    isPdError,
   }
 }

@@ -55,7 +55,7 @@ function Row({ row }: { row: EnvRow }) {
         <code className="font-mono text-data">{row.interpreter}</code>
         <SourceChip row={row} />
         {managed ? (
-          <span className="rounded-pd bg-danger/20 px-1.5 py-0.5 text-data text-danger">
+          <span className="rounded-pd bg-danger/15 px-1.5 py-0.5 text-data text-danger">
             {t('env.managed')}
           </span>
         ) : null}

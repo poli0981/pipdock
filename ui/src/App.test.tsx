@@ -14,11 +14,13 @@
  * user can get there at all, and in how many clicks.
  */
 
-import { fireEvent, render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@/App'
-import type { DepsGraph, Dist } from '@/ipc'
+import { NAV_KEYS } from '@/components/nav'
+import type { DepsGraph, Dist, EnvRow } from '@/ipc'
+import { joinRows } from '@/screens/rows'
 import { useDepsStore, useEnvStore, useLegalStore, useUiStore } from '@/stores'
 import graphFixture from '@/test/fixtures/deps_graph.json'
 import listFixture from '@/test/fixtures/pkg_list.json'
@@ -57,16 +59,19 @@ const DISTS = listFixture as Dist[]
 const ENV_HASH = 'abc123'
 const INTERPRETER = String.raw`C:\proj\.venv\Scripts\python.exe`
 
-const ROW = {
+// Typed, so a seed the app could never produce fails to compile. This one said `source: 'venv'`,
+// which is not an `EnvSource`, and lacked `hiddenUserSite`; `as never` below hid both (U10).
+const ROW: EnvRow = {
   interpreter: INTERPRETER,
-  source: 'venv' as const,
+  source: 'venv-scan',
   envHash: ENV_HASH,
   env: {
     interpreter: INTERPRETER,
     prefix: String.raw`C:\proj\.venv`,
     pythonVersion: '3.12.10',
     externallyManaged: false,
-    source: 'venv' as const,
+    hiddenUserSite: null,
+    source: 'venv-scan',
   },
 }
 
@@ -86,7 +91,7 @@ beforeEach(() => {
 
   // Past the gate, and it takes both halves. The store field is what the first render reads; the
   // command is what the mount effect overwrites it with.
-  legalConsentGet.mockReset().mockResolvedValue({ current: true, recorded: true })
+  legalConsentGet.mockReset().mockResolvedValue({ current: true, docsHash: 'a1b2c3d4e5f60718' })
   useLegalStore.setState({ accepted: true, review: false })
   useUiStore.setState({ nav: 'installed' })
   useDepsStore.setState({
@@ -96,21 +101,17 @@ beforeEach(() => {
     focus: null,
     error: null,
   })
+  // The rows `joinRows` builds, not a hand-made shape: the old seed had `pinned`, `state` and a
+  // `null` latest, none of which a `PackageRow` has.
   useEnvStore.setState({
     rows: [ROW],
     selected: INTERPRETER,
-    packages: DISTS.map((d) => ({
-      name: d.name,
-      version: d.version,
-      latest: null,
-      sizeBytes: d.sizeBytes ?? null,
-      pinned: null,
-      state: 'unknown' as const,
-    })),
+    dists: DISTS,
+    packages: joinRows(DISTS, [], []).rows,
     listing: 'ready',
     outdatedStatus: 'ready',
     selection: new Set<string>(),
-  } as never)
+  })
 })
 
 /** A package row by name, in the virtualized table. */
@@ -178,5 +179,26 @@ describe('the dependency view, reached the way a user reaches it', () => {
     for (const button of row.getAllByRole('button')) {
       expect(button).toHaveAttribute('tabindex', '-1')
     }
+  })
+})
+
+describe('the keyboard', () => {
+  it('selects a tab by the physical digit, whatever the layout types', () => {
+    // U49: on AZERTY, Ctrl+3 reports `"`. Parsing `e.key` made every tab shortcut a no-op there.
+    render(<App />)
+    expect(NAV_KEYS[2]).not.toBe(useUiStore.getState().nav)
+    fireEvent.keyDown(window, { key: '"', code: 'Digit3', ctrlKey: true })
+    expect(useUiStore.getState().nav).toBe(NAV_KEYS[2])
+  })
+
+  it('puts the cursor in the search field when `/` opens Search', async () => {
+    // U12: PdSearch focused its field, then the shell's own effect — parents run after children
+    // — moved focus to the heading, so the first keystroke after `/` went nowhere.
+    render(<App />)
+    fireEvent.keyDown(window, { key: '/', code: 'Slash' })
+    expect(useUiStore.getState().nav).toBe('search')
+    await waitFor(() => {
+      expect(screen.getByRole('searchbox')).toHaveFocus()
+    })
   })
 })

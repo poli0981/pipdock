@@ -3,9 +3,15 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!--
+      The development policy. `npm run dev` serves this file as-is, and Vite injects its CSS as
+      <style> elements, so style-src needs 'unsafe-inline' here. A release build gets Tauri's
+      policy from tauri.conf.json as well, which drops it - and two policies are both enforced,
+      so the stricter one decides. Keep the other directives in step with tauri.conf.json.
+    -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost"
+      content="default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; object-src 'none'; base-uri 'none'; form-action 'none'"
     />
     <title>PipDock</title>
   </head>

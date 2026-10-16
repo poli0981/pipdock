@@ -88,7 +88,7 @@ export function PdUninstallDialog({
                 onConfirm(true)
               }}
               data-action="force"
-              className="rounded-pd border border-danger bg-danger/20 px-3 py-1 text-data text-danger disabled:opacity-40"
+              className="rounded-pd border border-danger bg-danger/15 px-3 py-1 text-data text-danger disabled:opacity-40"
             >
               {t('uninstall.force', { count: report.removing.length })}
             </button>
