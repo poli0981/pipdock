@@ -43,6 +43,7 @@ interface Action {
 export function PdPalette({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
   const ref = useRef<HTMLDialogElement>(null)
+  const inputRef = useRef<HTMLInputElement>(null)
   const [query, setQuery] = useState('')
   const [at, setAt] = useState(0)
 
@@ -154,11 +155,18 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const el = ref.current
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
     // `showModal` throws when the dialog is already open, which React's double-invoked effects in
     // development make a real case rather than a theoretical one.
     if (el !== null && !el.open) el.showModal()
+    // Focus is placed after the dialog opens, not by `autoFocus`: React applies that during commit,
+    // while the dialog is still closed and its input cannot take focus (see PdDialog).
+    inputRef.current?.focus()
     return () => {
       if (el !== null && el.open) el.close()
+      // Back to where the user was. A palette action that navigates still wins: App moves focus to
+      // the new screen's heading in an effect that runs after this cleanup.
+      if (opener !== null && opener !== document.body && opener.isConnected) opener.focus()
     }
   }, [])
 
@@ -186,7 +194,7 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
     >
       <div className="p-3">
         <input
-          autoFocus
+          ref={inputRef}
           type="text"
           role="combobox"
           aria-expanded="true"

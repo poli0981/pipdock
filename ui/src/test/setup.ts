@@ -44,6 +44,24 @@ Object.defineProperty(HTMLElement.prototype, 'offsetWidth', {
   },
 })
 
+// `@tanstack/virtual-core` 3.19 measures the scroll element with `clientWidth`/`clientHeight` — it
+// used `getBoundingClientRect()` up to 3.17 — and its first reading *replaces* `initialRect`. Left
+// at jsdom's 0, every table test rendered an empty grid again, which is the vacuous pass this file
+// exists to prevent; 13 table tests and the App-level ones failed the day the virtualizer moved.
+Object.defineProperty(HTMLElement.prototype, 'clientHeight', {
+  configurable: true,
+  get() {
+    return VIEWPORT.height
+  },
+})
+
+Object.defineProperty(HTMLElement.prototype, 'clientWidth', {
+  configurable: true,
+  get() {
+    return VIEWPORT.width
+  },
+})
+
 Element.prototype.getBoundingClientRect = function getBoundingClientRect(): DOMRect {
   return {
     x: 0,

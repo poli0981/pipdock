@@ -12,26 +12,26 @@ authors.workspace = true
 workspace = true
 
 [dependencies]
-async-trait = "0.1.91"
-jiff = { version = "0.2.35", features = ["serde"] }
+async-trait = "0.1.92"
+jiff = { version = "0.2.38", features = ["serde"] }
 nucleo = "0.5.0"
-reqwest = { version = "0.13.4", default-features = false, features = ["rustls", "http2", "json", "gzip", "charset"] }
-rusqlite = { version = "0.37", features = ["bundled"] }
-schemars = "1.2.1"
+reqwest = { version = "0.13.5", default-features = false, features = ["rustls", "http2", "json", "gzip", "charset"] }
+rusqlite = { version = "0.40.2", features = ["bundled"] }
+schemars = "1.2.3"
 serde = { version = "1.0.229", features = ["derive"] }
-serde_json = "1.0.151"
-sha2 = "0.11.0"
-thiserror = "2.0.19"
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync"] }
+serde_json = "1.0.154"
+sha2 = "0.11.1"
+thiserror = "2.0.21"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync"] }
 # First-party tokio, for CancellationToken. The alternative was an AtomicBool plus a Notify,
 # which is what CancellationToken already is, written worse.
-tokio-util = "0.7"
+tokio-util = "0.7.20"
 tracing = "0.1.44"
 
 [dev-dependencies]
-insta = { version = "1.48.0", features = ["json"] }
-jiff = "0.2.35"
-tokio = { version = "1.53.1", features = ["rt-multi-thread", "macros"] }
+insta = { version = "1.49.0", features = ["json"] }
+jiff = "0.2.38"
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros"] }
 
 [target."cfg(windows)".dependencies]
 winreg = "0.56.0"
