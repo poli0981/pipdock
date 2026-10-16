@@ -599,6 +599,15 @@ pub fn classify_stderr(stderr: &str) -> Code {
 /// Lowercase and collapse every run of whitespace to a single space, so patterns survive the
 /// engines' line wrapping and CRLF.
 fn normalize(text: &str) -> String {
+    collapse_whitespace(text).to_lowercase()
+}
+
+/// Collapse every run of whitespace — wrapping, CRLF, indentation — to one space, and trim.
+///
+/// uv hard-wraps its diagnostics mid-sentence, so a literal search for a phrase that spans the
+/// wrap point finds nothing. The classifiers above and the plan parser both need this, and had two
+/// copies of it.
+pub(crate) fn collapse_whitespace(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     let mut in_space = false;
     for ch in text.chars() {
@@ -609,7 +618,7 @@ fn normalize(text: &str) -> String {
                 out.push(' ');
             }
             in_space = false;
-            out.extend(ch.to_lowercase());
+            out.push(ch);
         }
     }
     out

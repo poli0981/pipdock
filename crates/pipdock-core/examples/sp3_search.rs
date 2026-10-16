@@ -13,7 +13,7 @@
 //!
 //! ```text
 //! pipdock index refresh
-//! cargo run --release --example sp3_search -- "%LOCALAPPDATA%\PipDock\index.db"
+//! cargo run --release --example sp3_search -- "%LOCALAPPDATA%\PipDock\data\index.db"
 //! ```
 
 // A measurement harness reports to a human on stdout; the library-level ban does not apply.

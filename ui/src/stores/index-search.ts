@@ -21,13 +21,13 @@ import { create } from 'zustand'
 import {
   indexRefresh,
   indexSearch,
-  isPdError,
   pkgMetadata,
   type Freshness,
   type Hit,
   type PackageMeta,
   type PdError,
 } from '@/ipc'
+import { asPdError } from '@/ipc/errors'
 
 /**
  * Coalescing window, in ms.
@@ -85,10 +85,6 @@ interface IndexState {
   dequeue: (name: string) => void
   clearQueue: () => void
   refreshIndex: () => Promise<void>
-}
-
-function asPdError(e: unknown): PdError {
-  return isPdError(e) ? e : { code: 'PD-INT-001', message: String(e) }
 }
 
 /**

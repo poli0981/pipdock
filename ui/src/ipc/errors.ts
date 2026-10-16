@@ -9,6 +9,15 @@
 
 import type { PdError } from '@/ipc'
 
+/**
+ * A rejection as a `PdError`. Anything else reaching a store's `catch` can only be a bug in the
+ * bridge, and PD-INT-001 means exactly that — one honest internal code beats a blank error row.
+ * Six stores each had a copy of this.
+ */
+export function asPdError(e: unknown): PdError {
+  return isPdError(e) ? e : { code: 'PD-INT-001', message: String(e) }
+}
+
 export function isPdError(value: unknown): value is PdError {
   return (
     typeof value === 'object' &&

@@ -51,6 +51,11 @@ tauri-signing-private.key*
 
 # Logs & scratch
 *.log
+# insta's pending snapshots: review them with `cargo insta review`, never commit them.
+*.snap.new
+*.pending-snap
+# A release's checksums, when downloaded beside the checkout to verify an installer.
+/SHA256SUMS.txt
 /spikes/out/
 
 # Spike tooling venvs (SP-1 needs several uv versions side by side)

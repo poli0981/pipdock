@@ -497,12 +497,13 @@ export const auditSaveReport = (report: AuditReport, path: string): Promise<stri
   invoke('audit_save_report', { report, path })
 
 /**
- * Write the report beside `path`, as Markdown and JSON. Returns the two paths written.
+ * Uncommitted entries in the parked report's project, or `null` when we cannot say.
  *
- * The webview has no filesystem permission at all: `dialog:allow-save` only lets it *ask* for a
- * path, and Rust does the writing. A general write permission here would be a write-anywhere
- * primitive in a tool that already runs subprocesses.
+ * Asked when the fix dialog opens, so the confirm can name a number. `healthFix` asks again
+ * server-side before writing: this answer decides what to *render*, that one decides what to allow.
  */
+export const healthDirty = (): Promise<number | null> => invoke('health_dirty')
+
 /**
  * Apply ruff's safe fixes to the project the parked report was produced from.
  *
@@ -514,17 +515,16 @@ export const auditSaveReport = (report: AuditReport, path: string): Promise<stri
  * Rejects with `PD-RES-002` when the project changed since the confirm, and `PD-PRM-003` when a
  * target cannot be written — the latter before anything is.
  */
-/**
- * Uncommitted entries in the parked report's project, or `null` when we cannot say.
- *
- * Asked when the fix dialog opens, so the confirm can name a number. `healthFix` asks again
- * server-side before writing: this answer decides what to *render*, that one decides what to allow.
- */
-export const healthDirty = (): Promise<number | null> => invoke('health_dirty')
-
 export const healthFix = (files: number, acknowledgedDirty: boolean): Promise<FixReport> =>
   invoke('health_fix', { files, acknowledgedDirty })
 
+/**
+ * Write the report beside `path`, as Markdown and JSON. Returns the two paths written.
+ *
+ * The webview has no filesystem permission at all: `dialog:allow-save` only lets it *ask* for a
+ * path, and Rust does the writing. A general write permission here would be a write-anywhere
+ * primitive in a tool that already runs subprocesses.
+ */
 export const healthSaveReport = (report: HealthReport, path: string): Promise<string[]> =>
   invoke('health_save_report', { report, path })
 

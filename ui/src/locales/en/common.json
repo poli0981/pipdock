@@ -17,21 +17,16 @@
   "status": {
     "idle": "idle",
     "scanning": "scanning",
-    "resolving": "resolving",
-    "executing": "executing",
     "log": "log",
     "noEnvironment": "no environment selected",
-    "ready": "ready",
     "packages_one": "{{count}} package",
     "packages_other": "{{count}} packages",
     "warningsDetail": "Problems currently shown on screen."
   },
   "actions": {
-    "confirm": "Confirm",
     "cancel": "Cancel",
     "back": "Back",
     "rescan": "Rescan",
-    "browse": "Browse…",
     "selectAll": "Select all",
     "details": "Details",
     "copyLog": "Copy full log",
@@ -40,14 +35,11 @@
     "decline": "Decline and exit",
     "open": "Open",
     "use": "Use",
-    "retry": "Retry",
-    "openLogs": "Open logs folder",
     "openFailed": "Could not open that link in your browser."
   },
   "env": {
     "partialListing": "Packages installed for your user account are not shown here.",
     "partialListingDetail": "PipDock reads this environment in isolated mode, which skips {{path}}. Virtual environments are unaffected.",
-    "requiresPython": "Needs Python {{required}} — this environment is {{found}}.",
     "pipUpgrade": "Upgrade pip",
     "pipUpgrading": "Upgrading…",
     "pipUpgradeTitle": "Upgrade pip in this environment?",
@@ -74,7 +66,6 @@
     },
     "managed": "MANAGED",
     "managedDetail": "Externally managed (PEP 668). Create a virtual environment instead; the override lives in Settings and is discouraged.",
-    "unusable": "This interpreter could not be read.",
     "selected": "Selected"
   },
   "packages": {
@@ -102,7 +93,6 @@
       "updateSelected": "Update selected",
       "clearSelection": "Clear"
     },
-    "updateSelectedSoon": "Previewing and applying updates arrives in a later version.",
     "selected_one": "{{count}} selected",
     "selected_other": "{{count}} selected",
     "pinnedExcluded_one": "{{count}} pinned excluded",
@@ -332,7 +322,6 @@
     },
     "deptryNote": "deptry compares imports against PipDock's own tools environment, not this one — DEP001 and DEP003 can be swapped for packages it happens to hold.",
     "reviewInUninstall": "Review in Uninstall…",
-    "notInstalled": "not installed here",
     "vultureHint": "Confidence below 100% can be a false positive — review before deleting.",
     "vultureWhitelist": "vulture's whitelist",
     "fixableBadge": "fixable",
@@ -430,12 +419,10 @@
     "engine": "Engine",
     "engineDetail": "Which resolver PipDock drives. Both are supported; uv is faster, pip is always present.",
     "locale": "Language",
-    "localeSystem": "Follow the system",
     "pinThreshold": "Suggest pinning at",
     "pinThresholdDetail": "How many other packages must depend on something before the Pins screen suggests pinning it. Zero turns the suggestions off.",
     "override": "Allow externally managed environments",
     "overrideDetail": "PEP 668 marks some Pythons as managed by the operating system. Installing into one can break system tools, and there is no undo beyond a snapshot. Leave this off unless you know why you need it.",
-    "saved": "Saved",
     "logs": "Logs",
     "logsDetail": "PipDock keeps its own log for 14 days in this folder. Nothing in it is sent anywhere; copy it into a bug report if you want someone to read it.",
     "logsCopy": "Copy recent log",
@@ -443,7 +430,8 @@
     "logsEmpty": "Nothing has been logged yet.",
     "overrideConfirmTitle": "Allow changes to externally managed Pythons?",
     "overrideConfirmBody": "PipDock will pass --break-system-packages to pip or uv for every environment marked EXTERNALLY-MANAGED. Installing into such a Python can break tools your operating system relies on, and rolling back to a snapshot may not repair them. A virtual environment is almost always the better answer.",
-    "overrideConfirm": "Allow"
+    "overrideConfirm": "Allow",
+    "engineMissing": "not found"
   },
   "legal": {
     "title": "Before you start",

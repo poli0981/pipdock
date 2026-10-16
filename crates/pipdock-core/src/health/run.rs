@@ -411,15 +411,6 @@ pub fn has_findings(report: &HealthReport) -> bool {
     !report.deptry.is_empty() || !report.vulture.is_empty() || !report.ruff.findings.is_empty()
 }
 
-/// Ensure `total` is not smaller than what will actually be emitted.
-///
-/// A sink whose total is wrong is a progress bar that stops short or overshoots, and the caller
-/// cannot always know whether a tools-venv sync will be needed until it asks.
-#[must_use]
-pub fn sink_for(sink: &ProgressSink, first_step: usize) -> ProgressSink {
-    sink.at(first_step)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -17,9 +17,20 @@ import { PdDialog } from '@/components/PdDialog'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdLogs } from '@/components/PdLogs'
 import { SUPPORTED_LOCALES, type Locale } from '@/i18n'
-import { useSettingsStore } from '@/stores'
+import { engineInfo, type EngineInfo } from '@/ipc'
+import { useEnvStore, useSettingsStore } from '@/stores'
 
 const ENGINES = ['pip', 'uv'] as const
+
+function EngineVersion({ info }: { info: EngineInfo | undefined }) {
+  const { t } = useTranslation()
+  if (info === undefined) return null
+  return (
+    <span data-engine-version={info.id} className="font-mono text-data text-text-dim">
+      {info.available ? (info.version ?? '') : t('settings.engineMissing')}
+    </span>
+  )
+}
 
 export function PdSettings() {
   const { t } = useTranslation()
@@ -42,6 +53,30 @@ export function PdSettings() {
   useEffect(() => {
     void load()
   }, [load])
+
+  // ARCHITECTURE §7's `engine_info`: a version beside each radio, for the selected environment —
+  // pip's comes from `<python> -m pip --version`, so there is no answer without one. The wrapper
+  // shipped with no caller, so nothing said uv was missing until a plan failed for want of it.
+  // Keyed by interpreter, so a switch never shows one environment's versions under another.
+  const env = useEnvStore((s) => s.rows.find((r) => r.interpreter === s.selected)?.env)
+  const [engines, setEngines] = useState<{ for: string; info: EngineInfo[] } | null>(null)
+  useEffect(() => {
+    if (env === undefined) return undefined
+    let alive = true
+    void engineInfo(env).then(
+      (info) => {
+        if (alive) setEngines({ for: env.interpreter, info })
+      },
+      () => undefined,
+    )
+    return () => {
+      alive = false
+    }
+  }, [env])
+  const infoFor = (id: string) =>
+    engines !== null && engines.for === env?.interpreter
+      ? engines.info.find((i) => i.id === id)
+      : undefined
 
   return (
     <section aria-labelledby="settings-title" className="h-full overflow-auto p-6">
@@ -72,6 +107,8 @@ export function PdSettings() {
               />
               {/* Engine names are product identifiers, never translated (I18N §2). */}
               <span className="font-mono text-data">{id}</span>
+              {/* So is a version; only "not found" is copy. */}
+              <EngineVersion info={infoFor(id)} />
             </label>
           ))}
         </div>

@@ -1,9 +1,24 @@
 //! Core domain types shared by every module, the CLI and the GUI.
 //!
-//! These are the types `specta`/`tauri-specta` will export to TypeScript (ARCHITECTURE §9), so
-//! their serde representation is part of the public contract — see `docs/CLI-SPEC.md` §6.
+//! These are the types `cargo run -p xtask -- bindings` exports to TypeScript through `schemars`
+//! (ARCHITECTURE §9, as `bindings.rs` corrects it), so their serde representation is part of the
+//! public contract — see `docs/CLI-SPEC.md` §6.
 
 use std::path::PathBuf;
+
+/// SHA-256 of `data`, as lowercase hex. Three hashes folded their own digests by hand.
+#[must_use]
+pub(crate) fn sha256_hex(data: &[u8]) -> String {
+    use sha2::{Digest as _, Sha256};
+    use std::fmt::Write as _;
+    Sha256::digest(data)
+        .iter()
+        .fold(String::with_capacity(64), |mut acc, byte| {
+            // Infallible: writing to a String cannot fail.
+            let _ = write!(acc, "{byte:02x}");
+            acc
+        })
+}
 
 use crate::errors::{Code, PdError, Result};
 

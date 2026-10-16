@@ -17,20 +17,15 @@
   "status": {
     "idle": "rảnh",
     "scanning": "đang quét",
-    "resolving": "đang phân giải",
-    "executing": "đang chạy",
     "log": "nhật ký",
     "noEnvironment": "chưa chọn môi trường",
-    "ready": "sẵn sàng",
     "packages_other": "{{count}} gói",
     "warningsDetail": "Số vấn đề đang hiển thị trên màn hình."
   },
   "actions": {
-    "confirm": "Xác nhận",
     "cancel": "Hủy",
     "back": "Quay lại",
     "rescan": "Quét lại",
-    "browse": "Duyệt…",
     "selectAll": "Chọn tất cả",
     "details": "Chi tiết",
     "copyLog": "Sao chép toàn bộ nhật ký",
@@ -39,14 +34,11 @@
     "decline": "Từ chối và thoát",
     "open": "Mở",
     "use": "Dùng",
-    "retry": "Thử lại",
-    "openLogs": "Mở thư mục nhật ký",
     "openFailed": "Không mở được liên kết đó trong trình duyệt của bạn."
   },
   "env": {
     "partialListing": "Các gói cài riêng cho tài khoản của bạn không hiển thị ở đây.",
     "partialListingDetail": "PipDock đọc môi trường này ở chế độ cách ly nên bỏ qua {{path}}. Môi trường ảo không bị ảnh hưởng.",
-    "requiresPython": "Cần Python {{required}} — môi trường này là {{found}}.",
     "pipUpgrade": "Nâng cấp pip",
     "pipUpgrading": "Đang nâng cấp…",
     "pipUpgradeTitle": "Nâng cấp pip trong môi trường này?",
@@ -73,7 +65,6 @@
     },
     "managed": "HỆ THỐNG",
     "managedDetail": "Môi trường do hệ điều hành quản lý (PEP 668). Hãy tạo một môi trường ảo; tuỳ chọn ghi đè nằm trong Cài đặt và không được khuyến khích.",
-    "unusable": "Không đọc được trình thông dịch này.",
     "selected": "Đang chọn"
   },
   "packages": {
@@ -101,7 +92,6 @@
       "updateSelected": "Cập nhật các gói đã chọn",
       "clearSelection": "Bỏ chọn"
     },
-    "updateSelectedSoon": "Xem trước và áp dụng cập nhật sẽ có ở phiên bản sau.",
     "selected_other": "Đã chọn {{count}}",
     "pinnedExcluded_other": "{{count}} gói đã ghim bị loại trừ",
     "checkingUpdates": "Đang kiểm tra cập nhật…",
@@ -302,7 +292,6 @@
     },
     "deptryNote": "deptry đối chiếu các import với môi trường công cụ riêng của PipDock, không phải môi trường này — DEP001 và DEP003 có thể bị hoán đổi với những gói mà nó tình cờ có.",
     "reviewInUninstall": "Xem trong Gỡ cài đặt…",
-    "notInstalled": "không cài ở đây",
     "vultureHint": "Độ tin cậy dưới 100% có thể là dương tính giả — hãy xem lại trước khi xoá.",
     "vultureWhitelist": "danh sách trắng của vulture",
     "fixableBadge": "sửa được",
@@ -386,12 +375,10 @@
     "engine": "Bộ máy",
     "engineDetail": "Bộ giải phụ thuộc mà PipDock điều khiển. Cả hai đều được hỗ trợ; uv nhanh hơn, pip thì luôn có sẵn.",
     "locale": "Ngôn ngữ",
-    "localeSystem": "Theo hệ thống",
     "pinThreshold": "Gợi ý ghim khi đạt",
     "pinThresholdDetail": "Cần bao nhiêu gói khác phụ thuộc vào một gói thì màn hình Ghim mới gợi ý ghim nó. Đặt 0 để tắt gợi ý.",
     "override": "Cho phép môi trường do hệ thống quản lý",
     "overrideDetail": "PEP 668 đánh dấu một số bản Python là do hệ điều hành quản lý. Cài vào đó có thể làm hỏng công cụ hệ thống, và không có cách hoàn tác nào ngoài ảnh chụp. Hãy để tắt trừ khi bạn biết rõ vì sao cần bật.",
-    "saved": "Đã lưu",
     "logs": "Nhật ký",
     "logsDetail": "PipDock giữ nhật ký của chính nó trong 14 ngày tại thư mục này. Không có gì trong đó được gửi đi; hãy sao chép vào báo lỗi nếu bạn muốn ai đó đọc.",
     "logsCopy": "Sao chép nhật ký gần đây",
@@ -399,7 +386,8 @@
     "logsEmpty": "Chưa có gì được ghi.",
     "overrideConfirmTitle": "Cho phép thay đổi các bản Python do hệ thống quản lý?",
     "overrideConfirmBody": "PipDock sẽ truyền --break-system-packages cho pip hoặc uv với mọi môi trường có đánh dấu EXTERNALLY-MANAGED. Cài vào một bản Python như vậy có thể làm hỏng công cụ mà hệ điều hành dựa vào, và khôi phục từ ảnh chụp có thể không sửa được. Môi trường ảo gần như luôn là lựa chọn tốt hơn.",
-    "overrideConfirm": "Cho phép"
+    "overrideConfirm": "Cho phép",
+    "engineMissing": "không tìm thấy"
   },
   "legal": {
     "title": "Trước khi bắt đầu",

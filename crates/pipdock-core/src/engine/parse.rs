@@ -457,7 +457,7 @@ pub fn uv_plan(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedP
 /// preview shows the sentence, not either rendering, so both read
 /// `No solution found when resolving dependencies: Because …`.
 fn uv_no_solution(text: &str) -> Option<ImpossibleDetail> {
-    let flat = flatten(&strip_uv_decoration(text));
+    let flat = crate::errors::catalog::collapse_whitespace(&strip_uv_decoration(text));
     let idx = flat.find("No solution found when resolving")?;
     let explanation = flat[idx..]
         .trim()
@@ -493,7 +493,10 @@ fn uv_no_solution(text: &str) -> Option<ImpossibleDetail> {
 /// `warning: \`urllib3==2.0.0\` is yanked (reason: "…")`
 fn uv_yank_warnings(text: &str) -> Vec<YankWarning> {
     let mut out = Vec::new();
-    for line in flatten(text).split("warning:").skip(1) {
+    for line in crate::errors::catalog::collapse_whitespace(text)
+        .split("warning:")
+        .skip(1)
+    {
         if !line.contains("is yanked") {
             continue;
         }
@@ -647,28 +650,6 @@ fn strip_uv_decoration(text: &str) -> String {
             out.push_str(trimmed);
         }
         out.push('\n');
-    }
-    out
-}
-
-/// Collapse wrapping and CRLF so multi-word phrases can be found.
-///
-/// uv hard-wraps its diagnostics mid-sentence, so a literal search for a phrase that spans the
-/// wrap point finds nothing. The same normalization is applied by the error classifiers, and for
-/// the same reason.
-fn flatten(text: &str) -> String {
-    let mut out = String::with_capacity(text.len());
-    let mut in_space = false;
-    for ch in text.chars() {
-        if ch.is_whitespace() {
-            in_space = true;
-        } else {
-            if in_space && !out.is_empty() {
-                out.push(' ');
-            }
-            in_space = false;
-            out.push(ch);
-        }
     }
     out
 }

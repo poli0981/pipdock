@@ -2,8 +2,9 @@
 //!
 //! DATA-FLOW §9.2 is absolute: **no mutating engine call happens without a successful snapshot
 //! write.** A failed write aborts the plan and executes nothing (`PD-SNP-001`). That rule is not
-//! left to convention: [`crate::plan::execute`] takes a [`Snapshot`], so there is no way to call
-//! it without having made one.
+//! left to convention: [`crate::plan::execute`] takes a [`SnapshotProof`] — a written [`Snapshot`],
+//! or a waiver that names itself — so there is no way to call it without having made one or
+//! saying, greppably, why not.
 //!
 //! Layout, per ARCHITECTURE §6:
 //!
@@ -115,23 +116,6 @@ pub enum SnapshotProof<'a> {
     /// so there is nothing to roll back to and nothing to protect. **Never appropriate for a
     /// user's machine.**
     WaivedForDisposableEnvironment,
-}
-
-impl SnapshotProof<'_> {
-    /// The snapshot id, when there is one, for the summary and the log.
-    #[must_use]
-    pub fn id(&self) -> Option<&str> {
-        match self {
-            Self::Taken(s) => Some(&s.meta.id),
-            Self::WaivedForDisposableEnvironment => None,
-        }
-    }
-
-    /// True when the user has no way back from what is about to happen.
-    #[must_use]
-    pub fn is_waived(&self) -> bool {
-        matches!(self, Self::WaivedForDisposableEnvironment)
-    }
 }
 
 /// Parse a `pip freeze` / `uv pip freeze` document.

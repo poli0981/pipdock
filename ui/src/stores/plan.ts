@@ -21,7 +21,6 @@
 import { create } from 'zustand'
 
 import {
-  isPdError,
   onPlanProgress,
   planCancel,
   planDecide,
@@ -41,6 +40,7 @@ import {
   type PyEnv,
   type RollbackPreview,
 } from '@/ipc'
+import { asPdError } from '@/ipc/errors'
 
 /**
  * How many console lines to keep.
@@ -151,10 +151,6 @@ interface PlanState {
   setConsoleOpen: (open: boolean) => void
   /** Return to the table, discarding the preview or the summary. */
   reset: () => void
-}
-
-function asPdError(e: unknown): PdError {
-  return isPdError(e) ? e : { code: 'PD-INT-001', message: String(e) }
 }
 
 const EMPTY = {

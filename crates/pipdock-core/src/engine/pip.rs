@@ -1,8 +1,8 @@
 //! The pip adapter: `<env-python> -m pip …`.
 //!
-//! Command mapping is fixed by `docs/DATA-FLOW.md` §7. Implementation lands in M1; the argv
-//! builders below are already exercised by tests because they are the surface SECURITY §2 cares
-//! about — nothing else in this file may construct engine arguments.
+//! Command mapping is fixed by `docs/DATA-FLOW.md` §7. The argv builders below are the surface
+//! SECURITY §2 cares about, and are tested as such — nothing else in this file may construct
+//! engine arguments.
 
 use async_trait::async_trait;
 

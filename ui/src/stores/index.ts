@@ -25,7 +25,6 @@ import i18n, {
 import {
   envProbe,
   envScan,
-  isPdError,
   legalConsentGet,
   legalConsentSet,
   pinAdd,
@@ -57,13 +56,8 @@ import { joinRows, type LoadState, type PackageRow } from '@/screens/rows'
 export type EngineId = 'pip' | 'uv'
 
 /** Turn an unknown rejection into something a screen can render with a code. */
-export function asPdError(e: unknown): PdError {
-  return isPdError(e)
-    ? e
-    : // A rejection that is not a PdError can only be a bug in the bridge, and PD-INT-001 means
-      // exactly that. One honest internal code beats a blank error row.
-      { code: 'PD-INT-001', message: String(e) }
-}
+// One definition, in a Tauri-free module; re-exported for the components that import it here.
+export { asPdError } from '@/ipc/errors'
 
 interface SettingsState {
   /** Active UI language — the choice when there is one, else what the OS resolved to. */
@@ -758,3 +752,4 @@ export {
   useIndexStore,
   type QueuedPackage,
 } from '@/stores/index-search'
+import { asPdError } from '@/ipc/errors'

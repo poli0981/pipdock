@@ -36,15 +36,6 @@ impl DeclaredSource {
     }
 }
 
-/// What `project` declares its dependencies in (CODE-HEALTH-SPEC §3's detection order).
-///
-/// `pyproject.toml` wins outright when present, rather than being merged with any
-/// `requirements*.txt` beside it. That is deptry's own precedence, and reporting both would invite
-/// the UI to explain a distinction deptry did not make.
-///
-/// # Errors
-/// `PD-ENV-003` when the folder cannot be read at all — a path that is not a directory, or one the
-/// user cannot list. Health has nothing to run against in either case.
 /// Refuse a project folder Code Health must not run in.
 ///
 /// SECURITY §2 validates package names, versions and interpreter paths; the project folder is the
@@ -106,6 +97,15 @@ pub fn plain(path: PathBuf) -> PathBuf {
     path
 }
 
+/// What `project` declares its dependencies in (CODE-HEALTH-SPEC §3's detection order).
+///
+/// `pyproject.toml` wins outright when present, rather than being merged with any
+/// `requirements*.txt` beside it. That is deptry's own precedence, and reporting both would invite
+/// the UI to explain a distinction deptry did not make.
+///
+/// # Errors
+/// `PD-ENV-003` when the folder cannot be read at all — a path that is not a directory, or one the
+/// user cannot list. Health has nothing to run against in either case.
 pub fn declared_source(project: &Path) -> Result<DeclaredSource> {
     let unreadable = |e: &dyn std::fmt::Display| {
         PdError::new(

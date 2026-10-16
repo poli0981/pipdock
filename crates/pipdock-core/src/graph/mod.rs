@@ -306,15 +306,6 @@ impl ReverseDeps {
         out
     }
 
-    /// Every package in `all` that nothing else depends on.
-    #[must_use]
-    pub fn leaves(&self, all: &[PkgName]) -> Vec<PkgName> {
-        all.iter()
-            .filter(|p| self.dependents_of(p).is_empty())
-            .cloned()
-            .collect()
-    }
-
     /// Everything that must also go if `removing` is removed and nothing may be left broken.
     ///
     /// This is the *transitive* closure, which DATA-FLOW §5's "[Remove dependents too] (adds Y,Z
@@ -988,12 +979,6 @@ mod tests {
         let g = ReverseDeps::build(&dists);
         assert_eq!(g.dependent_count(&pkg("urllib3")), 6);
         assert!(g.dependent_count(&pkg("urllib3")) >= PIN_SUGGEST_THRESHOLD);
-    }
-
-    #[test]
-    fn leaves_are_packages_nothing_depends_on() {
-        let g = ReverseDeps::build(&[dist("x", "1.0", &[]), dist("y", "2.0", &["x>=1"])]);
-        assert_eq!(g.leaves(&[pkg("x"), pkg("y")]), [pkg("y")]);
     }
 
     #[test]
