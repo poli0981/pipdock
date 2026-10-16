@@ -5,7 +5,8 @@
 pub mod preview;
 
 pub use preview::{
-    Decision, ForcedPlan, apply_decisions, default_decision, derive_held_back, forced_requirements,
+    Decision, ForcedPlan, apply_decisions, default_decision, derive_forced, derive_held_back,
+    forced_collisions, forced_requirements,
 };
 
 use crate::engine::{Engine, InstallSet, ProgressSink, SystemPackages};
@@ -390,6 +391,11 @@ pub const PLAN_MAX_AGE: std::time::Duration = std::time::Duration::from_secs(10 
 /// DATA-FLOW §3: after this many conflict-decision rounds the UI requires manual pruning, which
 /// prevents decision ping-pong.
 pub const MAX_CONFLICT_ROUNDS: u8 = 3;
+
+/// How many times one forced resolve may release guard pins the engine names as colliding with a
+/// forced package, before the impossibility is shown as it stands. See
+/// [`preview::forced_collisions`].
+pub const FORCE_RELEASE_ROUNDS: usize = 3;
 
 /// A [`ResolutionReport`] the user has confirmed.
 ///

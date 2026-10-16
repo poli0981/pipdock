@@ -335,22 +335,51 @@ impl UpdateFlow {
 
     /// Resolve the current request and classify what the caller must do next.
     async fn resolve(&mut self) -> Result<FlowStep> {
-        let ctx = crate::engine::ResolveCtx {
-            cancel: self.cancel.clone(),
-            adjust: crate::engine::GuardAdjust::default(),
-            system: self.system,
+        // **Force latest** (DISCLAIMER §2). The decision was recorded in the request and nothing
+        // read it, so forcing re-resolved exactly the preview the user had just been shown (C6).
+        // The forced package is pinned to its latest and the packages holding it back leave the
+        // guard set — which is what makes them the "Will break" rows.
+        let forced: Vec<PkgName> = match &self.req.strategy {
+            Strategy::ForceLatest { overrides } => overrides.clone(),
+            Strategy::Compatible => Vec::new(),
         };
-        let mut report = match self.engine.resolve(&self.env, &self.req, &ctx).await {
-            Ok(report) => report,
-            // A stopped resolve planned nothing and ran nothing; it is not a failure to report.
-            Err(e) if e.is_cancelled() => {
-                return Ok(FlowStep::Nothing {
-                    reason: NothingReason::Cancelled,
-                });
+        let mut adjust = if forced.is_empty() {
+            crate::engine::GuardAdjust::default()
+        } else {
+            let plan = plan::forced_requirements(&forced, &self.outdated, &self.graph);
+            crate::engine::GuardAdjust {
+                pins: plan.pins,
+                release: plan.release_from_guards,
+                exclude: Vec::new(),
             }
-            Err(e) => return Err(e),
+        };
+
+        let mut rounds = 0;
+        let mut report = loop {
+            let ctx = crate::engine::ResolveCtx {
+                cancel: self.cancel.clone(),
+                adjust: adjust.clone(),
+                system: self.system,
+            };
+            let report = match self.engine.resolve(&self.env, &self.req, &ctx).await {
+                Ok(report) => report,
+                // A stopped resolve planned nothing and ran nothing; it is not a failure to report.
+                Err(e) if e.is_cancelled() => {
+                    return Ok(FlowStep::Nothing {
+                        reason: NothingReason::Cancelled,
+                    });
+                }
+                Err(e) => return Err(e),
+            };
+            let collisions = plan::forced_collisions(&report, &adjust, &self.req, &self.installed);
+            if collisions.is_empty() || rounds >= plan::FORCE_RELEASE_ROUNDS {
+                break report;
+            }
+            adjust.release.extend(collisions);
+            rounds += 1;
         };
         plan::derive_held_back(&mut report, &self.req.upgrades, &self.outdated, &self.graph);
+        plan::derive_forced(&mut report, &forced, &self.outdated, &self.graph);
         self.report = report;
         self.resolved_at = (self.clock)();
 

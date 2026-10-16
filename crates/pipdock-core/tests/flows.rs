@@ -29,7 +29,9 @@ use pipdock_core::model::{
     CheckReport, Dist, EngineId, EngineInfo, EnvSource, ExecMode, OutdatedDist, PkgName, PyEnv,
     StepResult, StepStatus, Version,
 };
-use pipdock_core::plan::{Change, ChangeKind, PlanRequest, ResolutionReport};
+use pipdock_core::plan::{
+    Change, ChangeKind, Decision, ImpossibleDetail, PlanRequest, ResolutionReport,
+};
 use pipdock_core::snapshot::{self, Trigger};
 
 /// One package in the scripted world.
@@ -45,6 +47,9 @@ struct World {
     installed: BTreeMap<String, Installed>,
     /// The newest release the index offers, per package.
     latest: BTreeMap<String, String>,
+    /// What a package's newest release needs at least, per dependency: `httpcore` 1.0.9 needs
+    /// `h11>=0.16`.
+    needs: BTreeMap<String, Vec<(String, String)>>,
     externally_managed: bool,
     /// The resolve blocks until its token is tripped, as a backtracking pip does.
     resolve_hangs: bool,
@@ -58,7 +63,10 @@ struct World {
 
 /// What one resolve was asked: the request, what the flow changed about the guard set, and
 /// whether the PEP 668 override applied.
-#[allow(dead_code)]
+#[expect(
+    dead_code,
+    reason = "recorded whole, for whichever part a test asserts on"
+)]
 struct ResolveCall {
     req: PlanRequest,
     adjust: GuardAdjust,
@@ -93,6 +101,15 @@ impl Scripted {
         self
     }
 
+    fn needing(self, name: &str, dep: &str, at_least: &str) -> Self {
+        self.world()
+            .needs
+            .entry(name.to_owned())
+            .or_default()
+            .push((dep.to_owned(), at_least.to_owned()));
+        self
+    }
+
     fn version_of(&self, name: &str) -> Option<String> {
         self.world().installed.get(name).map(|i| i.version.clone())
     }
@@ -100,6 +117,25 @@ impl Scripted {
 
 fn pkg(name: &str) -> PkgName {
     PkgName::parse(name).unwrap()
+}
+
+fn release(v: &str) -> Vec<u32> {
+    v.split('.').map(|p| p.parse().unwrap_or(0)).collect()
+}
+
+fn older(a: &str, b: &str) -> bool {
+    release(a) < release(b)
+}
+
+/// `requirement` names `target` with an upper bound at or below `version` — `httpcore<0.16.0`
+/// caps `httpcore` 1.0.9. Just enough of PEP 440 for the scenarios here.
+fn caps(requirement: &str, target: &str, version: &str) -> bool {
+    let Some(rest) = requirement.strip_prefix(target) else {
+        return false;
+    };
+    rest.split(',')
+        .filter_map(|c| c.trim().strip_prefix('<'))
+        .any(|bound| !bound.starts_with('=') && !older(version, bound))
 }
 
 fn env() -> PyEnv {
@@ -169,11 +205,42 @@ impl Engine for Scripted {
             );
         }
 
-        // Every upgrade goes to the index's latest; a pin the flow added goes where it says.
+        // Two rules of a real resolver, just enough of them. A guard-pinned package that caps an
+        // upgrade below its latest holds it where it is (SP-1). A forced pin that needs a newer
+        // dependency than the guard set pins is impossible, and the engine names both.
         let world = self.world();
+        let pinned: Vec<&str> = ctx.adjust.pins.iter().map(|p| p.name.as_str()).collect();
+        let moving = |name: &str| {
+            req.upgrades.iter().any(|u| u.as_str() == name)
+                || pinned.contains(&name)
+                || ctx.adjust.release.iter().any(|r| r.as_str() == name)
+        };
+        let guard: Vec<(&String, &Installed)> =
+            world.installed.iter().filter(|(n, _)| !moving(n)).collect();
+
+        for pin in &ctx.adjust.pins {
+            for (dep, min) in world.needs.get(pin.name.as_str()).into_iter().flatten() {
+                if let Some((_, held)) = guard.iter().find(|(n, _)| *n == dep)
+                    && older(&held.version, min)
+                {
+                    return Ok(ResolutionReport {
+                        impossible: Some(ImpossibleDetail {
+                            packages: vec![pin.name.clone(), pkg(dep)],
+                            explanation: format!(
+                                "Cannot install {}=={} and {dep}=={} because these package \
+                                 versions have conflicting dependencies.",
+                                pin.name, pin.version, held.version
+                            ),
+                        }),
+                        ..ResolutionReport::default()
+                    });
+                }
+            }
+        }
+
         let mut changes = Vec::new();
         for name in &req.upgrades {
-            if ctx.adjust.pins.iter().any(|p| &p.name == name) {
+            if pinned.contains(&name.as_str()) {
                 continue;
             }
             let (Some(from), Some(to)) = (
@@ -182,6 +249,12 @@ impl Engine for Scripted {
             ) else {
                 continue;
             };
+            let capped = guard
+                .iter()
+                .any(|(_, g)| g.requires.iter().any(|r| caps(r, name.as_str(), to)));
+            if capped {
+                continue;
+            }
             changes.push(Change {
                 name: name.clone(),
                 from: Some(Version(from.version.clone())),
@@ -199,6 +272,19 @@ impl Engine for Scripted {
                 to: pin.version.clone(),
                 kind: ChangeKind::Upgrade,
             });
+            // What it needs moved, now that nothing pins it, goes to the index's latest.
+            for (dep, min) in world.needs.get(pin.name.as_str()).into_iter().flatten() {
+                if let (Some(i), Some(latest)) = (world.installed.get(dep), world.latest.get(dep))
+                    && older(&i.version, min)
+                {
+                    changes.push(Change {
+                        name: pkg(dep),
+                        from: Some(Version(i.version.clone())),
+                        to: Version(latest.clone()),
+                        kind: ChangeKind::Upgrade,
+                    });
+                }
+            }
         }
         Ok(ResolutionReport {
             changes,
@@ -705,4 +791,73 @@ async fn an_unmanaged_environment_never_gets_the_flag_even_with_the_override_on(
             .iter()
             .all(|i| i.system == SystemPackages::Protected)
     );
+}
+
+#[tokio::test]
+async fn force_latest_forces_and_names_what_it_breaks() {
+    // C6, end to end on the SP-1 scenario. httpx 0.23 caps httpcore below 0.16, so httpcore is
+    // held back, and the user forces it. Forcing has to pin httpcore to its latest, release httpx
+    // from the guard set — httpx is what breaks — and let h11 move, which httpcore 1.0.9 needs at
+    // >=0.16 and the guard set had pinned at 0.12.0. Before 1.4.0 the decision was recorded and
+    // nothing read it: the "forced" resolve was the held-back one again.
+    let engine = Scripted::default()
+        .with("httpx", "0.23.0", &["httpcore<0.16.0,>=0.15.0"])
+        .with("httpcore", "0.15.0", &["h11<0.13,>=0.11"])
+        .with("h11", "0.12.0", &[])
+        .offering("httpcore", "1.0.9")
+        .offering("h11", "0.16.0")
+        .needing("httpcore", "h11", "0.16");
+    let intent = Intent::Update {
+        all: false,
+        pkgs: vec!["httpcore".to_owned()],
+        except: Vec::new(),
+        force_latest: false,
+    };
+    let (mut flow, step) = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &intent,
+        &[],
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    let FlowStep::NeedsDecisions { report, .. } = step else {
+        panic!("httpx holds httpcore back: {step:?}");
+    };
+    assert_eq!(report.held_back.len(), 1);
+
+    let step = flow
+        .decide(&BTreeMap::from([(pkg("httpcore"), Decision::ForceLatest)]))
+        .await
+        .expect("decide");
+    let FlowStep::NeedsConfirm { report } = step else {
+        panic!("a forced plan is confirmable: {step:?}");
+    };
+    let moved: BTreeMap<String, String> = report
+        .changes
+        .iter()
+        .map(|c| (c.name.to_string(), c.to.0.clone()))
+        .collect();
+    assert_eq!(moved.get("httpcore").map(String::as_str), Some("1.0.9"));
+    assert_eq!(
+        moved.get("h11").map(String::as_str),
+        Some("0.16.0"),
+        "the pin the engine named as colliding was released"
+    );
+    assert!(report.held_back.is_empty());
+
+    // "Will break": httpx, by name, the package whose declared constraint was overridden.
+    assert_eq!(report.forced.len(), 1);
+    let breaks: Vec<String> = report.forced[0]
+        .blockers
+        .iter()
+        .filter_map(|b| b.by.as_ref().map(ToString::to_string))
+        .collect();
+    assert_eq!(breaks, ["httpx"]);
+
+    let world = engine.world();
+    let last = &world.resolves.last().expect("resolved").adjust;
+    assert!(last.release.contains(&pkg("httpx")));
+    assert!(last.release.contains(&pkg("h11")));
 }

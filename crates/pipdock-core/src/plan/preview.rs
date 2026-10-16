@@ -195,6 +195,72 @@ pub fn forced_requirements(
     }
 }
 
+/// Fill in [`ResolutionReport::forced`]: each forced package, and what forcing it will break.
+///
+/// The "Will break" section of the preview (UI-SPEC §4, DISCLAIMER §2). The blockers are the same
+/// ones a held-back row would have named — the packages whose declared constraint the user just
+/// chose to override — attributed by the graph, never guessed (ARCHITECTURE §3).
+pub fn derive_forced(
+    report: &mut ResolutionReport,
+    forced: &[PkgName],
+    outdated: &[OutdatedDist],
+    graph: &ReverseDeps,
+) {
+    let latest: BTreeMap<&PkgName, &OutdatedDist> = outdated.iter().map(|o| (&o.name, o)).collect();
+    report.forced = forced
+        .iter()
+        .filter_map(|pkg| {
+            let target = latest.get(pkg)?;
+            let blockers = PyVersion::parse(&target.latest.0)
+                .map(|v| graph.blockers_for(pkg, &v))
+                .unwrap_or_default();
+            Some(HeldBack {
+                pkg: pkg.clone(),
+                resolved: target.latest.clone(),
+                latest: target.latest.clone(),
+                blockers,
+            })
+        })
+        .collect();
+}
+
+/// The guard pins an impossibility says collide with a forced pin — which forcing must release.
+///
+/// The guard set pins **every** installed package the plan does not move, the forced package's
+/// own dependencies included. So forcing httpcore to 1.0.9 over `h11==0.12.0` was impossible:
+/// 1.0.9 needs `h11>=0.16`. Which pins collide is resolution, and PipDock does not resolve
+/// (invariant 3) — but the engine names them in its impossibility, and releasing exactly those
+/// lets it move them. Only installed, still-pinned names count: releasing anything else changes
+/// no line and would ask the same question again.
+#[must_use]
+pub fn forced_collisions(
+    report: &ResolutionReport,
+    adjust: &crate::engine::GuardAdjust,
+    req: &PlanRequest,
+    installed: &[crate::model::Dist],
+) -> Vec<PkgName> {
+    if adjust.pins.is_empty() {
+        return Vec::new();
+    }
+    let Some(detail) = &report.impossible else {
+        return Vec::new();
+    };
+    let moving: BTreeSet<&PkgName> = req
+        .upgrades
+        .iter()
+        .chain(req.installs.iter().map(|s| &s.name))
+        .chain(adjust.pins.iter().map(|p| &p.name))
+        .chain(adjust.release.iter())
+        .collect();
+    let installed: BTreeSet<&PkgName> = installed.iter().map(|d| &d.name).collect();
+    detail
+        .packages
+        .iter()
+        .filter(|p| installed.contains(p) && !moving.contains(p))
+        .cloned()
+        .collect()
+}
+
 /// What forcing a set of packages requires of the plan.
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ForcedPlan {
