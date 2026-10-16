@@ -16,32 +16,32 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 workspace = true
 
 [build-dependencies]
-tauri-build = { version = "2", features = [] }
+tauri-build = { version = "2.7.3", features = [] }
 
 [dependencies]
 pipdock-core = { path = "../crates/pipdock-core" }
-tauri = { version = "2", features = [] }
-tauri-plugin-dialog = "2"
+tauri = { version = "2.12.4", features = [] }
+tauri-plugin-dialog = "2.8.3"
 # Scoped in capabilities/external-links.json: the legal gate and the bug-report deep
 # link hand a URL to the browser, because the CSP forbids the webview fetching it.
-tauri-plugin-opener = "2"
+tauri-plugin-opener = "2.7.2"
 # Write-only, for "Copy full log" (ERROR-CATALOG §4).
-tauri-plugin-clipboard-manager = "2"
-serde = { version = "1", features = ["derive"] }
-serde_json = "1"
-jiff = "0.2.35"
-tokio = { version = "1", features = ["rt-multi-thread"] }
+tauri-plugin-clipboard-manager = "2.5.0"
+serde = { version = "1.0.229", features = ["derive"] }
+serde_json = "1.0.154"
+jiff = "0.2.38"
+tokio = { version = "1.53.3", features = ["rt-multi-thread"] }
 # `plan_cancel` trips the same `CancellationToken` the core threads through `exec`.
-tokio-util = "0.7"
-tracing = "0.1"
+tokio-util = "0.7.20"
+tracing = "0.1.44"
 # One window, always. Launching PipDock again focuses the window that exists rather than opening
 # a second one — two of them would be two `Sessions` slots over one set of environments, each
 # certain it owned the mutation in flight.
-tauri-plugin-single-instance = "2.4.3"
-tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tauri-plugin-single-instance = "2.5.4"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 
 [dev-dependencies]
 # `Sessions` is the one thing in this crate with a protocol worth testing on its own, and every
 # method on it is async. The runtime is already a dependency; `macros` and `rt` are what
 # `#[tokio::test]` needs on top.
-tokio = { version = "1", features = ["macros", "rt"] }
+tokio = { version = "1.53.3", features = ["macros", "rt"] }
