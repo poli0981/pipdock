@@ -47,6 +47,11 @@ struct World {
     installed: BTreeMap<String, Installed>,
     /// The newest release the index offers, per package.
     latest: BTreeMap<String, String>,
+    /// Older releases the index also offers, newest first — what a resolver falls back to when
+    /// the latest is ruled out.
+    older: BTreeMap<String, Vec<String>>,
+    /// Which engine this pretends to be; the flow asks PyPI about uv's plans, not pip's.
+    engine: Option<EngineId>,
     /// What a package's newest release needs at least, per dependency: `httpcore` 1.0.9 needs
     /// `h11>=0.16`.
     needs: BTreeMap<String, Vec<(String, String)>>,
@@ -63,10 +68,6 @@ struct World {
 
 /// What one resolve was asked: the request, what the flow changed about the guard set, and
 /// whether the PEP 668 override applied.
-#[expect(
-    dead_code,
-    reason = "recorded whole, for whichever part a test asserts on"
-)]
 struct ResolveCall {
     req: PlanRequest,
     adjust: GuardAdjust,
@@ -98,6 +99,19 @@ impl Scripted {
         self.world()
             .latest
             .insert(name.to_owned(), latest.to_owned());
+        self
+    }
+
+    fn also_offering(self, name: &str, older: &[&str]) -> Self {
+        self.world().older.insert(
+            name.to_owned(),
+            older.iter().map(|v| (*v).to_owned()).collect(),
+        );
+        self
+    }
+
+    fn pretending_to_be(self, id: EngineId) -> Self {
+        self.world().engine = Some(id);
         self
     }
 
@@ -152,7 +166,7 @@ fn env() -> PyEnv {
 #[async_trait]
 impl Engine for Scripted {
     fn id(&self) -> EngineId {
-        EngineId::Pip
+        self.world().engine.unwrap_or(EngineId::Pip)
     }
 
     async fn info(&self, _env: &PyEnv) -> EngineInfo {
@@ -238,15 +252,41 @@ impl Engine for Scripted {
             }
         }
 
+        let excluded = |name: &str, version: &str| {
+            ctx.adjust
+                .exclude
+                .iter()
+                .any(|e| e.name.as_str() == name && e.version.0 == version)
+        };
         let mut changes = Vec::new();
+        for spec in &req.installs {
+            let Some(version) = spec
+                .version_req
+                .as_deref()
+                .and_then(|v| v.strip_prefix("=="))
+            else {
+                continue;
+            };
+            changes.push(Change {
+                name: spec.name.clone(),
+                from: None,
+                to: Version(version.to_owned()),
+                kind: ChangeKind::NewInstall,
+            });
+        }
         for name in &req.upgrades {
             if pinned.contains(&name.as_str()) {
                 continue;
             }
-            let (Some(from), Some(to)) = (
-                world.installed.get(name.as_str()),
-                world.latest.get(name.as_str()),
-            ) else {
+            let Some(from) = world.installed.get(name.as_str()) else {
+                continue;
+            };
+            let candidates = world
+                .latest
+                .get(name.as_str())
+                .into_iter()
+                .chain(world.older.get(name.as_str()).into_iter().flatten());
+            let Some(to) = candidates.into_iter().find(|v| !excluded(name.as_str(), v)) else {
                 continue;
             };
             let capped = guard
@@ -860,4 +900,188 @@ async fn force_latest_forces_and_names_what_it_breaks() {
     let last = &world.resolves.last().expect("resolved").adjust;
     assert!(last.release.contains(&pkg("httpx")));
     assert!(last.release.contains(&pkg("h11")));
+}
+
+/// `Requires-Python` per release, as PyPI would answer; anything absent is unknown.
+#[derive(Debug, Default)]
+struct Releases {
+    known: BTreeMap<(String, String), String>,
+    asked: std::sync::atomic::AtomicUsize,
+}
+
+impl Releases {
+    fn with(mut self, name: &str, version: &str, requires: &str) -> Self {
+        self.known
+            .insert((name.to_owned(), version.to_owned()), requires.to_owned());
+        self
+    }
+}
+
+#[async_trait]
+impl pipdock_core::release::ReleaseMeta for Releases {
+    async fn requires_python(&self, name: &PkgName, version: &Version) -> Option<String> {
+        self.asked.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        self.known
+            .get(&(name.to_string(), version.0.clone()))
+            .cloned()
+    }
+}
+
+fn checking(releases: &Arc<Releases>) -> FlowOptions {
+    FlowOptions {
+        releases: Some(Arc::clone(releases) as Arc<dyn pipdock_core::release::ReleaseMeta>),
+        ..FlowOptions::default()
+    }
+}
+
+fn install(specs: &[&str]) -> Intent {
+    Intent::Install {
+        specs: specs.iter().map(|s| (*s).to_owned()).collect(),
+    }
+}
+
+#[tokio::test]
+async fn an_exact_pin_this_python_cannot_install_is_pd_pkg_001_before_any_engine_runs() {
+    // C2. pip answered this with the "No matching distribution" it gives a typo, and uv planned
+    // it and failed at install time, building scipy from source. PD-PKG-001 existed in the
+    // catalog and nothing ever raised it.
+    let releases = Arc::new(Releases::default().with("scipy", "1.7.3", ">=3.7,<3.10"));
+    for engine_id in [EngineId::Pip, EngineId::Uv] {
+        let engine = Scripted::default().pretending_to_be(engine_id);
+        let Err(err) = UpdateFlow::start(
+            env(),
+            Box::new(engine.clone()),
+            &install(&["scipy==1.7.3"]),
+            &[],
+            checking(&releases),
+        )
+        .await
+        else {
+            panic!("{engine_id:?}: an install this Python cannot run must be refused");
+        };
+        assert_eq!(err.code, Code::PkgRequiresPython, "{engine_id:?}");
+        assert!(err.message.contains(">=3.7,<3.10") && err.message.contains("3.12.4"));
+        assert!(
+            engine.world().resolves.is_empty(),
+            "refused before the engine ran"
+        );
+    }
+}
+
+#[tokio::test]
+async fn one_pin_this_python_cannot_install_does_not_cost_the_others() {
+    let releases = Arc::new(Releases::default().with("scipy", "1.7.3", ">=3.7,<3.10"));
+    let engine = Scripted::default();
+    let (_, step) = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &install(&["scipy==1.7.3", "idna==3.10"]),
+        &[],
+        checking(&releases),
+    )
+    .await
+    .expect("start");
+    let FlowStep::NeedsConfirm { report } = step else {
+        panic!("the rest of the request is confirmable: {step:?}");
+    };
+    let planned: Vec<String> = report.changes.iter().map(|c| c.name.to_string()).collect();
+    assert_eq!(planned, ["idna"]);
+    assert_eq!(report.incompatible.len(), 1);
+    assert_eq!(report.incompatible[0].pkg.as_str(), "scipy");
+    assert_eq!(report.incompatible[0].requires_python, ">=3.7,<3.10");
+    let world = engine.world();
+    let asked: Vec<String> = world.resolves[0]
+        .req
+        .installs
+        .iter()
+        .map(|s| s.name.to_string())
+        .collect();
+    assert_eq!(asked, ["idna"], "scipy never reached the engine");
+}
+
+#[tokio::test]
+async fn a_release_uv_planned_past_its_python_cap_is_ruled_out_and_the_engine_asked_again() {
+    // uv honours a lower Requires-Python bound and ignores an upper one, so it plans numba
+    // 0.62.0 (<3.14) on 3.14. PipDock rules that release out by name and uv picks again.
+    let releases = Arc::new(
+        Releases::default()
+            .with("numba", "0.62.0", ">=3.10,<3.14")
+            .with("numba", "0.61.2", ">=3.10,<3.15"),
+    );
+    let engine = Scripted::default()
+        .pretending_to_be(EngineId::Uv)
+        .with("numba", "0.60.0", &[])
+        .offering("numba", "0.62.0")
+        .also_offering("numba", &["0.61.2"]);
+    let mut py314 = env();
+    py314.python_version = "3.14.7".into();
+    let (_, step) = UpdateFlow::start(
+        py314,
+        Box::new(engine.clone()),
+        &update_all(),
+        &[],
+        checking(&releases),
+    )
+    .await
+    .expect("start");
+    let FlowStep::NeedsConfirm { report } = step else {
+        panic!("an older compatible release is a clean plan, not a held-back row: {step:?}");
+    };
+    assert_eq!(report.changes.len(), 1);
+    assert_eq!(report.changes[0].to.0, "0.61.2");
+    assert_eq!(
+        report.incompatible.len(),
+        1,
+        "and the preview says what was ruled out"
+    );
+    assert_eq!(report.incompatible[0].version.0, "0.62.0");
+    let world = engine.world();
+    assert_eq!(world.resolves.len(), 2);
+    assert_eq!(world.resolves[1].adjust.exclude[0].version.0, "0.62.0");
+}
+
+#[tokio::test]
+async fn pip_s_own_answer_is_used_and_pypi_is_not_asked_about_its_plan() {
+    let releases = Arc::new(Releases::default());
+    let engine = Scripted::default()
+        .with("idna", "3.4", &[])
+        .offering("idna", "3.10");
+    let (_, step) = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &update_all(),
+        &[],
+        checking(&releases),
+    )
+    .await
+    .expect("start");
+    assert!(matches!(step, FlowStep::NeedsConfirm { .. }), "{step:?}");
+    assert_eq!(
+        releases.asked.load(std::sync::atomic::Ordering::SeqCst),
+        0,
+        "nothing exact was pinned and pip's plan says what it requires"
+    );
+}
+
+#[tokio::test]
+async fn a_requires_python_nobody_knows_never_blocks() {
+    // A private index, a network that is down: refusing an installable package on PipDock's
+    // uncertainty is the worse failure, and the engine still judges.
+    let releases = Arc::new(Releases::default());
+    let engine = Scripted::default().pretending_to_be(EngineId::Uv);
+    let (_, step) = UpdateFlow::start(
+        env(),
+        Box::new(engine),
+        &install(&["internal-tool==2.0"]),
+        &[],
+        checking(&releases),
+    )
+    .await
+    .expect("start");
+    let FlowStep::NeedsConfirm { report } = step else {
+        panic!("{step:?}");
+    };
+    assert_eq!(report.changes.len(), 1);
+    assert!(report.incompatible.is_empty());
+    assert!(releases.asked.load(std::sync::atomic::Ordering::SeqCst) >= 1);
 }

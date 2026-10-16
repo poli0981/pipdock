@@ -58,6 +58,9 @@ fn flow_options() -> FlowOptions {
         allow_externally_managed: Store::open(&app_data_dir())
             .and_then(|store| settings::load(&store))
             .is_ok_and(|s| s.allow_externally_managed),
+        releases: Some(std::sync::Arc::new(
+            pipdock_core::release::PyPiReleases::new(app_data_dir()),
+        )),
         ..FlowOptions::default()
     }
 }
@@ -770,6 +773,17 @@ fn print_preview(opts: &GlobalOpts, report: &plan::ResolutionReport) {
                 // than looking like a rendering bug.
                 println!("      (nothing installed explains this)");
             }
+        }
+    }
+    if !report.incompatible.is_empty() {
+        // Hard invariant 10: left out, and why, rather than a "not found" for a version that
+        // exists.
+        println!("\nLeft out — needs a different Python:");
+        for m in &report.incompatible {
+            println!(
+                "  {} {} requires Python {} (this is {})",
+                m.pkg, m.version, m.requires_python, m.python
+            );
         }
     }
     if !report.forced.is_empty() {

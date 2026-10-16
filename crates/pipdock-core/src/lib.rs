@@ -40,6 +40,7 @@ pub mod model;
 pub mod pep440;
 pub mod pins;
 pub mod plan;
+pub mod release;
 pub mod report;
 pub mod requirements;
 pub mod settings;

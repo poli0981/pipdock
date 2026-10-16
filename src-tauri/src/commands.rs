@@ -665,6 +665,9 @@ pub async fn plan_resolve(
     let opts = flow::FlowOptions {
         cancel,
         allow_externally_managed,
+        releases: Some(std::sync::Arc::new(
+            pipdock_core::release::PyPiReleases::new(state.app_data.clone()),
+        )),
         ..flow::FlowOptions::default()
     };
     match flow::UpdateFlow::start(env, engine, &intent, &env_pins, opts).await {

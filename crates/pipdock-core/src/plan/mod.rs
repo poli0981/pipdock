@@ -192,6 +192,11 @@ pub struct ResolutionReport {
     #[serde(skip)]
     #[schemars(skip)]
     pub raw: String,
+    /// What the engine itself said each planned release requires of Python — pip's report carries
+    /// it, uv's plan does not. For the flow's own check (hard invariant 10); never on the wire.
+    #[serde(skip)]
+    #[schemars(skip)]
+    pub declared_python: std::collections::BTreeMap<PkgName, String>,
 }
 
 impl ResolutionReport {
@@ -396,6 +401,10 @@ pub const MAX_CONFLICT_ROUNDS: u8 = 3;
 /// forced package, before the impossibility is shown as it stands. See
 /// [`preview::forced_collisions`].
 pub const FORCE_RELEASE_ROUNDS: usize = 3;
+
+/// How many times one resolve may rule out releases whose `Requires-Python` excludes this
+/// environment and ask again, before what remains is shown as a warning.
+pub const PYTHON_EXCLUDE_ROUNDS: usize = 2;
 
 /// A [`ResolutionReport`] the user has confirmed.
 ///
@@ -1145,6 +1154,7 @@ mod tests {
             forced: Vec::new(),
             yanked: Vec::new(),
             raw: String::new(),
+            declared_python: Default::default(),
         };
         assert!(!report.is_clean());
     }
@@ -1164,6 +1174,7 @@ mod tests {
             forced: Vec::new(),
             yanked: Vec::new(),
             raw: String::new(),
+            declared_python: Default::default(),
         };
         assert!(report.is_clean());
         let pinned = report.pinned_set();

@@ -154,6 +154,7 @@ fn flow_step() -> crate::flow::FlowStep {
             forced: Vec::new(),
             yanked: Vec::new(),
             raw: String::new(),
+            declared_python: Default::default(),
         },
         round: 0,
         rounds_remaining: 3,

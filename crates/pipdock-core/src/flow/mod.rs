@@ -35,13 +35,15 @@
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
+use std::sync::Arc;
 
 use crate::engine::{Engine, EventSink, ProgressSink, SystemPackages};
 use crate::errors::{Code, PdError, Result};
 use crate::graph::ReverseDeps;
-use crate::model::{Dist, OutdatedDist, PkgName, PyEnv, Spec};
+use crate::model::{Dist, EngineId, OutdatedDist, PinnedSpec, PkgName, PyEnv, Spec, Version};
 use crate::pins::{self, Pin};
-use crate::plan::{self, Decision, PlanRequest, ResolutionReport, Strategy};
+use crate::plan::{self, Decision, PlanRequest, PythonMismatch, ResolutionReport, Strategy};
+use crate::release::{ReleaseMeta, mismatch, requires_python_of};
 use crate::snapshot::{self, Snapshot, SnapshotProof};
 use tokio_util::sync::CancellationToken;
 
@@ -154,6 +156,10 @@ pub struct FlowOptions {
     /// environment regardless (H11). On its own it still changes nothing — the flag is passed only
     /// when this is on **and** the probe finds the marker.
     pub allow_externally_managed: bool,
+    /// Where `Requires-Python` of a release comes from when the engine does not say — uv's plan,
+    /// and any exact pin before it reaches an engine (hard invariant 10). `None` checks only what
+    /// the engine itself reported.
+    pub releases: Option<Arc<dyn ReleaseMeta>>,
 }
 
 impl Default for FlowOptions {
@@ -162,6 +168,7 @@ impl Default for FlowOptions {
             cancel: CancellationToken::new(),
             clock: jiff::Timestamp::now,
             allow_externally_managed: false,
+            releases: None,
         }
     }
 }
@@ -237,6 +244,11 @@ pub struct UpdateFlow {
     excluded_pins: Vec<Pin>,
     /// Whether the PEP 668 override applies to this flow's engine calls.
     system: SystemPackages,
+    /// See [`FlowOptions::releases`].
+    releases: Option<Arc<dyn ReleaseMeta>>,
+    /// Pins left out because this environment's Python cannot install them — every report this
+    /// flow produces says so (`PD-PKG-001`).
+    left_out: Vec<PythonMismatch>,
     cancel: CancellationToken,
     clock: fn() -> jiff::Timestamp,
 }
@@ -290,11 +302,18 @@ impl UpdateFlow {
             snapshot: SnapshotState::NotTaken,
             excluded_pins,
             system,
+            releases: opts.releases,
+            left_out: Vec::new(),
             cancel: opts.cancel,
             clock: opts.clock,
         };
 
+        flow.screen_exact_pins().await;
         if flow.req.upgrades.is_empty() && flow.req.installs.is_empty() {
+            // Everything asked for needs a different Python: say that, not "nothing to do".
+            if let Some(m) = flow.left_out.first() {
+                return Err(python_refusal(m));
+            }
             return Ok((
                 flow,
                 FlowStep::Nothing {
@@ -339,10 +358,11 @@ impl UpdateFlow {
         // read it, so forcing re-resolved exactly the preview the user had just been shown (C6).
         // The forced package is pinned to its latest and the packages holding it back leave the
         // guard set — which is what makes them the "Will break" rows.
-        let forced: Vec<PkgName> = match &self.req.strategy {
+        let mut forced: Vec<PkgName> = match &self.req.strategy {
             Strategy::ForceLatest { overrides } => overrides.clone(),
             Strategy::Compatible => Vec::new(),
         };
+        self.screen_forced(&mut forced).await;
         let mut adjust = if forced.is_empty() {
             crate::engine::GuardAdjust::default()
         } else {
@@ -355,6 +375,9 @@ impl UpdateFlow {
         };
 
         let mut rounds = 0;
+        let mut python_rounds = 0;
+        // Releases ruled out for their Python, and any still planned once the rounds ran out.
+        let mut ruled_out: Vec<PythonMismatch> = Vec::new();
         let mut report = loop {
             let ctx = crate::engine::ResolveCtx {
                 cancel: self.cancel.clone(),
@@ -372,14 +395,47 @@ impl UpdateFlow {
                 Err(e) => return Err(e),
             };
             let collisions = plan::forced_collisions(&report, &adjust, &self.req, &self.installed);
-            if collisions.is_empty() || rounds >= plan::FORCE_RELEASE_ROUNDS {
-                break report;
+            if !collisions.is_empty() && rounds < plan::FORCE_RELEASE_ROUNDS {
+                adjust.release.extend(collisions);
+                rounds += 1;
+                continue;
             }
-            adjust.release.extend(collisions);
-            rounds += 1;
+            // Hard invariant 10 for what the engine chose: uv ignores an upper bound on
+            // `Requires-Python` and plans a release this interpreter cannot run. Each one is ruled
+            // out by name and the engine asked again — it, not PipDock, picks what comes next.
+            let violations = if report.impossible.is_none() {
+                self.screen_plan(&report).await
+            } else {
+                Vec::new()
+            };
+            if !violations.is_empty() && python_rounds < plan::PYTHON_EXCLUDE_ROUNDS {
+                adjust.exclude.extend(violations.iter().map(|m| PinnedSpec {
+                    name: m.pkg.clone(),
+                    version: m.version.clone(),
+                }));
+                ruled_out.extend(violations);
+                python_rounds += 1;
+                continue;
+            }
+            ruled_out.extend(violations);
+            break report;
         };
         plan::derive_held_back(&mut report, &self.req.upgrades, &self.outdated, &self.graph);
+        // A release ruled out for its Python is not held back by anything installed. The
+        // incompatible row says why; a held-back row would blame nobody.
+        report.held_back.retain(|h| {
+            !ruled_out
+                .iter()
+                .any(|m| m.pkg == h.pkg && m.version == h.latest)
+        });
         plan::derive_forced(&mut report, &forced, &self.outdated, &self.graph);
+        let mut incompatible = self.left_out.clone();
+        for m in ruled_out {
+            if !incompatible.contains(&m) {
+                incompatible.push(m);
+            }
+        }
+        report.incompatible = incompatible;
         self.report = report;
         self.resolved_at = (self.clock)();
 
@@ -525,6 +581,130 @@ impl UpdateFlow {
     pub fn cancel(&self) {
         self.cancel.cancel();
     }
+
+    /// Hard invariant 10 for the pins the user typed: an exact `name==v` this environment's
+    /// Python cannot install is left out before an engine sees it, and the preview says so.
+    ///
+    /// Neither engine said it. pip refused such a pin with the "No matching distribution" it
+    /// gives a typo (PD-PKG-002), and uv planned it and failed at install time, building from
+    /// source. PD-PKG-001 existed in the catalog and nothing raised it (C2).
+    async fn screen_exact_pins(&mut self) {
+        let Some(meta) = &self.releases else {
+            return;
+        };
+        let exact: Vec<(PkgName, Version)> =
+            self.req.installs.iter().filter_map(exact_pin).collect();
+        if exact.is_empty() {
+            return;
+        }
+        let known = requires_python_of(meta, exact.clone()).await;
+        let bad: Vec<PythonMismatch> = exact
+            .iter()
+            .filter_map(|(name, version)| {
+                let declared = known.get(&(name.clone(), version.0.clone()));
+                mismatch(
+                    name,
+                    version,
+                    declared.map(String::as_str),
+                    &self.env.python_version,
+                )
+            })
+            .collect();
+        self.req
+            .installs
+            .retain(|s| !bad.iter().any(|m| m.pkg == s.name));
+        self.left_out.extend(bad);
+    }
+
+    /// The same for a forced package: forcing a release this Python cannot run is not a choice
+    /// worth acting on, so it stays where it was and the preview says why.
+    async fn screen_forced(&mut self, forced: &mut Vec<PkgName>) {
+        let Some(meta) = &self.releases else {
+            return;
+        };
+        let latest: Vec<(PkgName, Version)> = forced
+            .iter()
+            .filter_map(|f| {
+                self.outdated
+                    .iter()
+                    .find(|o| &o.name == f)
+                    .map(|o| (o.name.clone(), o.latest.clone()))
+            })
+            .collect();
+        if latest.is_empty() {
+            return;
+        }
+        let known = requires_python_of(meta, latest.clone()).await;
+        for (name, version) in latest {
+            let declared = known.get(&(name.clone(), version.0.clone()));
+            if let Some(m) = mismatch(
+                &name,
+                &version,
+                declared.map(String::as_str),
+                &self.env.python_version,
+            ) {
+                forced.retain(|f| f != &name);
+                if !self.left_out.contains(&m) {
+                    self.left_out.push(m);
+                }
+            }
+        }
+    }
+
+    /// Every planned release whose `Requires-Python` excludes this environment.
+    ///
+    /// pip's report says what each release requires, so nothing is asked; uv's plan says nothing,
+    /// so PyPI is (`crate::release`), and what it cannot answer does not block.
+    async fn screen_plan(&self, report: &ResolutionReport) -> Vec<PythonMismatch> {
+        let asked = match (&self.releases, self.engine.id()) {
+            (Some(meta), EngineId::Uv) => {
+                let unknown: Vec<(PkgName, Version)> = report
+                    .changes
+                    .iter()
+                    .filter(|c| !report.declared_python.contains_key(&c.name))
+                    .map(|c| (c.name.clone(), c.to.clone()))
+                    .collect();
+                requires_python_of(meta, unknown).await
+            }
+            _ => BTreeMap::new(),
+        };
+        report
+            .changes
+            .iter()
+            .filter_map(|c| {
+                let declared = report
+                    .declared_python
+                    .get(&c.name)
+                    .or_else(|| asked.get(&(c.name.clone(), c.to.0.clone())));
+                mismatch(
+                    &c.name,
+                    &c.to,
+                    declared.map(String::as_str),
+                    &self.env.python_version,
+                )
+            })
+            .collect()
+    }
+}
+
+/// `name==v` or `name===v` with a single exact version — the pins worth checking before the
+/// engine sees them. A range or a wildcard is the engine's to choose within.
+fn exact_pin(spec: &Spec) -> Option<(PkgName, Version)> {
+    let req = spec.version_req.as_deref()?;
+    let version = req.strip_prefix("===").or_else(|| req.strip_prefix("=="))?;
+    (crate::pep440::is_version(version) && !version.contains('*'))
+        .then(|| (spec.name.clone(), Version(version.to_owned())))
+}
+
+/// `PD-PKG-001` for a request that is nothing but pins this Python cannot install.
+fn python_refusal(m: &PythonMismatch) -> PdError {
+    PdError::new(
+        Code::PkgRequiresPython,
+        format!(
+            "{} {} requires Python {}; this environment has {}",
+            m.pkg, m.version, m.requires_python, m.python
+        ),
+    )
 }
 
 /// The uninstall flow (DATA-FLOW §5).
