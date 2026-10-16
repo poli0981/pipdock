@@ -261,8 +261,13 @@ mod tests {
     use super::*;
 
     fn temp() -> PathBuf {
+        // A counter, not the clock alone: two tests running in parallel inside one tick of the
+        // system clock got the same directory, and the fresh-install test read the other's files.
+        static NEXT: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
         let dir = std::env::temp_dir().join(format!(
-            "pipdock-cache-{}",
+            "pipdock-cache-{}-{}-{}",
+            std::process::id(),
+            NEXT.fetch_add(1, std::sync::atomic::Ordering::Relaxed),
             jiff::Timestamp::now().as_nanosecond()
         ));
         std::fs::create_dir_all(&dir).expect("temp dir");
