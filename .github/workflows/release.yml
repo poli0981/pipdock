@@ -1,11 +1,20 @@
 # Project-local: the ops repo has no reusable Tauri/build workflow (docs/RELEASE-CI.md §1).
 #
-# Produces the NSIS .exe and .msi, publishes SHA256SUMS.txt and leaves a DRAFT release for owner
-# review. Publishing is manual on purpose — RELEASE-CI.md §3.4 — and announce-release.yml fires on
-# `release: published`.
+# Builds the NSIS .exe and .msi, attests where they were built, publishes SHA256SUMS.txt and leaves
+# a DRAFT release. Publishing is a separate, human-directed step (RELEASE-CI.md §3.4), and
+# announce-release.yml fires on `release: published`.
+#
+# **Two jobs, so the token that can write releases never runs the build.** Building executes
+# third-party code — every crate's build script, every npm package's — and gets a read-only token
+# with no credentials left in the checkout. The publish job only attests and uploads what the build
+# produced.
+#
+# `workflow_dispatch` with `dry_run` builds and checksums any ref — a branch before it merges —
+# without attesting or drafting anything: the release recipe is tested before a tag depends on it.
 #
 # PipDock does not update itself, so there is no signing key and no `latest.json` here. Users get
-# new versions from the GitHub Releases page. The checksums below are what they verify against.
+# new versions from the GitHub Releases page; the checksums and the attestation are what they
+# verify against (docs/SECURITY.md §5).
 
 name: Release
 
@@ -15,12 +24,17 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: Tag to build (for re-runs)
-        required: true
+        description: Tag to build (for re-runs). Empty builds the selected ref.
+        required: false
         type: string
+      dry_run:
+        description: Build and checksum only — no attestation, no draft release.
+        required: false
+        type: boolean
+        default: false
 
 permissions:
-  contents: write # release assets
+  contents: read
 
 concurrency:
   group: release-${{ github.ref }}
@@ -31,14 +45,51 @@ env:
 
 jobs:
   build:
-    name: Build · checksum · draft
+    name: Build · checksum
     runs-on: windows-latest
     timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v7
         with:
           ref: ${{ inputs.tag || github.ref }}
+          persist-credentials: false
+
+      # The version lives in five places and they move together (CLAUDE.md), and a tag names the
+      # one they must all carry. A tag pushed before the bump commit, or a bump that missed one
+      # file, would otherwise build an installer whose About states another version.
+      - name: The tag and all five versions agree
+        id: version
+        shell: pwsh
+        env:
+          REF: ${{ inputs.tag || github.ref_name }}
+          DRY_RUN: ${{ inputs.dry_run || false }}
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $found = [ordered]@{}
+          $found['Cargo.toml'] = (Select-String -Path Cargo.toml -Pattern '^version = "([^"]+)"' |
+            Select-Object -First 1).Matches[0].Groups[1].Value
+          $lock = Get-Content Cargo.lock -Raw
+          if ($lock -notmatch '(?m)^name = "pipdock-core"\r?\nversion = "([^"]+)"') { throw 'pipdock-core is not in Cargo.lock' }
+          $found['Cargo.lock'] = $Matches[1]
+          $found['package.json'] = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          # -AsHashtable: package-lock.json has a property named "", which plain ConvertFrom-Json refuses.
+          $found['package-lock.json'] = (Get-Content package-lock.json -Raw | ConvertFrom-Json -AsHashtable)['version']
+          $found['tauri.conf.json'] = (Get-Content src-tauri/tauri.conf.json -Raw | ConvertFrom-Json).version
+          $found.GetEnumerator() | ForEach-Object { Write-Host ("{0,-18} {1}" -f $_.Key, $_.Value) }
+          $versions = @($found.Values | Sort-Object -Unique)
+          if ($versions.Count -ne 1) { throw "the five versions disagree: $($versions -join ', ')" }
+          $v = $versions[0]
+          if ($env:REF -match '^v\d') {
+            if ($env:REF -ne "v$v") { throw "tag $env:REF does not match version $v" }
+          } elseif ($env:DRY_RUN -ne 'true') {
+            throw "$env:REF is not a version tag; only a dry run builds a branch"
+          }
+          "tag=v$v" >> $env:GITHUB_OUTPUT
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -79,21 +130,63 @@ jobs:
             ForEach-Object { Copy-Item $_.FullName $out }
           Get-ChildItem $out
 
-      - name: Publish checksums
+      - name: Checksums
         shell: pwsh
         run: |
           # SmartScreen warns on first run because the binaries are not EV-code-signed, so the
           # README tells users to verify these instead (docs/SECURITY.md §5).
-          Get-ChildItem release-artifacts -File |
+          #
+          # LF line endings, written byte for byte: `Set-Content` wrote CRLF, and `sha256sum -c`
+          # on any other platform reads the CR as part of the file name and reports it missing.
+          $lines = Get-ChildItem release-artifacts -File |
             Where-Object { $_.Name -ne 'SHA256SUMS.txt' } |
-            ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" } |
-            Set-Content release-artifacts\SHA256SUMS.txt -Encoding ascii
+            Sort-Object Name |
+            ForEach-Object { "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)" }
+          [IO.File]::WriteAllText(
+            (Join-Path $PWD 'release-artifacts\SHA256SUMS.txt'),
+            (($lines -join "`n") + "`n"),
+            [Text.Encoding]::ASCII)
           Get-Content release-artifacts\SHA256SUMS.txt
 
-      - name: Draft GitHub release
-        uses: softprops/action-gh-release@v3
+      - name: Upload the build
+        uses: actions/upload-artifact@v7
         with:
-          tag_name: ${{ inputs.tag || github.ref_name }}
-          draft: true # owner reviews, then publishes; publishing triggers the announcement
+          name: release-artifacts
+          path: release-artifacts/*
+          if-no-files-found: error
+
+  publish:
+    name: Attest · draft
+    needs: build
+    if: ${{ !inputs.dry_run }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # the draft release and its assets
+      id-token: write # Sigstore, for the attestation
+      attestations: write
+    steps:
+      - name: Download the build
+        uses: actions/download-artifact@v8
+        with:
+          name: release-artifacts
+          path: release-artifacts
+
+      # Build provenance for the two installers: `gh attestation verify <file> --repo
+      # poli0981/pipdock` proves an installer came from this workflow, at this commit — which a
+      # checksum published beside the file cannot, since whoever could replace one could replace
+      # both.
+      - name: Attest provenance
+        uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
+        with:
+          subject-path: |
+            release-artifacts/*.exe
+            release-artifacts/*.msi
+
+      - name: Draft GitHub release
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ needs.build.outputs.tag }}
+          draft: true # reviewed, then published; publishing triggers the announcement
           generate_release_notes: true
           files: release-artifacts/*

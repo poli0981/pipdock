@@ -23,7 +23,19 @@ on:
       # against a real interpreter is only ever exercised here.
       - 'crates/pipdock-core/src/probe.py'
       - 'crates/pipdock-core/src/health/**'
+      # Every end-to-end step drives the CLI, and these are what it runs through. A change to
+      # any of them reached `main` without this job ever seeing it.
+      - 'crates/pipdock-cli/**'
+      - 'crates/pipdock-core/src/exec.rs'
+      - 'crates/pipdock-core/src/audit.rs'
+      - 'crates/pipdock-core/src/release.rs'
+      - 'crates/pipdock-core/src/errors/**'
+      - 'crates/pipdock-core/src/store/**'
+      - 'crates/pipdock-core/src/index/**'
       - 'crates/pipdock-core/tests/**'
+      # A dependency or toolchain bump is a change to all of the above at once.
+      - 'Cargo.lock'
+      - 'rust-toolchain.toml'
       - 'spikes/capture.py'
       # A Dependabot bump to the Code Health pins has to re-run the bootstrap: whether the new
       # pin set still resolves to wheels on 3.10 and 3.14 is exactly what this job can answer

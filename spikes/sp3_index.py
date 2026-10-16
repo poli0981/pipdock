@@ -64,7 +64,8 @@ def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--out", type=Path, default=Path("spikes/out"))
     args = parser.parse_args()
-    args.out.mkdir(parents=True, exist_ok=True)
+    # NOSONAR (S8707): a developer's measurement script writing where its developer says.
+    args.out.mkdir(parents=True, exist_ok=True)  # NOSONAR
 
     print(f"fetching {SIMPLE_INDEX} …", flush=True)
     body, fetch_s, wire_bytes = fetch(SIMPLE_INDEX)

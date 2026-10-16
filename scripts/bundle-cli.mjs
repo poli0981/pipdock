@@ -12,9 +12,13 @@
  * the same restraint SECURITY §5 applies to not shipping a self-updater. The README says where the
  * binary lands and how to put it on `PATH` if you want it there.
  *
- * Run from `beforeBuildCommand` rather than only from the release workflow, so a local
- * `tauri build` and CI produce the same installer — a bundle that differs by who built it is how
- * "works on my machine" gets into a release.
+ * Run by `npm run bundle` (package.json), which the release workflow calls too, so a local bundle
+ * and CI produce the same installer — a bundle that differs by who built it is how "works on my
+ * machine" gets into a release. (This said `beforeBuildCommand`; it has never been wired there.)
+ *
+ * `rustc` and `cargo` are found on PATH, which SonarCloud flags (S4036). That is the toolchain the
+ * developer or the runner installed and this script is a build step run by them, with their PATH —
+ * there is no less-trusted caller whose PATH it could be handed.
  */
 
 import { execFileSync } from 'node:child_process'
@@ -23,7 +27,7 @@ import { join } from 'node:path'
 
 /** The host triple, asked of rustc rather than assumed — cross-compiling would break a guess. */
 function hostTriple() {
-  const out = execFileSync('rustc', ['-vV'], { encoding: 'utf8' })
+  const out = execFileSync('rustc', ['-vV'], { encoding: 'utf8' }) // NOSONAR: see the header
   const line = out.split('\n').find((l) => l.startsWith('host:'))
   if (line === undefined) throw new Error('rustc -vV printed no host line')
   return line.slice('host:'.length).trim()
@@ -35,6 +39,7 @@ mkdirSync(target, { recursive: true })
 
 // `--locked` for the reason the release workflow passes it: a bundle is not the place to discover
 // that a dependency resolved differently than the lockfile says.
+// NOSONAR: see the header — the developer's own cargo.
 execFileSync('cargo', ['build', '--release', '--locked', '-p', 'pipdock-cli'], {
   stdio: 'inherit',
 })

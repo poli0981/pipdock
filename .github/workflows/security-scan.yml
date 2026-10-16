@@ -1,0 +1,64 @@
+# Daily advisory scans of `main` — docs/SECURITY.md §7.
+#
+# The PR gates (ci-rust.yml's `cargo audit`, ci-node.yml's `npm audit`) only run when something
+# changes. An advisory published against a dependency already on `main` therefore sat unnoticed
+# until the next pull request happened to fail on it: that is how `main` went red in September
+# with no PR open to say so. This runs the same two scans every day against what is merged, and a
+# failure reaches Discord through notify-ci-failure.yml.
+#
+# Not a required check — it runs on no pull request.
+
+name: Security scan
+
+on:
+  schedule:
+    # Daily, off the hour.
+    - cron: '41 5 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  cargo:
+    name: cargo audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-audit
+
+      - name: Audit
+        run: cargo audit --deny warnings
+
+  npm:
+    name: npm audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      # Nothing is built here, so no package's install script has a reason to run.
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Audit
+        run: npm audit --audit-level=high

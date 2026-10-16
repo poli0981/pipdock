@@ -1,8 +1,39 @@
+import { readFileSync } from 'node:fs'
 import { fileURLToPath, URL } from 'node:url'
 
+import type { Plugin } from 'vite'
 import { defineConfig } from 'vitest/config'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+
+/**
+ * The development Content-Security-Policy, injected by `vite dev` and by nothing else.
+ *
+ * A release build's policy is `app.security.csp` in tauri.conf.json, which Tauri injects itself.
+ * Development needs a looser `style-src` — Vite injects CSS as <style> elements — and that policy
+ * used to sit in index.html, where it was shipped in every release build as a second meta tag:
+ * harmless, since the stricter of two policies wins, but the weaker one was in the product. Read
+ * from `devCsp`, so the two policies are kept side by side in one file.
+ */
+function devCsp(): Plugin {
+  const conf = JSON.parse(
+    readFileSync(new URL('./src-tauri/tauri.conf.json', import.meta.url), 'utf8'),
+  ) as { app: { security: { devCsp: string } } }
+  return {
+    name: 'pipdock-dev-csp',
+    apply: 'serve',
+    transformIndexHtml: () => [
+      {
+        tag: 'meta',
+        attrs: { 'http-equiv': 'Content-Security-Policy', content: conf.app.security.devCsp },
+        // After Vite's own head-prepend scripts (React Refresh's inline preamble), as the old
+        // meta in index.html was: a meta policy governs what follows it, and the preamble is
+        // dev-only tooling, not the app.
+        injectTo: 'head',
+      },
+    ],
+  }
+}
 
 // The frontend lives in ui/ per ARCHITECTURE §2, but package.json sits at the repo root so the
 // ops-repo `reusable-web-react.yml` — which has no working-directory input — can run `npm ci` and
@@ -10,7 +41,7 @@ import tailwindcss from '@tailwindcss/vite'
 // which is that workflow's default dist-dir.
 export default defineConfig({
   root: './ui',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), devCsp()],
   resolve: {
     alias: {
       '@': fileURLToPath(new URL('./ui/src', import.meta.url)),
