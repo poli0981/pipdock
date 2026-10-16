@@ -213,6 +213,7 @@ export function PdSearch() {
       </div>
 
       <PdDockBay
+        env={envRow?.env}
         queue={queue}
         onVersionChange={setQueuedVersion}
         onRemove={dequeue}

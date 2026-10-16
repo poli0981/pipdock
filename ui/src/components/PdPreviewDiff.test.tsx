@@ -12,8 +12,9 @@ import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { PdPreviewDiff } from '@/components/PdPreviewDiff'
-import type { Decision, FlowStep } from '@/ipc'
+import type { Decision, FlowStep, ResolutionReport } from '@/ipc'
 import flowStep from '@/test/fixtures/flow_step.json'
+import flowStepForced from '@/test/fixtures/flow_step_forced.json'
 
 const STEP = flowStep as FlowStep
 if (!('report' in STEP)) throw new Error('the fixture must be a step carrying a report')
@@ -127,5 +128,58 @@ describe('the 3-way conflict control', () => {
     const { onChoose } = setup()
     fireEvent.click(within(rowFor('numpy')).getByRole('radio', { name: 'Skip' }))
     expect(onChoose).toHaveBeenCalledWith('numpy', 'skip')
+  })
+})
+
+describe('what the report says besides the changes', () => {
+  // `flow_step_forced.json`: numpy forced past pandas and scipy, numba left out for its Python,
+  // and a withdrawn release in the plan. `forced` and `incompatible` are computed by the functions
+  // the flow calls, so these assert what the application would actually show. The report carried
+  // all three from 1.4.0's wire change; nothing rendered any of them.
+  const FORCED_STEP = flowStepForced as FlowStep
+  if (!('report' in FORCED_STEP)) throw new Error('the forced fixture must carry a report')
+  const FORCED = FORCED_STEP.report
+
+  const show = (report: ResolutionReport = FORCED) =>
+    render(<PdPreviewDiff report={report} decisions={{}} onChoose={vi.fn()} />)
+
+  it('names every dependent a forced version breaks, before anything runs', () => {
+    // DISCLAIMER §2. The heading counts dependents, not forced packages: two break here.
+    show()
+    const forced = section('forced')
+    expect(within(forced).getByText('Will break (2)')).toBeInTheDocument()
+    expect(within(forced).getByText('numpy → 2.5.1')).toBeInTheDocument()
+    expect(within(forced).getByText('pandas 2.1.4 requires numpy<2,>=1.26.0')).toBeInTheDocument()
+    expect(
+      within(forced).getByText('scipy 1.11.4 requires numpy<1.28.0,>=1.21.6'),
+    ).toBeInTheDocument()
+  })
+
+  it('says why a package was left out, with its range against this Python', () => {
+    // Hard invariant 10 — not pip's "No matching distribution", which reads like a typo.
+    show()
+    expect(
+      within(section('incompatible')).getByText(
+        'numba 0.58.1 requires Python >=3.8,<3.12; this environment has 3.12.4.',
+      ),
+    ).toBeInTheDocument()
+  })
+
+  it('warns about a withdrawn release without treating it as a failure', () => {
+    show()
+    expect(
+      within(section('yanked')).getByText(
+        'oldlib 2.0.0 was withdrawn by its maintainers: declares the wrong Requires-Python',
+      ),
+    ).toBeInTheDocument()
+    // Still planned: both engines install a yanked release (SP-2), so the change stays listed.
+    expect(within(section('new-install')).getByText('oldlib')).toBeInTheDocument()
+  })
+
+  it('does not call a plan whose only content is a left-out package "nothing to change"', () => {
+    // The user asked for numba and is owed the reason it is not happening.
+    show({ changes: [], heldBack: [], incompatible: FORCED.incompatible ?? [] })
+    expect(section('incompatible')).toBeInTheDocument()
+    expect(screen.queryByText('nothing to change')).toBeNull()
   })
 })

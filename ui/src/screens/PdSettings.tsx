@@ -9,10 +9,11 @@
  * `--break-system-packages` equivalent is passed **only** when it is on — hard invariant 5.
  */
 
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdCacheUsage } from '@/components/PdCacheUsage'
+import { PdDialog } from '@/components/PdDialog'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdLogs } from '@/components/PdLogs'
 import { SUPPORTED_LOCALES, type Locale } from '@/i18n'
@@ -33,6 +34,10 @@ export function PdSettings() {
     save,
     setLocale,
   } = useSettingsStore()
+
+  // Turning the override on is asked about first, with Cancel focused (SECURITY §3, UI-SPEC §7).
+  // It was one click on a checkbox — and, until 1.4.0, a click nothing read, so nobody noticed.
+  const [confirmingOverride, setConfirmingOverride] = useState(false)
 
   useEffect(() => {
     void load()
@@ -124,13 +129,44 @@ export function PdSettings() {
             type="checkbox"
             checked={allowExternallyManaged}
             onChange={(e) => {
-              void save({ allowExternallyManaged: e.target.checked })
+              // Off is immediate: turning protection back on never needs a second thought.
+              if (e.target.checked) {
+                setConfirmingOverride(true)
+              } else {
+                void save({ allowExternallyManaged: false })
+              }
             }}
             className="mt-1 accent-[var(--color-danger)]"
           />
           <span className="text-data text-warn">{t('settings.overrideDetail')}</span>
         </label>
       </fieldset>
+
+      {confirmingOverride ? (
+        <PdDialog
+          label={t('settings.overrideConfirmTitle')}
+          title={t('settings.overrideConfirmTitle')}
+          cancelLabel={t('actions.cancel')}
+          onCancel={() => {
+            setConfirmingOverride(false)
+          }}
+          actions={
+            <button
+              type="button"
+              onClick={() => {
+                setConfirmingOverride(false)
+                void save({ allowExternallyManaged: true })
+              }}
+              data-action="allow-override"
+              className="rounded-pd border border-danger px-3 py-1 text-data text-danger"
+            >
+              {t('settings.overrideConfirm')}
+            </button>
+          }
+        >
+          <p className="text-data">{t('settings.overrideConfirmBody')}</p>
+        </PdDialog>
+      ) : null}
 
       <PdCacheUsage />
       <PdLogs />

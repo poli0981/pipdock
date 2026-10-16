@@ -529,6 +529,20 @@ async fn an_empty_plan_executes_nothing() {
 }
 
 #[tokio::test]
+async fn an_empty_plan_does_not_claim_a_check_it_could_not_run() {
+    // The same M30 defect on the one path the fix missed: a plan with nothing to install kept
+    // its own `unwrap_or(ok: true)`, so a broken pip read as a verified environment there.
+    let mut engine = FakeEngine::new(&[]);
+    engine.check_breaks = true;
+    let summary = run(&engine, &[]).await;
+    assert!(!summary.check.ok, "{:?}", summary.check);
+    assert_eq!(
+        summary.check.error,
+        Some(pipdock_core::errors::Code::EngNotFound)
+    );
+}
+
+#[tokio::test]
 async fn a_stale_preview_is_refused() {
     // DATA-FLOW §9.3: the user approved a preview eleven minutes ago. What it described may no
     // longer be what would happen, and executing something they did not actually see is the

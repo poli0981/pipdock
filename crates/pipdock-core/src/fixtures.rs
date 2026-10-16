@@ -161,6 +161,63 @@ fn flow_step() -> crate::flow::FlowStep {
     }
 }
 
+/// What `plan_resolve` returns once the first fixture's question is answered with *Force latest*
+/// for `numpy`: a plan ready to confirm that breaks the two packages which held it back.
+///
+/// **Computed, not written**, by the functions the flow itself calls. `forced` is
+/// [`crate::plan::derive_forced`] over this scenario's rows, so the preview's "Will break" section
+/// is tested against the blockers the application would actually show; `incompatible` is
+/// [`crate::release::mismatch`], the screen hard invariant 10 is enforced by. Only `yanked` is
+/// written out — it is a parse of engine output, with no rule of its own to drift from.
+///
+/// A fixture of its own rather than more rows in [`flow_step`]: a package cannot be both held back
+/// pending a decision and already forced, and a scenario that says both proves nothing.
+fn flow_step_forced() -> crate::flow::FlowStep {
+    use crate::engine::parse::YankWarning;
+    use crate::plan::{Change, ChangeKind, ResolutionReport};
+
+    let pkg = |n: &str| PkgName::parse(n).unwrap_or_else(|e| panic!("fixture name {n:?}: {e:?}"));
+    let numpy = pkg("numpy");
+    let mut report = ResolutionReport {
+        changes: vec![
+            Change {
+                name: numpy.clone(),
+                from: Some(Version("1.26.4".to_owned())),
+                to: Version("2.5.1".to_owned()),
+                kind: ChangeKind::Upgrade,
+            },
+            Change {
+                name: pkg("oldlib"),
+                from: None,
+                to: Version("2.0.0".to_owned()),
+                kind: ChangeKind::NewInstall,
+            },
+        ],
+        held_back: Vec::new(),
+        impossible: None,
+        // numba 0.58's real range: it was the release that did not yet support 3.12.
+        incompatible: crate::release::mismatch(
+            &pkg("numba"),
+            &Version("0.58.1".to_owned()),
+            Some(">=3.8,<3.12"),
+            "3.12.4",
+        )
+        .into_iter()
+        .collect(),
+        forced: Vec::new(),
+        yanked: vec![YankWarning {
+            pkg: pkg("oldlib"),
+            version: Version("2.0.0".to_owned()),
+            reason: Some("declares the wrong Requires-Python".to_owned()),
+        }],
+        raw: String::new(),
+        declared_python: Default::default(),
+    };
+    let graph = crate::graph::ReverseDeps::build_for(&pkg_list(), "3.12.4");
+    crate::plan::derive_forced(&mut report, &[numpy], &pkg_outdated(), &graph);
+    crate::flow::FlowStep::NeedsConfirm { report }
+}
+
 /// What `plan_execute` returns after a run that was stopped part-way.
 ///
 /// The cancelled case on purpose: it is the one DATA-FLOW §6 does not work through, the one whose
@@ -592,6 +649,7 @@ pub fn ipc_fixtures() -> serde_json::Result<Vec<(&'static str, String)>> {
         ("pkg_outdated.json", render(&pkg_outdated())?),
         ("pin_list.json", render(&pin_list())?),
         ("flow_step.json", render(&flow_step())?),
+        ("flow_step_forced.json", render(&flow_step_forced())?),
         ("execution_summary.json", render(&execution_summary())?),
         ("guard_report.json", render(&guard_report())?),
         ("deps_graph.json", render(&deps_graph())?),

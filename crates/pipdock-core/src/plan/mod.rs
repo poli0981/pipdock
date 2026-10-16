@@ -601,11 +601,7 @@ pub async fn execute(
             plan_id: plan.id.clone(),
             phase: ExecMode::Batch,
             results: Vec::new(),
-            check: engine.check(env).await.unwrap_or(CheckReport {
-                ok: true,
-                error: None,
-                findings: Vec::new(),
-            }),
+            check: post_check(engine, env).await,
             counts: Counts::default(),
             cancelled: false,
         });

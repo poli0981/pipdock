@@ -21,6 +21,7 @@ import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdRequirements } from '@/components/PdRequirements'
 import { PdSnapshotTimeline } from '@/components/PdSnapshotTimeline'
+import { PdOverrideChip } from '@/components/PdOverrideChip'
 import { useEnvStore, usePlanStore } from '@/stores'
 import { useEnvSnapshots } from '@/screens/useEnvSnapshots'
 
@@ -52,6 +53,7 @@ export function PdEnvDetail() {
           {t('snapshots.title')}
         </h1>
         <div className="flex items-center gap-2">
+          <PdOverrideChip env={env} />
           <button
             type="button"
             onClick={() => {

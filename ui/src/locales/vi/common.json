@@ -135,7 +135,11 @@
       "downgrade": "Sẽ hạ cấp ({{count}})",
       "new-install": "Sẽ cài ({{count}})",
       "new-dependency": "Phụ thuộc mới ({{count}})",
-      "needsDecision": "Cần bạn quyết định ({{count}})"
+      "needsDecision": "Cần bạn quyết định ({{count}})",
+      "forced": "Sẽ làm vỡ ({{count}})",
+      "forcedOnly": "Bị ép ({{count}})",
+      "incompatible": "Bỏ ra — cần bản Python khác ({{count}})",
+      "yanked": "Bản phát hành đã bị rút ({{count}})"
     },
     "decision": {
       "keep-compatible": "Giữ tương thích",
@@ -172,7 +176,12 @@
     "snapshotTaken": "Ảnh chụp đã tạo trước mọi thay đổi:",
     "checkFailed_other": "Còn {{count}} vấn đề phụ thuộc sau lần chạy này.",
     "checkFinding": "{{pkg}} yêu cầu {{requirement}}",
-    "done": "Quay lại danh sách gói"
+    "done": "Quay lại danh sách gói",
+    "incompatibleRow": "{{pkg}} {{version}} yêu cầu Python {{range}}; môi trường này có {{python}}.",
+    "yankedRow": "{{pkg}} {{version}} đã bị người bảo trì rút lại.",
+    "yankedReason": "{{pkg}} {{version}} đã bị người bảo trì rút lại: {{reason}}",
+    "confirmForced": "Xác nhận ({{count}} thay đổi, làm vỡ {{breaks}})",
+    "checkUnavailable": "PipDock không kiểm tra được môi trường sau khi chạy ({{code}}), nên chưa có gì ở đây được xác minh."
   },
   "palette": {
     "title": "Lệnh",
@@ -191,7 +200,7 @@
     "reasonPlaceholder": "Vì sao ghim gói này?",
     "reasonFor": "Lý do ghim {{pkg}}",
     "suggestTitle": "Nên cân nhắc ghim",
-    "suggestIntro": "Rất nhiều gói bạn đang cài phụ thuộc vào những gói này, nên một lần cập nhật hàng loạt dễ làm xáo trộn thứ gì đó. Ghim sẽ giữ chúng ngoài Chọn tất cả — bạn vẫn có thể cập nhật từng gói một.",
+    "suggestIntro": "Rất nhiều gói bạn đang cài phụ thuộc vào những gói này, nên một lần cập nhật dễ làm xáo trộn thứ gì đó. Ghim sẽ giữ chúng ngoài mọi lần cập nhật cho tới khi bạn bỏ ghim.",
     "suggest_other": "{{pkg}} — {{count}} gói phụ thuộc vào nó.",
     "suggestMore_other": "Còn {{count}} gói nữa cũng đủ điều kiện. Hãy ghim bớt, hoặc nâng ngưỡng trong Cài đặt.",
     "suggestAccept": "Ghim",
@@ -387,7 +396,10 @@
     "logsDetail": "PipDock giữ nhật ký của chính nó trong 14 ngày tại thư mục này. Không có gì trong đó được gửi đi; hãy sao chép vào báo lỗi nếu bạn muốn ai đó đọc.",
     "logsCopy": "Sao chép nhật ký gần đây",
     "logsCopied": "Đã sao chép",
-    "logsEmpty": "Chưa có gì được ghi."
+    "logsEmpty": "Chưa có gì được ghi.",
+    "overrideConfirmTitle": "Cho phép thay đổi các bản Python do hệ thống quản lý?",
+    "overrideConfirmBody": "PipDock sẽ truyền --break-system-packages cho pip hoặc uv với mọi môi trường có đánh dấu EXTERNALLY-MANAGED. Cài vào một bản Python như vậy có thể làm hỏng công cụ mà hệ điều hành dựa vào, và khôi phục từ ảnh chụp có thể không sửa được. Môi trường ảo gần như luôn là lựa chọn tốt hơn.",
+    "overrideConfirm": "Cho phép"
   },
   "legal": {
     "title": "Trước khi bắt đầu",
@@ -436,5 +448,9 @@
     "unknown": "Đã xảy ra lỗi ngoài dự kiến.",
     "logPrivacy": "Không có gì được gửi đi cho tới khi chính bạn gửi báo cáo.",
     "logCopied": "Đã sao chép"
+  },
+  "pep668": {
+    "chip": "Ghi đè PEP 668",
+    "chipDetail": "Bản Python này do hệ điều hành quản lý và chế độ ghi đè đang bật: thay đổi ở đây sẽ truyền --break-system-packages."
   }
 }

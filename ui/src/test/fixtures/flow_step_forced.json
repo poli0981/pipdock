@@ -1,0 +1,53 @@
+{
+  "step": "needsConfirm",
+  "report": {
+    "changes": [
+      {
+        "name": "numpy",
+        "from": "1.26.4",
+        "to": "2.5.1",
+        "kind": "upgrade"
+      },
+      {
+        "name": "oldlib",
+        "to": "2.0.0",
+        "kind": "new-install"
+      }
+    ],
+    "heldBack": [],
+    "incompatible": [
+      {
+        "pkg": "numba",
+        "version": "0.58.1",
+        "requiresPython": ">=3.8,<3.12",
+        "python": "3.12.4"
+      }
+    ],
+    "forced": [
+      {
+        "pkg": "numpy",
+        "resolved": "2.5.1",
+        "latest": "2.5.1",
+        "blockers": [
+          {
+            "by": "pandas",
+            "version": "2.1.4",
+            "constraint": "numpy<2,>=1.26.0"
+          },
+          {
+            "by": "scipy",
+            "version": "1.11.4",
+            "constraint": "numpy<1.28.0,>=1.21.6"
+          }
+        ]
+      }
+    ],
+    "yanked": [
+      {
+        "pkg": "oldlib",
+        "version": "2.0.0",
+        "reason": "declares the wrong Requires-Python"
+      }
+    ]
+  }
+}

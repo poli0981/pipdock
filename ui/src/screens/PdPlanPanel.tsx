@@ -16,6 +16,7 @@ import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdPreviewDiff } from '@/components/PdPreviewDiff'
 import { PdRollbackPreview } from '@/components/PdRollbackPreview'
 import { PdSummarySheet } from '@/components/PdSummarySheet'
+import { PdOverrideChip } from '@/components/PdOverrideChip'
 import { usePlanStore } from '@/stores'
 
 interface PdPlanPanelProps {
@@ -140,6 +141,13 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
     : step !== null && 'report' in step
       ? (step.report.changes ?? []).length
       : 0
+  // DISCLAIMER §2: what forcing breaks is counted on the button that does it, not only in a
+  // section the user may not have scrolled to. One per broken dependent, however many forced
+  // packages it declared a constraint on.
+  const forced = step !== null && 'report' in step ? (step.report.forced ?? []) : []
+  const breaks = new Set(
+    forced.flatMap((f) => (f.blockers ?? []).map((b) => b.by ?? b.constraint)),
+  ).size
   const needsDecisions = step?.step === 'needsDecisions'
   const exhausted = step?.step === 'roundsExhausted'
   const nothingToDo = isRollback ? preview !== null && rollbackOps === 0 : step?.step === 'nothing'
@@ -148,10 +156,21 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
   return (
     <section className="flex h-full min-h-0 flex-col">
       <div className="min-h-0 flex-1 overflow-auto p-6">
-        <div className="flex items-baseline justify-between">
-          <h1 className="text-accent">
+        <div className="flex items-baseline justify-between gap-3">
+          <h1 className="shrink-0 text-accent">
             {isRollback ? t('snapshots.rollbackTitle') : t('plan.previewTitle')}
           </h1>
+          {/* Which environment this changes, as data (I18N §2). The panel replaces the screen it
+              was started from, so a plan started from Search's dock bay gave no sign of which
+              environment it was for (U15). */}
+          <span className="flex min-w-0 flex-1 items-center gap-2">
+            {env === null ? null : (
+              <code className="min-w-0 truncate font-mono text-data text-text-dim">
+                {env.interpreter}
+              </code>
+            )}
+            <PdOverrideChip env={env} />
+          </span>
           <span aria-live="polite" className="text-data text-text-dim">
             {phase === 'resolving' ? t('plan.resolving') : null}
             {phase === 'executing'
@@ -260,13 +279,16 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
               }}
               disabled={phase === 'resolving' || !confirmable}
               className={`rounded-pd border px-3 py-1 text-data disabled:border-border disabled:text-text-dim disabled:opacity-40 ${
-                // A restore removes things. It gets the danger treatment the update path does not.
-                isRollback ? 'border-danger text-danger' : 'border-accent text-accent'
+                // A restore removes things and a forced plan breaks them. Both get the danger
+                // treatment an ordinary update does not.
+                isRollback || forced.length > 0 ? 'border-danger text-danger' : 'border-accent text-accent'
               }`}
             >
               {isRollback
                 ? t('snapshots.confirmRollback', { count: changeCount })
-                : t('plan.confirm', { count: changeCount })}
+                : breaks > 0
+                  ? t('plan.confirmForced', { count: changeCount, breaks })
+                  : t('plan.confirm', { count: changeCount })}
             </button>
           </>
         )}
