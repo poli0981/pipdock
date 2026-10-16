@@ -15,7 +15,7 @@
 //! by the caller from the reverse-dependency graph, not here.
 
 use crate::errors::{Code, PdError, Result};
-use crate::model::{Dist, PkgName, Version};
+use crate::model::{Dist, EngineId, PkgName, Version};
 use crate::plan::{Change, ChangeKind, ImpossibleDetail, ResolutionReport};
 
 /// A yanked release appearing in a plan.
@@ -84,12 +84,8 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
         return Err(PdError::new(Code::EngPipTooOld, "pip produced no report").with_stderr(stderr));
     }
 
-    let doc: serde_json::Value = serde_json::from_str(trimmed).map_err(|e| {
-        PdError::new(
-            Code::EngUvShapeUnknown,
-            format!("pip report is not JSON: {e}"),
-        )
-    })?;
+    let doc: serde_json::Value = serde_json::from_str(trimmed)
+        .map_err(|e| shape_error(EngineId::Pip, &format!("pip report is not JSON: {e}")))?;
 
     let version = doc
         .get("version")
@@ -97,9 +93,9 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
         .unwrap_or_default();
     if version != "1" {
         // Fail loudly rather than mis-parsing a future format into a plausible-looking plan.
-        return Err(PdError::new(
-            Code::EngUvShapeUnknown,
-            format!("unsupported pip report version {version:?}; expected \"1\""),
+        return Err(shape_error(
+            EngineId::Pip,
+            &format!("unsupported pip report version {version:?}; expected \"1\""),
         ));
     }
 
@@ -175,6 +171,44 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
     })
 }
 
+/// pip's dry run, read **by its exit status first**.
+///
+/// A zero exit is a plan. A non-zero one is a failure classified from stderr like any other —
+/// except an impossibility, which becomes `report.impossible`: **the same shape uv gives**
+/// (ARCHITECTURE §3). It used to be a hard error, so under pip one unsatisfiable package in a
+/// fifteen-package request failed the whole preview and the per-package *Skip* the preview offers
+/// under uv never appeared.
+///
+/// # Errors
+/// The classified engine failure; `PD-INT-001` for the SP-2 encoding crash whatever the exit.
+pub fn pip_resolution(
+    exit_code: Option<i32>,
+    stdout: &str,
+    stderr: &str,
+    installed: &[Dist],
+) -> Result<ParsedPlan> {
+    // The SP-2 crash exits 2, and is PipDock's bug rather than pip's; `pip_report` says so.
+    if exit_code == Some(0) || stderr.contains("UnicodeEncodeError") {
+        return pip_report(stdout, stderr, installed);
+    }
+    if let Some(detail) = pip_impossible(stderr) {
+        return Ok(impossible_plan(detail, stderr));
+    }
+    Err(PdError::from_engine_stderr(stderr))
+}
+
+/// A plan that is nothing but its impossibility.
+fn impossible_plan(detail: ImpossibleDetail, text: &str) -> ParsedPlan {
+    ParsedPlan {
+        report: ResolutionReport {
+            impossible: Some(detail),
+            raw: text.to_owned(),
+            ..ResolutionReport::default()
+        },
+        yanked: Vec::new(),
+    }
+}
+
 /// pip's ResolutionImpossible, read into the shape uv's impossibility already has.
 ///
 /// pip runs with `--quiet`, so its whole explanation is one line — `ERROR: Cannot install A and B
@@ -220,24 +254,74 @@ pub fn pip_impossible(stderr: &str) -> Option<crate::plan::ImpossibleDetail> {
     })
 }
 
-/// pip prints the yank reason on stderr, not in the report JSON.
+/// pip prints the yank reason on stderr, not in the report JSON:
+///
+/// ```text
+/// WARNING: The candidate selected for download or install is a yanked version: 'urllib3' candidate (…)
+/// Reason for being yanked: Truncated response bodies when streaming a large compressed body.
+/// ```
+///
+/// The reason is **that one line**, and it belongs to the package the warning above it names.
+/// Flattening the whole stderr first made it run to the end of the output — over pip's
+/// `[notice]` lines, which carry the user's home directory — and gave the first of two yanked
+/// packages both reasons and the second none.
 fn yank_reason_from_stderr(stderr: &str, pkg: &PkgName) -> Option<String> {
-    let flat = flatten(stderr);
-    let idx = flat.find("Reason for being yanked:")?;
-    // Only attribute the reason when this package is the one being discussed.
-    if !flat[..idx].to_ascii_lowercase().contains(pkg.as_str()) {
-        return None;
+    let mut current: Option<PkgName> = None;
+    for line in stderr.lines().map(str::trim) {
+        if let Some((_, rest)) = line.split_once("is a yanked version: '") {
+            current = rest
+                .split_once('\'')
+                .and_then(|(name, _)| PkgName::parse(name).ok());
+            continue;
+        }
+        if let Some(reason) = line.strip_prefix("Reason for being yanked:")
+            && current.as_ref() == Some(pkg)
+        {
+            let reason = reason
+                .trim()
+                .trim_end_matches(|c: char| c == '.' || c.is_whitespace());
+            return (!reason.is_empty()).then(|| reason.to_owned());
+        }
     }
-    let tail = flat[idx + "Reason for being yanked:".len()..].trim();
-    Some(
-        tail.trim_end_matches(|c: char| c == '.' || c.is_whitespace())
-            .to_owned(),
-    )
+    None
 }
 
 // -- uv ----------------------------------------------------------------------
 
-/// Parse uv's dry-run plan.
+/// uv's dry run, read **by its exit status first** (C3).
+///
+/// The adapter used to hand every outcome to [`uv_plan`], which looked for the words of a plan:
+/// a build that failed still printed `Resolved 1 package`, so it parsed as an empty plan and the
+/// preview said *no changes* for a package that could not be built; a refused connection matched
+/// nothing and was reported as a uv newer than PipDock; an unknown name came through the resolver
+/// as an impossibility. uv exits non-zero on every one of them, so a non-zero exit is classified
+/// like any other engine failure, and only an impossibility becomes a report.
+///
+/// # Errors
+/// The classified engine failure, or [`uv_plan`]'s for a zero exit it cannot read.
+pub fn uv_resolution(
+    exit_code: Option<i32>,
+    stdout: &str,
+    stderr: &str,
+    installed: &[Dist],
+) -> Result<ParsedPlan> {
+    if exit_code == Some(0) {
+        return uv_plan(stdout, stderr, installed);
+    }
+    let text = if stderr.trim().is_empty() {
+        stdout
+    } else {
+        stderr
+    };
+    if crate::errors::classify_stderr(text) == Code::ResImpossible
+        && let Some(detail) = uv_no_solution(text)
+    {
+        return Ok(impossible_plan(detail, text));
+    }
+    Err(PdError::from_engine_stderr(text))
+}
+
+/// Parse uv's dry-run plan — a run that **exited zero**; [`uv_resolution`] decides that.
 ///
 /// **The plan arrives on stderr** (SP-1); stdout is empty for every uv fixture captured. The
 /// format is a decorated, hard-wrapped text block:
@@ -261,21 +345,6 @@ pub fn uv_plan(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedP
     } else {
         stderr
     };
-
-    if let Some(detail) = uv_no_solution(text) {
-        return Ok(ParsedPlan {
-            report: ResolutionReport {
-                changes: Vec::new(),
-                held_back: Vec::new(),
-                impossible: Some(detail),
-                incompatible: Vec::new(),
-                forced: Vec::new(),
-                yanked: Vec::new(),
-                raw: text.to_owned(),
-            },
-            yanked: Vec::new(),
-        });
-    }
 
     let recognized = [
         "Would make no changes",
@@ -372,11 +441,18 @@ pub fn uv_plan(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedP
     })
 }
 
-/// uv's `No solution found` block, with its wrapping undone.
+/// uv's `No solution found` block, with its wrapping and its decoration undone.
+///
+/// uv 0.11 draws it with miette (`×`, `╰─▶`) and uv 0.13 with `error:` / `cause:` labels; the
+/// preview shows the sentence, not either rendering, so both read
+/// `No solution found when resolving dependencies: Because …`.
 fn uv_no_solution(text: &str) -> Option<ImpossibleDetail> {
-    let flat = flatten(text);
+    let flat = flatten(&strip_uv_decoration(text));
     let idx = flat.find("No solution found when resolving")?;
-    let explanation = flat[idx..].trim().to_owned();
+    let explanation = flat[idx..]
+        .trim()
+        .replace("dependencies: :", "dependencies:")
+        .replace(" : ", ": ");
 
     // uv names the packages inside prose ("Because httpx==0.23.0 depends on httpcore>=0.15.0"),
     // so pull out the `name==version` and `name>=…` tokens it mentions.
@@ -448,10 +524,10 @@ fn uv_yank_warnings(text: &str) -> Vec<YankWarning> {
 /// the reverse-dependency graph is built from the probe and not from here.
 ///
 /// # Errors
-/// `PD-ENG-003` when the output is not the expected JSON array.
-pub fn list_json(stdout: &str) -> Result<Vec<Dist>> {
+/// [`shape_error`] when the output is not the expected JSON array.
+pub fn list_json(stdout: &str, engine: EngineId) -> Result<Vec<Dist>> {
     let items: Vec<serde_json::Value> = serde_json::from_str(stdout.trim())
-        .map_err(|e| PdError::new(Code::EngUvShapeUnknown, format!("list output: {e}")))?;
+        .map_err(|e| shape_error(engine, &format!("list output: {e}")))?;
     Ok(items
         .into_iter()
         .filter_map(|v| {
@@ -472,10 +548,10 @@ pub fn list_json(stdout: &str) -> Result<Vec<Dist>> {
 /// Parse `list --outdated --format=json`.
 ///
 /// # Errors
-/// `PD-ENG-003` when the output is not the expected JSON array.
-pub fn outdated_json(stdout: &str) -> Result<Vec<crate::model::OutdatedDist>> {
+/// [`shape_error`] when the output is not the expected JSON array.
+pub fn outdated_json(stdout: &str, engine: EngineId) -> Result<Vec<crate::model::OutdatedDist>> {
     let items: Vec<serde_json::Value> = serde_json::from_str(stdout.trim())
-        .map_err(|e| PdError::new(Code::EngUvShapeUnknown, format!("outdated output: {e}")))?;
+        .map_err(|e| shape_error(engine, &format!("outdated output: {e}")))?;
     Ok(items
         .into_iter()
         .filter_map(|v| {
@@ -486,6 +562,19 @@ pub fn outdated_json(stdout: &str) -> Result<Vec<crate::model::OutdatedDist>> {
             })
         })
         .collect())
+}
+
+/// Output in a shape this adapter does not know.
+///
+/// `PD-ENG-003` means "this uv is newer than PipDock understands — switch to pip for now", which
+/// is advice only uv can earn. pip's own unreadable output was reported with it too, telling a pip
+/// user to switch to the engine they were already using; it is `PD-ENG-999` instead.
+fn shape_error(engine: EngineId, detail: &str) -> PdError {
+    let code = match engine {
+        EngineId::Uv => Code::EngUvShapeUnknown,
+        EngineId::Pip => Code::EngUnclassified,
+    };
+    PdError::new(code, detail.to_owned())
 }
 
 /// Normalize `pip check` / `uv pip check` output.
@@ -499,14 +588,20 @@ pub fn check_text(stdout: &str, ok: bool) -> crate::model::CheckReport {
     let mut findings = Vec::new();
     for line in stdout.lines() {
         let line = line.trim();
-        // "apiclient 1.4 requires requests<2.31, but you have requests 2.32.3 which is incompatible."
-        let Some((head, _)) = line.split_once(" requires ") else {
-            continue;
+        // Three shapes, each taken from a real broken environment:
+        //   pip  "anyio 3.7.1 requires sniffio, which is not installed."
+        //   pip  "httpx 0.23.0 has requirement httpcore<0.16.0,>=0.15.0, but you have httpcore 1.0.9."
+        //   uv   "The package `httpx` requires `httpcore>=0.15.0,<0.16.0`, but `1.0.9` is installed"
+        // Only the first was read: pip's version conflicts — the case a post-run check exists
+        // for — were dropped, and every uv finding was filed under a package called "the".
+        let name = if let Some(rest) = line.strip_prefix("The package `") {
+            rest.split_once('`').map(|(name, _)| name)
+        } else if line.contains(" requires ") || line.contains(" has requirement ") {
+            line.split_whitespace().next()
+        } else {
+            None
         };
-        let Some(name) = head.split_whitespace().next() else {
-            continue;
-        };
-        let Ok(pkg) = PkgName::parse(name) else {
+        let Some(Ok(pkg)) = name.map(PkgName::parse) else {
             continue;
         };
         findings.push(crate::model::CheckFinding {
@@ -522,6 +617,29 @@ pub fn check_text(stdout: &str, ok: bool) -> crate::model::CheckReport {
 }
 
 // -- shared ------------------------------------------------------------------
+
+/// uv's diagnostic decoration, removed line by line: miette's box-drawing glyphs (uv ≤ 0.12) and
+/// the `cause:` labels that replaced them (0.13). A `cause:` becomes a colon after the line it
+/// explains.
+fn strip_uv_decoration(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    for line in text.lines() {
+        let trimmed = line
+            .trim()
+            .trim_start_matches(['×', '╰', '├', '─', '▶', '│', ' ']);
+        if let Some(rest) = trimmed.strip_prefix("cause:") {
+            let ends_with_colon = out.trim_end().ends_with(':');
+            let kept = out.trim_end().len();
+            out.truncate(kept);
+            out.push_str(if ends_with_colon { " " } else { ": " });
+            out.push_str(rest.trim_start());
+        } else {
+            out.push_str(trimmed);
+        }
+        out.push('\n');
+    }
+    out
+}
 
 /// Collapse wrapping and CRLF so multi-word phrases can be found.
 ///
@@ -618,7 +736,8 @@ mod tests {
     fn an_unknown_pip_report_version_fails_loudly() {
         let err = pip_report(r#"{"version":"2","install":[]}"#, "", &[])
             .expect_err("future format must not be guessed at");
-        assert_eq!(err.code, Code::EngUvShapeUnknown);
+        // Not PD-ENG-003, whose advice is to switch to pip.
+        assert_eq!(err.code, Code::EngUnclassified);
     }
 
     #[test]
@@ -661,7 +780,7 @@ mod tests {
                     ╰─▶ Because httpx==0.23.0 depends on httpcore>=0.15.0,<0.16.0 and you\r\n      \
                     require httpcore>=1.0, we can conclude that your requirements and\r\n      \
                     httpx==0.23.0 are incompatible.\r\n";
-        let plan = uv_plan("", text, &[]).expect("parse");
+        let plan = uv_resolution(Some(1), "", text, &[]).expect("parse");
         let detail = plan.report.impossible.expect("impossible detail");
 
         // The wrapping must be undone, or the explanation reads as broken fragments in the UI.
@@ -749,6 +868,104 @@ mod tests {
         assert!(
             plan.report.is_clean(),
             "a yank must not make the plan dirty"
+        );
+    }
+
+    #[test]
+    fn both_uv_renderings_explain_an_impossibility_in_the_same_words() {
+        let v011 = "  × No solution found when resolving dependencies:\n  \
+                    ╰─▶ Because a==1.0 depends on b<2 and you require b>=2, we can conclude\n      \
+                    that your requirements are unsatisfiable.\n";
+        let v013 = "error: No solution found when resolving dependencies\n  \
+                    cause: Because a==1.0 depends on b<2 and you require b>=2, we can conclude\n         \
+                    that your requirements are unsatisfiable.\n";
+        let explain = |text: &str| {
+            uv_resolution(Some(1), "", text, &[])
+                .expect("an impossibility is a report")
+                .report
+                .impossible
+                .expect("impossible")
+                .explanation
+        };
+        let expected = "No solution found when resolving dependencies: Because a==1.0 depends \
+                        on b<2 and you require b>=2, we can conclude that your requirements are \
+                        unsatisfiable.";
+        assert_eq!(explain(v011), expected);
+        assert_eq!(explain(v013), expected);
+    }
+
+    #[test]
+    fn a_failed_uv_run_that_still_says_resolved_is_not_an_empty_plan() {
+        // C3: uv prints "Resolved 1 package" before a build fails, which is one of the words
+        // `uv_plan` looks for — so a package that could not be built previewed as "no changes".
+        let text = "Resolved 1 package in 1.2s\n   Building numpy==1.19.5\n\
+                    error: Failed to build `numpy==1.19.5`\n  \
+                    cause: The build backend returned an error\n";
+        let err = uv_resolution(Some(1), "", text, &[]).expect_err("a failure");
+        assert_eq!(err.code, Code::BldBackendFailed);
+    }
+
+    #[test]
+    fn two_yanked_packages_each_get_their_own_reason_and_nothing_else() {
+        let doc = r#"{"version":"1","install":[
+            {"requested":true,"is_yanked":true,"metadata":{"name":"urllib3","version":"2.0.0"}},
+            {"requested":true,"is_yanked":true,"metadata":{"name":"idna","version":"3.5"}}
+        ]}"#;
+        let stderr = "WARNING: The candidate selected for download or install is a yanked \
+                      version: 'urllib3' candidate (version 2.0.0 at https://x/urllib3.whl)\n\
+                      Reason for being yanked: Truncated response bodies.\n\
+                      WARNING: The candidate selected for download or install is a yanked \
+                      version: 'idna' candidate (version 3.5 at https://x/idna.whl)\n\
+                      Reason for being yanked: Bad wheel\n\
+                      [notice] To update, run: C:\\Users\\someone\\venv\\python.exe -m pip \
+                      install --upgrade pip\n";
+        let plan = pip_report(doc, stderr, &[]).expect("parse");
+        let reason = |n: &str| {
+            plan.yanked
+                .iter()
+                .find(|y| y.pkg.as_str() == n)
+                .and_then(|y| y.reason.clone())
+        };
+        assert_eq!(
+            reason("urllib3").as_deref(),
+            Some("Truncated response bodies")
+        );
+        assert_eq!(reason("idna").as_deref(), Some("Bad wheel"));
+    }
+
+    #[test]
+    fn pip_and_uv_check_findings_name_the_package_that_is_broken() {
+        // Captured from one broken environment, pip 26.2.1 and uv 0.13.1.
+        let pip = "anyio 3.7.1 requires sniffio, which is not installed.\n\
+                   httpx 0.23.0 requires sniffio, which is not installed.\n\
+                   httpcore 1.0.9 has requirement h11>=0.16, but you have h11 0.12.0.\n\
+                   httpx 0.23.0 has requirement httpcore<0.16.0,>=0.15.0, but you have httpcore 1.0.9.\n";
+        let uv = "Checked 8 packages in 174ms\nFound 4 incompatibilities\n\
+                  The package `httpx` requires `sniffio`, but it's not installed\n\
+                  The package `httpx` requires `httpcore>=0.15.0,<0.16.0`, but `1.0.9` is installed\n\
+                  The package `httpcore` requires `h11>=0.16`, but `0.12.0` is installed\n\
+                  The package `anyio` requires `sniffio>=1.1`, but it's not installed\n";
+        let names = |text: &str| -> Vec<String> {
+            let report = check_text(text, false);
+            assert!(!report.ok);
+            report.findings.iter().map(|f| f.pkg.to_string()).collect()
+        };
+        assert_eq!(names(pip), ["anyio", "httpx", "httpcore", "httpx"]);
+        assert_eq!(names(uv), ["httpx", "httpx", "httpcore", "anyio"]);
+    }
+
+    #[test]
+    fn unreadable_pip_output_does_not_blame_uv() {
+        // PD-ENG-003 tells the user to switch to pip; under pip that is advice to do nothing.
+        let err = pip_report("not json", "", &[]).expect_err("unreadable");
+        assert_eq!(err.code, Code::EngUnclassified);
+        assert_eq!(
+            list_json("not json", EngineId::Pip).expect_err("pip").code,
+            Code::EngUnclassified
+        );
+        assert_eq!(
+            list_json("not json", EngineId::Uv).expect_err("uv").code,
+            Code::EngUvShapeUnknown
         );
     }
 

@@ -15,7 +15,9 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use pipdock_core::engine::parse::{ParsedPlan, pip_impossible, pip_report, uv_plan};
+use pipdock_core::engine::parse::{
+    ParsedPlan, pip_impossible, pip_report, pip_resolution, uv_resolution,
+};
 use pipdock_core::model::{Dist, PkgName, Version};
 
 fn fixtures_root() -> PathBuf {
@@ -36,6 +38,26 @@ struct Capture {
     stdout: String,
     stderr: String,
     exit_code: i64,
+    /// The catalog code `spikes/capture.py` recorded this scenario as producing.
+    expects: Option<String>,
+}
+
+impl Capture {
+    fn exit(&self) -> Option<i32> {
+        i32::try_from(self.exit_code).ok()
+    }
+}
+
+/// What the adapter makes of a capture: the function each `resolve` returns through.
+fn resolution(
+    engine: &str,
+    cap: &Capture,
+    installed: &[Dist],
+) -> pipdock_core::errors::Result<ParsedPlan> {
+    match engine {
+        "pip" => pip_resolution(cap.exit(), &cap.stdout, &cap.stderr, installed),
+        _ => uv_resolution(cap.exit(), &cap.stdout, &cap.stderr, installed),
+    }
 }
 
 fn load(engine: &str, scenario: &str) -> Option<Capture> {
@@ -46,17 +68,15 @@ fn load(engine: &str, scenario: &str) -> Option<Capture> {
         stdout: fs::read_to_string(dir.join("stdout.txt")).unwrap_or_default(),
         stderr: fs::read_to_string(dir.join("stderr.txt")).unwrap_or_default(),
         exit_code: meta["exit_code"].as_i64().unwrap_or(-1),
+        expects: meta["expects_code"].as_str().map(str::to_owned),
     })
 }
 
 fn parse(engine: &str, scenario: &str, installed: &[Dist]) -> ParsedPlan {
     let cap =
         load(engine, scenario).unwrap_or_else(|| panic!("missing fixture {engine}/{scenario}"));
-    let result = match engine {
-        "pip" => pip_report(&cap.stdout, &cap.stderr, installed),
-        _ => uv_plan(&cap.stdout, &cap.stderr, installed),
-    };
-    result.unwrap_or_else(|e| panic!("{engine}/{scenario} failed to parse: {e}"))
+    resolution(engine, &cap, installed)
+        .unwrap_or_else(|e| panic!("{engine}/{scenario} failed to parse: {e}"))
 }
 
 fn dist(name: &str, version: &str) -> Dist {
@@ -226,11 +246,7 @@ fn a_yank_reaches_the_report_the_preview_reads() {
     // never reached a user. `into_report` is what the adapters return now.
     for engine in CORPORA {
         let cap = load(engine, "yanked").expect("fixture");
-        let parsed = match engine {
-            "pip" => pip_report(&cap.stdout, &cap.stderr, &[]),
-            _ => uv_plan(&cap.stdout, &cap.stderr, &[]),
-        }
-        .unwrap_or_else(|e| panic!("{engine}: {e}"));
+        let parsed = resolution(engine, &cap, &[]).unwrap_or_else(|e| panic!("{engine}: {e}"));
         let report = parsed.into_report();
         assert_eq!(report.yanked.len(), 1, "{engine}");
         assert_eq!(report.yanked[0].pkg.as_str(), "urllib3", "{engine}");
@@ -266,12 +282,78 @@ fn every_successful_capture_parses() {
             if cap.exit_code != 0 {
                 continue;
             }
-            let result = match engine {
-                "pip" => pip_report(&cap.stdout, &cap.stderr, &[]),
-                _ => uv_plan(&cap.stdout, &cap.stderr, &[]),
-            };
+            let result = resolution(engine, &cap, &[]);
             assert!(result.is_ok(), "{engine}/{scenario}: {:?}", result.err());
         }
+    }
+}
+
+#[test]
+fn every_failed_capture_reaches_the_user_as_the_code_it_was_captured_for() {
+    // C3 lived exactly here. `classifier_corpus.rs` proved each stderr *classifies* correctly,
+    // and every assertion there passed while uv's adapter never asked the classifier: a failed
+    // build previewed as "no changes", a refused connection read as a uv newer than PipDock, and an
+    // unknown name as a version conflict. This asks the function the adapter returns through.
+    let mut checked = 0;
+    for engine in CORPORA {
+        let dir = fixtures_root().join(engine);
+        for entry in fs::read_dir(&dir).expect("corpus") {
+            let scenario = entry
+                .expect("entry")
+                .file_name()
+                .to_string_lossy()
+                .into_owned();
+            let Some(cap) = load(engine, &scenario) else {
+                continue;
+            };
+            if cap.exit_code == 0 {
+                continue;
+            }
+            checked += 1;
+            let got = resolution(engine, &cap, &[]);
+            match cap.expects.as_deref() {
+                Some("PD-RES-001") => {
+                    let plan = got.unwrap_or_else(|e| {
+                        panic!("{engine}/{scenario}: an impossibility must be a report, got {e}")
+                    });
+                    assert!(plan.report.impossible.is_some(), "{engine}/{scenario}");
+                }
+                Some(code) => {
+                    let err = got.err().unwrap_or_else(|| {
+                        panic!("{engine}/{scenario}: a failure must not parse as a plan")
+                    });
+                    assert_eq!(err.code.as_str(), code, "{engine}/{scenario}");
+                }
+                // The SP-2 crash: no catalog code was captured for it, and it is PipDock's bug.
+                None => {
+                    let err = got.expect_err("an uncaptured failure still fails");
+                    assert_eq!(err.code.as_str(), "PD-INT-001", "{engine}/{scenario}");
+                }
+            }
+        }
+    }
+    assert!(checked >= 13, "only {checked} failed captures were checked");
+}
+
+#[test]
+fn uv_impossibility_reads_the_same_in_both_renderings() {
+    let explain = |engine: &str| {
+        parse(engine, "impossible", &[])
+            .report
+            .impossible
+            .expect("impossible")
+            .explanation
+    };
+    let (new, old) = (explain("uv"), explain("uv-0.11"));
+    assert_eq!(
+        new, old,
+        "uv 0.13 and uv 0.11 explain one conflict differently"
+    );
+    for glyph in ["×", "╰", "▶", "cause:"] {
+        assert!(
+            !new.contains(glyph),
+            "{glyph:?} reached the explanation: {new}"
+        );
     }
 }
 
