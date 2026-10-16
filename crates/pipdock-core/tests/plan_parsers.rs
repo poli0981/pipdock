@@ -15,7 +15,7 @@
 use std::fs;
 use std::path::{Path, PathBuf};
 
-use pipdock_core::engine::parse::{ParsedPlan, pip_report, uv_plan};
+use pipdock_core::engine::parse::{ParsedPlan, pip_impossible, pip_report, uv_plan};
 use pipdock_core::model::{Dist, PkgName, Version};
 
 fn fixtures_root() -> PathBuf {
@@ -163,11 +163,30 @@ fn uv_impossibility_carries_an_explanation_a_user_can_act_on() {
 fn pip_impossibility_is_recognised_even_though_it_says_less() {
     // pip writes nothing to stdout when resolution fails, so the report parser must fail rather
     // than silently returning an empty plan — an empty plan would render as "no changes" and the
-    // user would never learn the resolve failed.
+    // user would never learn the resolve failed. (The adapter no longer gets this far with an
+    // impossibility: it reads the exit status first and returns `pip_impossible`'s report.)
     let cap = load("pip", "impossible").expect("fixture");
     assert_eq!(cap.exit_code, 1);
     let err = pip_report(&cap.stdout, &cap.stderr, &[]).expect_err("must not parse as empty plan");
     assert_eq!(err.code.as_str(), "PD-ENG-002");
+}
+
+#[test]
+fn pip_impossibility_becomes_the_same_shape_uv_gives() {
+    // Under pip an unsatisfiable set was a hard error, so the preview could not offer the
+    // per-package Skip it offers under uv. The adapter now returns this instead.
+    let cap = load("pip", "impossible").expect("fixture");
+    let detail = pip_impossible(&cap.stderr).expect("recognised as impossible");
+    let names: Vec<&str> = detail.packages.iter().map(PkgName::as_str).collect();
+    assert_eq!(names, ["httpcore", "httpx"]);
+    assert!(
+        detail.explanation.contains("conflicting dependencies"),
+        "{}",
+        detail.explanation
+    );
+    // And it does not claim a failure that is something else.
+    let not_found = load("pip", "not-found").expect("fixture");
+    assert!(pip_impossible(&not_found.stderr).is_none());
 }
 
 #[test]

@@ -209,8 +209,16 @@ pub trait Engine: Send + Sync {
     /// Dry-run resolve `req` against `env`, normalized into a [`ResolutionReport`].
     ///
     /// This is the only way a plan may be produced; DATA-FLOW §9.1 forbids any mutating call
-    /// without a report accepted in the same session.
-    async fn resolve(&self, env: &PyEnv, req: &PlanRequest) -> Result<ResolutionReport>;
+    /// without a report accepted in the same session. `ctx` carries the cancellation token —
+    /// a resolve used to be the one engine call nothing could stop, so *Stop* while pip
+    /// backtracked left it running for up to ten minutes — and what the flow changes about the
+    /// guard set (forced pins, holds, exclusions).
+    async fn resolve(
+        &self,
+        env: &PyEnv,
+        req: &PlanRequest,
+        ctx: &ResolveCtx,
+    ) -> Result<ResolutionReport>;
 
     /// Install an exact pinned set, holding everything in `set.constraints` where it is.
     ///
@@ -247,6 +255,32 @@ pub trait Engine: Send + Sync {
     /// Upgrade pip inside `env`. The uv adapter returns an `Unsupported` error — DATA-FLOW §7
     /// says pip upkeep is surfaced only when pip is the active engine or present in the env.
     async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult>;
+}
+
+/// What one resolve is given besides the request itself.
+#[derive(Debug, Clone, Default)]
+pub struct ResolveCtx {
+    /// Stops the dry run; a stopped resolve returns an error with `Stop::Cancelled`.
+    pub cancel: tokio_util::sync::CancellationToken,
+    /// What the flow changes about the requirement lines the engine is given.
+    pub adjust: GuardAdjust,
+}
+
+/// Changes to the requirement lines of a resolve, made by the flow — never by an adapter.
+///
+/// SP-1 makes the guard set (every installed package the user is not moving, pinned) the default,
+/// and three decisions need to depart from it on purpose: **Force latest** pins a package to its
+/// latest and *releases* the packages whose constraints were holding it (DISCLAIMER §2); a **Hold**
+/// pin restates its own version; a release whose `Requires-Python` excludes this environment is
+/// **excluded** so the engine picks another.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct GuardAdjust {
+    /// Exact requirements added to the resolve; these names leave the upgrade list and the guard.
+    pub pins: Vec<PinnedSpec>,
+    /// Installed packages released from the guard set — what a forced package will break.
+    pub release: Vec<PkgName>,
+    /// `name!=version` lines, for releases that cannot install here.
+    pub exclude: Vec<PinnedSpec>,
 }
 
 /// One install invocation: what to install, and what must not move while it happens.
@@ -286,6 +320,9 @@ impl InstallSet {
 pub struct RequirementFiles {
     requirements: crate::exec::TempFile,
     constraints: Option<crate::exec::TempFile>,
+    /// What each file says, line by line, so [`Self::humanize`] can put it back.
+    requirement_lines: Vec<String>,
+    constraint_lines: Vec<String>,
 }
 
 impl RequirementFiles {
@@ -294,29 +331,55 @@ impl RequirementFiles {
     /// # Errors
     /// As [`crate::exec::TempFile::create`].
     pub fn write(requirements: &[String], constraints: &[PinnedSpec]) -> Result<Self> {
-        let lines = |items: &mut dyn Iterator<Item = String>| {
-            let mut text = items.collect::<Vec<_>>().join("\n");
+        let text = |lines: &[String]| {
+            let mut text = lines.join("\n");
             text.push('\n');
             text
         };
-        let requirements = crate::exec::TempFile::create(
-            "pipdock-req",
-            "txt",
-            &lines(&mut requirements.iter().cloned()),
-        )?;
-        let constraints = if constraints.is_empty() {
+        let requirement_lines = requirements.to_vec();
+        let constraint_lines: Vec<String> =
+            constraints.iter().map(PinnedSpec::to_requirement).collect();
+        let requirements =
+            crate::exec::TempFile::create("pipdock-req", "txt", &text(&requirement_lines))?;
+        let constraints = if constraint_lines.is_empty() {
             None
         } else {
             Some(crate::exec::TempFile::create(
                 "pipdock-con",
                 "txt",
-                &lines(&mut constraints.iter().map(PinnedSpec::to_requirement)),
+                &text(&constraint_lines),
             )?)
         };
         Ok(Self {
             requirements,
             constraints,
+            requirement_lines,
+            constraint_lines,
         })
+    }
+
+    /// Engine text with every reference to these files replaced by the line it points at.
+    ///
+    /// pip names a requirement that came from a file as `-r <path> (line N)`. Once the plan went
+    /// through a file, its impossibility read `Cannot install -r C:\…\pipdock-req-….txt (line 1)
+    /// and h11==0.12.0`: the preview lost the name of the package the user asked for, and every
+    /// error row showed a path that had already been deleted. Found by running pip, not by
+    /// reading it — uv names requirements by their text and needs none of this.
+    #[must_use]
+    pub fn humanize(&self, text: &str) -> String {
+        let mut out = replace_file_refs(
+            text,
+            &format!("-r {}", self.requirements.path().display()),
+            &self.requirement_lines,
+        );
+        if let Some(c) = &self.constraints {
+            out = replace_file_refs(
+                &out,
+                &format!("-c {}", c.path().display()),
+                &self.constraint_lines,
+            );
+        }
+        out
     }
 
     /// `-r <requirements> [-c <constraints>]`, one argv entry each.
@@ -332,6 +395,44 @@ impl RequirementFiles {
         }
         out
     }
+}
+
+/// `<reference> (line N)` becomes line N; `(from <reference> (line N))` goes entirely, since the
+/// requirement it annotates is already named just before it.
+fn replace_file_refs(text: &str, reference: &str, lines: &[String]) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(at) = rest.find(reference) {
+        let (head, after) = rest.split_at(at);
+        let after = &after[reference.len()..];
+        let parsed = after.strip_prefix(" (line ").and_then(|tail| {
+            let digits = tail.bytes().take_while(u8::is_ascii_digit).count();
+            let n: usize = tail[..digits].parse().ok()?;
+            let close = tail[digits..].strip_prefix(')')?;
+            Some((n, close))
+        });
+        let Some((n, close)) = parsed else {
+            // Not a line reference; keep it as it was.
+            out.push_str(head);
+            out.push_str(reference);
+            rest = after;
+            continue;
+        };
+        if let (Some(before), Some(close)) = (head.strip_suffix("(from "), close.strip_prefix(')'))
+        {
+            out.push_str(before.strip_suffix(' ').unwrap_or(before));
+            rest = close;
+            continue;
+        }
+        out.push_str(head);
+        match n.checked_sub(1).and_then(|i| lines.get(i)) {
+            Some(line) => out.push_str(line),
+            None => out.push_str(&rest[at..rest.len() - close.len()]),
+        }
+        rest = close;
+    }
+    out.push_str(rest);
+    out
 }
 
 /// The adapter for `id`.
@@ -407,7 +508,27 @@ pub fn plan_requirements(req: &PlanRequest, installed: &[crate::model::Dist]) ->
 /// Omitting group 3 is the SP-1 failure — the resolver breaks installed dependents at exit 0.
 #[must_use]
 pub fn plan_argv_specs(req: &PlanRequest, installed: &[crate::model::Dist]) -> Vec<String> {
-    let mut out: Vec<String> = req.upgrades.iter().map(ToString::to_string).collect();
+    plan_lines(req, installed, &GuardAdjust::default())
+}
+
+/// [`plan_argv_specs`] with the flow's [`GuardAdjust`] applied.
+#[must_use]
+pub fn plan_lines(
+    req: &PlanRequest,
+    installed: &[crate::model::Dist],
+    adjust: &GuardAdjust,
+) -> Vec<String> {
+    use std::collections::BTreeSet;
+
+    let pinned: BTreeSet<&PkgName> = adjust.pins.iter().map(|p| &p.name).collect();
+    let released: BTreeSet<&PkgName> = adjust.release.iter().collect();
+
+    let mut out: Vec<String> = req
+        .upgrades
+        .iter()
+        .filter(|n| !pinned.contains(n))
+        .map(ToString::to_string)
+        .collect();
 
     out.extend(req.installs.iter().map(|s| match &s.version_req {
         Some(v) if v.starts_with(['=', '<', '>', '!', '~']) => format!("{}{v}", s.name),
@@ -415,10 +536,18 @@ pub fn plan_argv_specs(req: &PlanRequest, installed: &[crate::model::Dist]) -> V
         None => s.name.to_string(),
     }));
 
+    out.extend(adjust.pins.iter().map(PinnedSpec::to_requirement));
     out.extend(
         plan_requirements(req, installed)
             .iter()
+            .filter(|g| !pinned.contains(&g.name) && !released.contains(&g.name))
             .map(PinnedSpec::to_requirement),
+    );
+    out.extend(
+        adjust
+            .exclude
+            .iter()
+            .map(|e| format!("{}!={}", e.name, e.version)),
     );
     out
 }
@@ -608,6 +737,62 @@ mod tests {
     }
 
     #[test]
+    fn a_forced_package_is_pinned_and_what_held_it_is_released() {
+        // Force latest (DISCLAIMER §2): httpcore goes to its latest *exactly*, and httpx — whose
+        // constraint was holding it — leaves the guard set, or the engine would hold it right back.
+        let installed = [
+            dist("httpx", "0.23.0"),
+            dist("httpcore", "0.15.0"),
+            dist("h11", "0.12.0"),
+        ];
+        let req = PlanRequest {
+            upgrades: vec![PkgName::parse("httpcore").unwrap()],
+            installs: Vec::new(),
+            strategy: Strategy::Compatible,
+        };
+        let adjust = GuardAdjust {
+            pins: vec![PinnedSpec {
+                name: PkgName::parse("httpcore").unwrap(),
+                version: Version("1.0.9".into()),
+            }],
+            release: vec![PkgName::parse("httpx").unwrap()],
+            exclude: Vec::new(),
+        };
+        assert_eq!(
+            plan_lines(&req, &installed, &adjust),
+            ["httpcore==1.0.9", "h11==0.12.0"]
+        );
+    }
+
+    #[test]
+    fn an_excluded_release_rides_alongside_the_request() {
+        // A release whose Requires-Python excludes this environment is ruled out by name, and the
+        // engine is left to pick the next one — PipDock still does not resolve (invariant 3).
+        let installed = [dist("httpx", "0.23.0"), dist("httpcore", "0.15.0")];
+        let req = PlanRequest {
+            upgrades: vec![PkgName::parse("httpcore").unwrap()],
+            installs: Vec::new(),
+            strategy: Strategy::Compatible,
+        };
+        let adjust = GuardAdjust {
+            exclude: vec![PinnedSpec {
+                name: PkgName::parse("httpcore").unwrap(),
+                version: Version("1.0.9".into()),
+            }],
+            ..GuardAdjust::default()
+        };
+        assert_eq!(
+            plan_lines(&req, &installed, &adjust),
+            ["httpcore", "httpx==0.23.0", "httpcore!=1.0.9"]
+        );
+        assert_eq!(
+            plan_lines(&req, &installed, &GuardAdjust::default()),
+            plan_argv_specs(&req, &installed),
+            "no adjustment is exactly the SP-1 default"
+        );
+    }
+
+    #[test]
     fn updating_everything_still_asks_for_something() {
         // With --all every package is moving, so the guard set is empty. If only guards were
         // passed the command would carry no requirements at all.
@@ -726,5 +911,47 @@ mod tests {
             command_line < 1_000,
             "command line is {command_line} characters"
         );
+    }
+
+    #[test]
+    fn pip_names_a_file_requirement_by_its_line_and_the_line_comes_back() {
+        // The sentence pip 26.2.1 printed when the plan went through a file, verbatim but for
+        // the path, which is this run's own.
+        let files = RequirementFiles::write(
+            &["httpcore>=1.0".to_owned(), "httpx==0.23.0".to_owned()],
+            &[PinnedSpec {
+                name: PkgName::parse("h11").unwrap(),
+                version: Version("0.12.0".into()),
+            }],
+        )
+        .expect("written");
+        let args = files.args();
+        let (req, con) = (&args[1], &args[3]);
+        let stderr = format!(
+            "ERROR: Cannot install -r {req} (line 1) and -r {req} (line 2) because these package \
+             versions have conflicting dependencies.\n\
+             ERROR: Could not find a version that satisfies the requirement httpcore>=1.0 \
+             (from -r {req} (line 1)) (from versions: none)\n\
+             The user requested (constraint) -c {con} (line 1)\n\
+             -r {req} (line 9) is not a line this run wrote\n"
+        );
+        let out = files.humanize(&stderr);
+        assert!(
+            out.contains("Cannot install httpcore>=1.0 and httpx==0.23.0 because"),
+            "{out}"
+        );
+        assert!(
+            out.contains("requirement httpcore>=1.0 (from versions: none)"),
+            "{out}"
+        );
+        assert!(out.contains("(constraint) h11==0.12.0"), "{out}");
+        assert!(
+            out.contains(&format!("-r {req} (line 9)")),
+            "an unknown line is left alone rather than invented: {out}"
+        );
+        // And the impossibility now names the package the user asked for.
+        let detail = parse::pip_impossible(&out).expect("impossible");
+        let names: Vec<&str> = detail.packages.iter().map(PkgName::as_str).collect();
+        assert_eq!(names, ["httpcore", "httpx"]);
     }
 }

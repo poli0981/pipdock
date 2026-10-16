@@ -175,6 +175,51 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
     })
 }
 
+/// pip's ResolutionImpossible, read into the shape uv's impossibility already has.
+///
+/// pip runs with `--quiet`, so its whole explanation is one line — `ERROR: Cannot install A and B
+/// because these package versions have conflicting dependencies.` — followed by the
+/// ResolutionImpossible pointer. The packages are the requirements that line names. `None` when
+/// the stderr is not an impossibility at all, so the caller classifies it instead.
+#[must_use]
+pub fn pip_impossible(stderr: &str) -> Option<crate::plan::ImpossibleDetail> {
+    if crate::errors::classify_stderr(stderr) != crate::errors::Code::ResImpossible {
+        return None;
+    }
+    let line = stderr
+        .lines()
+        .map(str::trim)
+        .find(|l| l.contains("Cannot install "))
+        .or_else(|| {
+            stderr
+                .lines()
+                .map(str::trim)
+                .find(|l| l.starts_with("ERROR:"))
+        })?;
+    let explanation = line.trim_start_matches("ERROR:").trim().to_owned();
+
+    let mut packages = Vec::new();
+    if let Some(rest) = explanation.strip_prefix("Cannot install ")
+        && let Some((named, _)) = rest.split_once(" because")
+    {
+        for token in named.split([',']).flat_map(|t| t.split(" and ")) {
+            let token = token.trim();
+            let end = token
+                .find(['=', '<', '>', '!', '~', '[', ' '])
+                .unwrap_or(token.len());
+            if let Ok(name) = PkgName::parse(&token[..end])
+                && !packages.contains(&name)
+            {
+                packages.push(name);
+            }
+        }
+    }
+    Some(crate::plan::ImpossibleDetail {
+        packages,
+        explanation,
+    })
+}
+
 /// pip prints the yank reason on stderr, not in the report JSON.
 fn yank_reason_from_stderr(stderr: &str, pkg: &PkgName) -> Option<String> {
     let flat = flatten(stderr);

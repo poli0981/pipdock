@@ -16,7 +16,7 @@
 use std::sync::{Arc, Mutex};
 
 use async_trait::async_trait;
-use pipdock_core::engine::{Engine, InstallSet, ProgressEvent, ProgressSink};
+use pipdock_core::engine::{Engine, InstallSet, ProgressEvent, ProgressSink, ResolveCtx};
 use pipdock_core::errors::Result;
 use pipdock_core::model::{
     CheckFinding, CheckReport, Dist, EngineId, EngineInfo, EnvSource, ExecMode, OutdatedDist,
@@ -111,7 +111,12 @@ impl Engine for FakeEngine {
     async fn list_outdated(&self, _env: &PyEnv) -> Result<Vec<OutdatedDist>> {
         Ok(Vec::new())
     }
-    async fn resolve(&self, _env: &PyEnv, _req: &PlanRequest) -> Result<ResolutionReport> {
+    async fn resolve(
+        &self,
+        _env: &PyEnv,
+        _req: &PlanRequest,
+        _ctx: &ResolveCtx,
+    ) -> Result<ResolutionReport> {
         Ok(ResolutionReport {
             changes: Vec::new(),
             held_back: Vec::new(),
