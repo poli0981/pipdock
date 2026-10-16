@@ -1,9 +1,9 @@
 /**
  * What PipDock has written to disk, and what can be removed — PRD P1-4.
  *
- * **Three artefacts, not four.** There are no log files: `LOG_RETENTION_DAYS` has never had a
- * reader, the only log is the in-memory ring buffer behind *Report bug*, and `logs_tail` is still
- * owed. A "logs — 0 B" row would be inventing a thing that does not exist.
+ * **Logs are not a row here.** They exist since 1.4.0 and look after themselves — the sweep keeps
+ * `LOG_RETENTION_DAYS` and nothing more — so a *Clear* would only take away what a bug report
+ * needs. `PdLogs`, below this on the Settings screen, says where they are.
  *
  * **`index.db` has no Clear button**, and its row says why. It holds the package index *and* the
  * settings *and* the pin list *and* the legal-consent record in one SQLite file, so a "clear the

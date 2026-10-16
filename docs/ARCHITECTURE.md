@@ -158,7 +158,7 @@ This table is the surface. A command that is not listed here does not exist; add
 | `cache_clear` | `number` | Delete one cache target, resolving to the bytes freed. Takes a `Target` **enum, never a path** — `cache::clear` is the only thing that turns one into a directory. `index.db` is deliberately not a target: it holds settings, pins and the consent record as well as the package index, and *clear the cache* must never take a user's pins. |
 | `legal_consent_get` | `ConsentState` | Whether the legal gate can be skipped for this build's documents. |
 | `legal_consent_set` | `Consent` | Record acceptance. |
-| `logs_tail` | `string[]` | Tail of the in-memory log ring buffer, for the console drawer. |
+| `logs_tail` | `LogTail` | The end of PipDock's own log files (`data\logs\`, kept `LOG_RETENTION_DAYS`) and the folder they are in, for Settings' Logs row. Never fails: no log yet is an empty tail. |
 | `report_bug_url` | `string` | Prefilled GitHub issue URL (ERROR-CATALOG §4). Built in Rust so it cannot drift from `pipdock self report-bug`. **Nothing is ever sent automatically.** |
 
 Events (Tauri event channel): `plan-progress` streams live subprocess output to the in-app console; `scan-progress`; `health-progress`.

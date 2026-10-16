@@ -351,6 +351,7 @@ pub fn json_schema(type_name: &str) -> Result<serde_json::Value> {
         "HealthReport" => crate::health::HealthReport,
         "AuditReport" => crate::audit::AuditReport,
         "FixReport" => crate::health::fix::FixReport,
+        "LogTail" => crate::logging::LogTail,
     }
 }
 
@@ -388,6 +389,7 @@ pub const SCHEMA_TYPES: &[&str] = &[
     "HealthReport",
     "AuditReport",
     "FixReport",
+    "LogTail",
 ];
 
 /// DATA-FLOW §9.3: a report older than this is refused by [`execute`] and must be re-resolved.

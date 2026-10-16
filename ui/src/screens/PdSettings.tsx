@@ -14,6 +14,7 @@ import { useTranslation } from 'react-i18next'
 
 import { PdCacheUsage } from '@/components/PdCacheUsage'
 import { PdErrorRow } from '@/components/PdErrorRow'
+import { PdLogs } from '@/components/PdLogs'
 import { SUPPORTED_LOCALES, type Locale } from '@/i18n'
 import { useSettingsStore } from '@/stores'
 
@@ -132,6 +133,7 @@ export function PdSettings() {
       </fieldset>
 
       <PdCacheUsage />
+      <PdLogs />
     </section>
   )
 }

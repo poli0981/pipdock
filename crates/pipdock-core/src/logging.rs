@@ -135,14 +135,26 @@ pub fn sweep(dir: &Path, keep_days: u32, now: jiff::Timestamp) -> usize {
         .count()
 }
 
+/// The end of PipDock's own log, for Settings' Logs row (ARCHITECTURE §7).
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct LogTail {
+    /// The folder the log files are in. A path — data, never localized (I18N §2).
+    pub dir: String,
+    /// The most recent lines, oldest first. Empty when nothing has been logged yet.
+    pub lines: Vec<String>,
+}
+
 /// The last `max_lines` lines across the newest log files in `dir`, oldest first.
 ///
 /// Reads backwards through the files by date, so a tail that straddles midnight still has the
 /// lines from before it. Bounded: at most a few files are read.
 #[must_use]
-pub fn tail(dir: &Path, max_lines: usize) -> String {
+pub fn tail(dir: &Path, max_lines: usize) -> Vec<String> {
     let Ok(entries) = std::fs::read_dir(dir) else {
-        return String::new();
+        return Vec::new();
     };
     let mut files: Vec<(jiff::civil::Date, String, PathBuf)> = entries
         .flatten()
@@ -167,7 +179,7 @@ pub fn tail(dir: &Path, max_lines: usize) -> String {
         }
     }
     let start = lines.len().saturating_sub(max_lines);
-    lines[start..].join("\n")
+    lines.split_off(start)
 }
 
 /// Record a panic in the log before the default hook prints it.
@@ -255,9 +267,9 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("dir");
         std::fs::write(dir.join("pipdock.2026-10-15.log"), "a\nb\nc\n").expect("seed");
         std::fs::write(dir.join("pipdock.2026-10-16.log"), "d\ne\n").expect("seed");
-        assert_eq!(tail(&dir, 3), "c\nd\ne");
-        assert_eq!(tail(&dir, 50), "a\nb\nc\nd\ne");
-        assert_eq!(tail(&scratch("absent"), 5), "");
+        assert_eq!(tail(&dir, 3), ["c", "d", "e"]);
+        assert_eq!(tail(&dir, 50), ["a", "b", "c", "d", "e"]);
+        assert!(tail(&scratch("absent"), 5).is_empty());
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
