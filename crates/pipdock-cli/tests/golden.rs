@@ -70,6 +70,13 @@ fn pipdock() -> Command {
     let mut cmd = Command::cargo_bin("pipdock").expect("the `pipdock` binary builds");
     // Colour and width leak the terminal into the snapshot; pin both.
     cmd.env("NO_COLOR", "1").env("COLUMNS", "100");
+    // Every invocation writes its log under the app-data root, and a test run's belongs in a
+    // scratch directory rather than in the developer's own profile. Settings and the store move
+    // with it, which is the isolation a contract test wants anyway.
+    cmd.env(
+        "LOCALAPPDATA",
+        std::env::temp_dir().join(format!("pd-golden-{}", std::process::id())),
+    );
     cmd
 }
 

@@ -36,6 +36,7 @@ pub mod flow;
 pub mod graph;
 pub mod health;
 pub mod index;
+pub mod logging;
 pub mod model;
 pub mod pep440;
 pub mod pins;
