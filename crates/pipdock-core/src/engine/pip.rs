@@ -14,7 +14,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, InstallSet, ProgressSink, single_pkg};
+use super::{Engine, InstallSet, ProgressSink, ResolveCtx, single_pkg};
 
 /// Drives pip as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -133,17 +133,36 @@ impl Engine for PipEngine {
         super::parse::outdated_json(&out.stdout)
     }
 
-    async fn resolve(&self, env: &PyEnv, req: &PlanRequest) -> Result<ResolutionReport> {
+    async fn resolve(
+        &self,
+        env: &PyEnv,
+        req: &PlanRequest,
+        ctx: &ResolveCtx,
+    ) -> Result<ResolutionReport> {
         // SP-1: the installed set must be restated or the resolver ignores it and plans an
         // upgrade that breaks installed dependents. The caller assembles that set into `req`.
         let installed = self.list_installed(env).await?;
-        let files = super::RequirementFiles::write(&super::plan_argv_specs(req, &installed), &[])?;
-        let out = Command::python(&env.interpreter)
+        let lines = super::plan_lines(req, &installed, &ctx.adjust);
+        let files = super::RequirementFiles::write(&lines, &[])?;
+        let mut out = Command::python(&env.interpreter)
             .args(Self::argv_dry_run(&files.args()))
             .timeout(watchdog::RESOLVE)
+            .cancel(ctx.cancel.clone())
             .run()
             .await?;
+        out.stderr = files.humanize(&out.stderr);
         if !out.ok() {
+            // **The same shape uv gives** (ARCHITECTURE §3). pip's ResolutionImpossible was a hard
+            // error, so under pip one unsatisfiable package in a fifteen-package request failed
+            // the whole preview and the per-package *Skip* the preview offers under uv never
+            // appeared.
+            if let Some(detail) = super::parse::pip_impossible(&out.stderr) {
+                return Ok(ResolutionReport {
+                    impossible: Some(detail),
+                    raw: out.stderr,
+                    ..ResolutionReport::default()
+                });
+            }
             return Err(out.into_error());
         }
         super::parse::pip_report(&out.stdout, &out.stderr, &installed)
@@ -161,12 +180,13 @@ impl Engine for PipEngine {
         let files = super::RequirementFiles::write(&requirements, &set.constraints)?;
         let mut argv = vec!["-m".to_owned(), "pip".to_owned(), "install".to_owned()];
         argv.extend(files.args());
-        let out = Command::python(&env.interpreter)
+        let mut out = Command::python(&env.interpreter)
             .args(argv)
             .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, single_pkg(&set.specs), mode)
             .await?;
+        out.stderr = files.humanize(&out.stderr);
         Ok(super::step_result(&set.specs, &out))
     }
 

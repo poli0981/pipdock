@@ -25,7 +25,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, InstallSet, ProgressSink, single_pkg};
+use super::{Engine, InstallSet, ProgressSink, ResolveCtx, single_pkg};
 
 /// Drives uv as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -138,15 +138,22 @@ impl Engine for UvEngine {
         super::parse::outdated_json(&out.stdout)
     }
 
-    async fn resolve(&self, env: &PyEnv, req: &PlanRequest) -> Result<ResolutionReport> {
+    async fn resolve(
+        &self,
+        env: &PyEnv,
+        req: &PlanRequest,
+        ctx: &ResolveCtx,
+    ) -> Result<ResolutionReport> {
         // SP-1: without the installed set restated, uv plans an upgrade that breaks installed
         // dependents and exits 0. Identical requirement to pip's adapter.
         let installed = self.list_installed(env).await?;
-        let files = super::RequirementFiles::write(&super::plan_argv_specs(req, &installed), &[])?;
+        let lines = super::plan_lines(req, &installed, &ctx.adjust);
+        let files = super::RequirementFiles::write(&lines, &[])?;
         let python = env.interpreter.display().to_string();
         let out = Command::new("uv")
             .args(Self::argv_dry_run(&python, &files.args()))
             .timeout(watchdog::RESOLVE)
+            .cancel(ctx.cancel.clone())
             .run()
             .await?;
         // uv exits non-zero on an unsatisfiable set, but its message is the most useful thing it

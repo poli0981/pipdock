@@ -266,7 +266,20 @@ impl UpdateFlow {
 
     /// Resolve the current request and classify what the caller must do next.
     async fn resolve(&mut self) -> Result<FlowStep> {
-        let mut report = self.engine.resolve(&self.env, &self.req).await?;
+        let ctx = crate::engine::ResolveCtx {
+            cancel: self.cancel.clone(),
+            adjust: crate::engine::GuardAdjust::default(),
+        };
+        let mut report = match self.engine.resolve(&self.env, &self.req, &ctx).await {
+            Ok(report) => report,
+            // A stopped resolve planned nothing and ran nothing; it is not a failure to report.
+            Err(e) if e.is_cancelled() => {
+                return Ok(FlowStep::Nothing {
+                    reason: NothingReason::Cancelled,
+                });
+            }
+            Err(e) => return Err(e),
+        };
         plan::derive_held_back(&mut report, &self.req.upgrades, &self.outdated, &self.graph);
         self.report = report;
 
