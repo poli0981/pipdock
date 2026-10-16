@@ -1333,7 +1333,7 @@ pub async fn health_fix(
             acknowledged_dirty,
             fix::dirty(&session.project).await,
         )?;
-        fix::apply(&tools_dir, &session.project, &fresh, consent).await
+        fix::apply(&tools_dir, &session.project, &fresh, consent, &opts).await
     }
     .await;
 

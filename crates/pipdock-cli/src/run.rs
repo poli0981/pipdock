@@ -1194,7 +1194,7 @@ pub async fn health(
         print_health(opts, &report);
     }
     if fix {
-        return apply_fix(opts, &tools_dir, &project, &report).await;
+        return apply_fix(opts, &tools_dir, &project, &report, &run_opts).await;
     }
     Ok(if health::has_findings(&report) {
         Exit::PartialFailure
@@ -1229,6 +1229,7 @@ async fn apply_fix(
     tools_dir: &Path,
     project: &Path,
     report: &health::HealthReport,
+    run_opts: &health::RunOptions,
 ) -> Result<Exit> {
     use pipdock_core::health::fix;
 
@@ -1286,7 +1287,7 @@ async fn apply_fix(
     // process produced seconds ago, so there is no window between confirming and fixing for the
     // tree to drift in. The consent is still built from what was actually observed.
     let consent = fix::consent_ok(report.ruff.fixable_files, dirty.is_some(), dirty)?;
-    let fixed = fix::apply(tools_dir, project, &report.ruff, consent).await?;
+    let fixed = fix::apply(tools_dir, project, &report.ruff, consent, run_opts).await?;
 
     if opts.json {
         println!(
