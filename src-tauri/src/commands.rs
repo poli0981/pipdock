@@ -370,8 +370,8 @@ pub async fn pin_suggestions(
     };
     let probed = envs::probe(&env.interpreter, env.source).await?;
     Ok(pins::suggest(
+        &pipdock_core::graph::ReverseDeps::for_probe(&probed),
         &probed.dists,
-        &probed.env.python_version,
         &existing,
         threshold,
     ))
@@ -401,10 +401,7 @@ pub async fn deps_graph(env: PyEnv) -> Wire<pipdock_core::graph::DepsGraph> {
     // No store read at all, so there is no guard to drop — the graph depends on the interpreter
     // and on nothing the user has configured. `pkg_list` is the same, and for the same reason.
     let probed = envs::probe(&env.interpreter, env.source).await?;
-    Ok(
-        pipdock_core::graph::ReverseDeps::build_for(&probed.dists, &probed.env.python_version)
-            .view(),
-    )
+    Ok(pipdock_core::graph::ReverseDeps::for_probe(&probed).view())
 }
 
 /// Write the environment out as a `requirements.txt` — PRD P1-3.

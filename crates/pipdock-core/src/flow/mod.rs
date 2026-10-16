@@ -204,7 +204,7 @@ impl UpdateFlow {
         let probed = crate::envs::probe(&env.interpreter, env.source).await?;
         // Built against this interpreter so marker-gated requirements are read correctly: without
         // it a `python_version < "3.11"` branch is reported as a blocker on 3.12 (SP-5 dogfood).
-        let graph = ReverseDeps::build_for(&probed.dists, &probed.env.python_version);
+        let graph = ReverseDeps::for_probe(&probed);
         let outdated = engine.list_outdated(&env).await?;
         let (req, excluded_pins) = build_request(intent, &outdated, pins)?;
         let plan_id = format!("update-{env_hash:.8}");
@@ -469,8 +469,7 @@ impl UninstallFlow {
 
         // The graph is built from probe.py, which is the only source carrying requires_dist.
         let probed = crate::envs::probe(&env.interpreter, env.source).await?;
-        let report =
-            ReverseDeps::build_for(&probed.dists, &probed.env.python_version).guard(&names);
+        let report = ReverseDeps::for_probe(&probed).guard(&names);
 
         let env_hash = crate::envs::env_hash(&env.interpreter);
         let plan_id = format!("uninstall-{env_hash:.8}");

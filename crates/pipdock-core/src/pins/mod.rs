@@ -250,8 +250,8 @@ pub struct PinSuggestion {
 /// rough edge rather than an oversight, and both are on the same screen so it is visible.
 #[must_use]
 pub fn suggest(
+    graph: &ReverseDeps,
     dists: &[Dist],
-    python_version: &str,
     existing: &[Pin],
     threshold: usize,
 ) -> Vec<PinSuggestion> {
@@ -262,10 +262,9 @@ pub fn suggest(
     }
 
     let pinned: BTreeSet<&PkgName> = existing.iter().map(|p| &p.pkg).collect();
-    // `build_for`, not `build`: without the interpreter, a requirement gated on some other
-    // `python_version` counts as if it were in force, and the suggestion inherits the same wrong
-    // answer the preview used to give (SP-5).
-    let graph = ReverseDeps::build_for(dists, python_version);
+    // The caller builds the graph — `ReverseDeps::for_probe` in production, since without the
+    // interpreter and platform a gated requirement counts as if it were in force and the
+    // suggestion inherits the wrong answer the preview used to give (SP-5).
 
     let mut out: Vec<PinSuggestion> = dists
         .iter()
@@ -346,7 +345,10 @@ mod tests {
     #[test]
     fn a_package_below_the_threshold_is_not_suggested() {
         let dists = depended_on_by("urllib3", 4);
-        assert_eq!(suggest(&dists, "3.12.4", &[], 5), Vec::new());
+        assert_eq!(
+            suggest(&ReverseDeps::build_for(&dists, "3.12.4"), &dists, &[], 5),
+            Vec::new()
+        );
     }
 
     #[test]
@@ -354,7 +356,7 @@ mod tests {
         // PRD P1-2 says "count >= threshold". Off by one here means the default of 5 fires at 6,
         // and nobody would notice because both are plausible.
         let dists = depended_on_by("urllib3", 5);
-        let got = suggest(&dists, "3.12.4", &[], 5);
+        let got = suggest(&ReverseDeps::build_for(&dists, "3.12.4"), &dists, &[], 5);
         assert_eq!(got.len(), 1);
         assert_eq!(got[0].pkg, pkg("urllib3"));
         assert_eq!(got[0].dependents, 5);
@@ -365,7 +367,10 @@ mod tests {
         // Suggesting what the user has already done is noise, however high the count.
         let dists = depended_on_by("urllib3", 50);
         let pins = vec![exclude("urllib3", None)];
-        assert_eq!(suggest(&dists, "3.12.4", &pins, 5), Vec::new());
+        assert_eq!(
+            suggest(&ReverseDeps::build_for(&dists, "3.12.4"), &dists, &pins, 5),
+            Vec::new()
+        );
     }
 
     #[test]
@@ -380,7 +385,10 @@ mod tests {
                 dist(&name, &["urllib3; extra == \"socks\""])
             }))
             .collect();
-        assert_eq!(suggest(&dists, "3.12.4", &[], 5), Vec::new());
+        assert_eq!(
+            suggest(&ReverseDeps::build_for(&dists, "3.12.4"), &dists, &[], 5),
+            Vec::new()
+        );
     }
 
     #[test]
@@ -393,7 +401,10 @@ mod tests {
                 dist(&name, &["urllib3; python_version < \"3.11\""])
             }))
             .collect();
-        assert_eq!(suggest(&dists, "3.12.4", &[], 5), Vec::new());
+        assert_eq!(
+            suggest(&ReverseDeps::build_for(&dists, "3.12.4"), &dists, &[], 5),
+            Vec::new()
+        );
     }
 
     #[test]
@@ -414,7 +425,7 @@ mod tests {
             dists.push(dist(&format!("extra{i}"), &["urllib3"]));
         }
 
-        let got = suggest(&dists, "3.12.4", &[], 5);
+        let got = suggest(&ReverseDeps::build_for(&dists, "3.12.4"), &dists, &[], 5);
         let names: Vec<&str> = got.iter().map(|s| s.pkg.as_str()).collect();
         assert_eq!(names, ["urllib3", "certifi", "idna"]);
         assert_eq!(got[0].dependents, 10);
@@ -427,7 +438,10 @@ mod tests {
         // The degenerate setting. Every package trivially has >= 0 dependents, so without the
         // guard this offers to pin the whole environment, leaves included.
         let dists = depended_on_by("urllib3", 6);
-        assert_eq!(suggest(&dists, "3.12.4", &[], 0), Vec::new());
+        assert_eq!(
+            suggest(&ReverseDeps::build_for(&dists, "3.12.4"), &dists, &[], 0),
+            Vec::new()
+        );
     }
 
     #[test]
