@@ -199,7 +199,9 @@ def run(
     env = None
     if extra_env:
         env = {**os.environ, **extra_env}
-    return subprocess.run(
+    # NOSONAR below (S8701): a developer tool. `argv` is a list — no shell parses it — built from
+    # this script's own scenarios and the developer's own --uv-exe; there is no other caller.
+    return subprocess.run(  # NOSONAR
         argv,
         cwd=cwd,
         env=env,

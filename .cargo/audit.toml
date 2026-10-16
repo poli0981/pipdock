@@ -29,10 +29,8 @@ ignore = [
     "RUSTSEC-2024-0419", # gtk3-macros — unmaintained
     "RUSTSEC-2024-0420", # gtk-sys — unmaintained
     "RUSTSEC-2024-0429", # glib — unsound (VariantStrIter::impl_get); same GTK3 stack
-
-    # --- Build-time only -----------------------------------------------------
-    # A proc-macro helper pulled in by a build dependency. It never reaches a shipped binary, and
-    # the advisory is "unmaintained", not a defect.
+    # A proc-macro, reached through glib-macros: the same stack, not a build dependency of
+    # PipDock's as this file used to say (`cargo tree -i proc-macro-error --target all`).
     "RUSTSEC-2024-0370", # proc-macro-error — unmaintained
 
     # --- unic-* Unicode tables ----------------------------------------------

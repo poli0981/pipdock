@@ -1,4 +1,4 @@
-# Caller into the ops repo's React reusable, plus one local job.
+# Caller into the ops repo's React reusable, plus local jobs.
 #
 # The reusable runs Node 24, `npm ci`, then lint / typecheck / test when the matching npm script
 # exists, then the build. It has no `npm audit` step, so that gate lives here — see
@@ -14,13 +14,8 @@ on:
   push:
     branches: [main]
 
-# The reusable declares a Pages-deploy job needing `pages: write` and `id-token: write`. It is
-# skipped here (`deploy-pages: false`), but permissions are validated at startup regardless of
-# `if:`, so a caller that grants less than the callee declares is rejected before it runs.
 permissions:
   contents: read
-  pages: write
-  id-token: write
 
 concurrency:
   group: ci-node-${{ github.ref }}
@@ -29,6 +24,14 @@ concurrency:
 jobs:
   web:
     name: lint · typecheck · test · build
+    # The reusable declares a Pages-deploy job needing `pages: write` and `id-token: write`. It is
+    # skipped here (`deploy-pages: false`), but permissions are validated at startup regardless of
+    # `if:`, so a caller that grants less than the callee declares is rejected before it runs.
+    # Granted on this job only, not the workflow: the other jobs here never need to write.
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     uses: poli0981/.github/.github/workflows/reusable-web-react.yml@main
     with:
       node-version: '24'
@@ -44,6 +47,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Node.js
         uses: actions/setup-node@v7
@@ -51,8 +56,25 @@ jobs:
           node-version: '24'
           cache: npm
 
+      # The audit reads the lockfile; nothing is built, so no install script has a reason to run.
       - name: Install
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Audit
         run: npm audit --audit-level=high
+
+  lockstep:
+    name: tauri lockstep
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      # Tauri refuses to run when the `tauri` crate and `@tauri-apps/api` are on different minors,
+      # and Dependabot bumps the two ecosystems in separate PRs — so either one, merged alone,
+      # leaves a `main` that builds and does not start. The script reads both lockfiles.
+      - name: Crate and npm package on one minor
+        run: node scripts/check-tauri-lockstep.mjs

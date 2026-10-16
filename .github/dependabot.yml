@@ -4,10 +4,22 @@
 # ops repo, and that repo ships a dependabot-summary.yml, which makes Dependabot the portfolio
 # standard.
 #
-# Grouping intent carried over from the original spec: weekly grouped minor/patch PRs per
-# ecosystem, and Code Health pins kept in their own group so they stay reviewable in isolation.
-# Security advisories bypass grouping and schedule automatically — that is Dependabot's default
-# for security updates and cannot be configured away here.
+# Weekly grouped PRs per ecosystem, with Code Health's pins kept apart so a tool bump is reviewed
+# on its own. Security advisories bypass grouping and schedule — that is Dependabot's default for
+# security updates and cannot be configured away here.
+#
+# **Cooldown**: a release has to be a few days old before it is proposed. Most yanked or
+# compromised releases are pulled within that window, and nothing here needs a dependency the day
+# it ships.
+#
+# **Tauri moves in lockstep**: the `tauri` crate and `@tauri-apps/api` must share a minor or the
+# app will not start, and Dependabot cannot bump Cargo and npm in one pull request — a
+# multi-ecosystem group can, but what it does to the dependencies outside its patterns is not
+# documented, and guessing wrong would silently stop every other update. So each ecosystem groups
+# its Tauri packages into one PR, and ci-node.yml's `tauri lockstep` job fails either PR until its
+# counterpart is merged beside it.
+#
+# The labels below must exist in the repository, or Dependabot opens its PRs without them.
 
 version: 2
 
@@ -18,7 +30,13 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+      semver-major-days: 14
     groups:
+      # First, so a Tauri crate never lands in the catch-all group below.
+      tauri:
+        patterns: ['tauri', 'tauri-*']
       cargo-minor-patch:
         update-types: [minor, patch]
     labels: [dependencies, rust]
@@ -29,7 +47,17 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 5
+    cooldown:
+      default-days: 3
+      semver-major-days: 14
+    ignore:
+      # typescript-eslint 8.71 peers `typescript >=4.8.4 <6.1.0`, so a 6.1 bump fails `npm ci` with
+      # ERESOLVE before a single check runs. Remove once typescript-eslint widens its range.
+      - dependency-name: typescript
+        versions: ['>=6.1.0']
     groups:
+      tauri:
+        patterns: ['@tauri-apps/*']
       npm-minor-patch:
         update-types: [minor, patch]
     labels: [dependencies, frontend]
@@ -39,14 +67,34 @@ updates:
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      actions:
+        patterns: ['*']
     labels: [dependencies, ci]
 
-  # Code Health tool pins (deptry / vulture / ruff), shipped with the app and resolved at release
-  # time — CODE-HEALTH-SPEC §2. Kept as its own ecosystem so a bump here is never bundled with
-  # application dependencies.
+  # Code Health tool pins (deptry / vulture / ruff / pip-audit), shipped with the app and resolved
+  # at release time — CODE-HEALTH-SPEC §2. Its own ecosystem, so a bump here is never bundled with
+  # application dependencies. A bump also needs tools-constraints.txt regenerated (the command is
+  # in its header); `cargo test` fails until it is.
   - package-ecosystem: pip
     directory: /tools
     schedule:
       interval: weekly
       day: monday
+    cooldown:
+      default-days: 7
+    groups:
+      code-health:
+        patterns: ['*']
     labels: [dependencies, code-health]
+
+  # rust-toolchain.toml's pinned channel. A toolchain bump brings new clippy lints, which is why
+  # it gets a PR of its own rather than arriving with a cargo update.
+  - package-ecosystem: rust-toolchain
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+    labels: [dependencies, rust]

@@ -30,6 +30,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # rust-toolchain.toml pins the exact version, so no toolchain action is needed — rustup
       # honours it on first invocation and installs rustfmt and clippy with it.
@@ -62,19 +64,47 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     env:
-      # The action builds cargo-audit from source, and rust-toolchain.toml would otherwise pin
-      # that build to PipDock's toolchain. cargo-audit's own dependency tree already requires a
-      # newer rustc than we pin (kstring needs 1.96), so the audit failed to compile rather than
-      # finding anything. It only reads Cargo.lock, so building it with stable is correct — the
-      # pin exists to make *PipDock* reproducible, not its tooling.
+      # cargo-audit only reads Cargo.lock, so it runs under the runner's stable cargo rather than
+      # making rustup install the toolchain rust-toolchain.toml pins — that pin exists to make
+      # PipDock reproducible, not its tooling.
       RUSTUP_TOOLCHAIN: stable
     steps:
       - name: Checkout
         uses: actions/checkout@v7
-
-      # RustSec advisories against the committed Cargo.lock. Split from the Windows job because
-      # it needs no target build — it is a lockfile scan.
-      - name: Audit
-        uses: rustsec/audit-check@v2
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          persist-credentials: false
+
+      # A prebuilt cargo-audit, pinned by commit. This replaced rustsec/audit-check@v2, which ran
+      # on Node 20, needed a check-run write token, and on a pull request failed only on
+      # "critical" — so the advisories that turned `main` red in September passed every PR.
+      - name: Install cargo-audit
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-audit
+
+      # RustSec advisories against the committed Cargo.lock. `--deny warnings`, because
+      # .cargo/audit.toml's contract is that a *new* informational advisory fails CI and is looked
+      # at; the known ones are ignored there one by one, with reasons.
+      - name: Audit
+        run: cargo audit --deny warnings
+
+  deny:
+    name: cargo deny
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      RUSTUP_TOOLCHAIN: stable
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install cargo-deny
+        uses: taiki-e/install-action@83ac0ad63c0167e6f06796fab0fce28db1bf3db0 # v2.87.22
+        with:
+          tool: cargo-deny
+
+      # Licences, sources and bans — deny.toml says why each. Advisories stay cargo audit's.
+      - name: Licences, sources, bans
+        run: cargo deny --locked check licenses sources bans

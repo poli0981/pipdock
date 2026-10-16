@@ -1,9 +1,11 @@
 # Caller into the ops repo's CodeQL reusable.
 #
-# JavaScript/TypeScript only: CodeQL has no Rust analyzer, and the reusable's supported set is
-# csharp, python, javascript-typescript, ruby, c-cpp, java-kotlin, go and swift. Rust's static
-# analysis is clippy `-D warnings` plus `cargo audit`, both blocking in ci-rust.yml.
-# See docs/RELEASE-CI.md §1 and docs/SECURITY.md §7.
+# Three languages. **Rust** — CodeQL analyses it without a build (`build-mode: none`, which the
+# reusable passes for every language outside its autobuild list); this file said for six releases
+# that CodeQL had no Rust support, which stopped being true in 2025. **Actions** — the workflows
+# themselves: the class of mistake SonarCloud kept finding by hand (write permissions at workflow
+# level, unpinned third-party actions). **JavaScript/TypeScript** — the frontend, and the one
+# whose check name `main`'s protection requires, so it keeps its exact name.
 #
 # The reusable notes that repo Settings → Advanced Security → CodeQL "Default setup" must be
 # DISABLED, or this advanced-setup workflow is rejected at upload time.
@@ -32,4 +34,4 @@ jobs:
   analyze:
     uses: poli0981/.github/.github/workflows/reusable-codeql.yml@main
     with:
-      languages: '["javascript-typescript"]'
+      languages: '["javascript-typescript", "rust", "actions"]'

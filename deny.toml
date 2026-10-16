@@ -1,0 +1,52 @@
+# cargo-deny — docs/SECURITY.md §7.
+#
+# Licences, sources and bans. Advisories are cargo audit's (ci-rust.yml, a required check):
+# running both would be two gates on one question with two ignore lists to keep in step.
+#
+# The licence allowlist turns THIRD-PARTY-NOTICES.md's claim — every bundled licence is compatible
+# with GPL-3.0-only — from a sentence into a test. A crate under anything not listed here fails
+# CI and has to be looked at; widening this list is a licensing decision, not a CI fix.
+
+[graph]
+# The one target PipDock ships (ARCHITECTURE §10). Tauri's Linux and macOS stacks are in the lock
+# file and are never in a release, so judging their licences would judge nothing shipped.
+targets = ["x86_64-pc-windows-msvc"]
+
+[licenses]
+version = 2
+confidence-threshold = 0.93
+# Each one GPL-3.0-compatible, per the FSF's list. MPL-2.0 is, by its §3.3 secondary-licence
+# clause, for every crate here: none carries the "Incompatible With Secondary Licenses" notice.
+allow = [
+    "0BSD",
+    "Apache-2.0",
+    "BSD-3-Clause",
+    "BSL-1.0",
+    "CC0-1.0",
+    "ISC",
+    "MIT",
+    "MIT-0",
+    "MPL-2.0",
+    "Unicode-3.0",
+    "Unlicense",
+    "Zlib",
+]
+
+# PipDock's own crates: GPL-3.0-only, and never published.
+[licenses.private]
+ignore = true
+
+[bans]
+# Tauri's tree carries several generations of windows-* and two of png; there is nothing for
+# PipDock to act on in a duplicate it does not choose.
+multiple-versions = "allow"
+wildcards = "deny"
+# The workspace's own path dependencies are versionless by design.
+allow-wildcard-paths = true
+
+[sources]
+# crates.io and nothing else: no git dependency, no other registry, so what Cargo.lock records is
+# what anyone else can fetch and audit.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]
