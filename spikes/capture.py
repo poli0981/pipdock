@@ -342,6 +342,15 @@ _ABS_PATH = re.compile(
 )
 
 
+def _is_progress(line: str) -> bool:
+    """A pip progress-bar line: dashes, a space, anything, then `eta <digits and colons>`."""
+    body = line.strip(" \t")
+    if not body.startswith("-") or body.lstrip("-")[:1] not in (" ", "\t"):
+        return False
+    _, sep, tail = body.rpartition("eta ")
+    return bool(sep) and tail != "" and all(c in "0123456789:" for c in tail)
+
+
 def redact(text: str, work: Path) -> str:
     """Strip machine- and run-specific paths so a capture is comparable across machines.
 
@@ -380,10 +389,16 @@ def redact(text: str, work: Path) -> str:
     text = re.sub(r"0x[0-9A-Fa-f]{6,}", "0xADDR", text)
 
     # pip's download progress bar carries a transfer rate and an ETA, so it is different on
-    # every run and wildly different between a dev machine and a CI runner. `[ \t]` rather than
-    # `\s`: under (?m) a leading `\s*` could also consume line breaks, which is both wrong (the
-    # match could start on an earlier line) and the backtracking SonarCloud flagged.
-    text = re.sub(r"(?m)^[ \t]*-+[ \t]+[^\r\n]*?eta [0-9:]+[ \t]*$", "     <PROGRESS>", text)
+    # every run and wildly different between a dev machine and a CI runner. Decided line by line
+    # rather than by one multiline regex: SonarCloud flagged two regex forms of this rule for
+    # super-linear backtracking (S8786), and a line test cannot backtrack at all. It replaces the
+    # same lines the regex did on the LF text `text=True` produces.
+    text = "".join(
+        "     <PROGRESS>" + line[len(line.rstrip("\n")) :]
+        if _is_progress(line.rstrip("\n"))
+        else line
+        for line in text.splitlines(keepends=True)
+    )
 
     # pip lists every release it considered when nothing satisfies a requirement -- "(from
     # versions: 0.8.0, ..., 1.18.1)" -- so the requires-python fixture grew by one version
