@@ -138,6 +138,10 @@ fn no_code_without_a_fixture() {
             "engine::uv: plan text did not match any known shape",
         ),
         (
+            "PD-ENG-004",
+            "exec: an engine command ran past its watchdog and was stopped",
+        ),
+        (
             "PD-RES-002",
             "plan: report older than PLAN_MAX_AGE or env drifted",
         ),

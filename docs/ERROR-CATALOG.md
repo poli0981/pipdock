@@ -16,6 +16,7 @@
 | PD-ENG-001 | engine binary not found | pip/uv missing | Install engine or switch engine in Settings |
 | PD-ENG-002 | pip < 22.2 with plan requested | no `--dry-run --report` | One-click "Upgrade pip" then retry |
 | PD-ENG-003 | uv output shape unrecognized | uv newer than adapter | Update PipDock; temporarily switch engine to pip |
+| PD-ENG-004 | **Raised by PipDock** — an engine command ran past its watchdog (install 30 min, resolve 10 min, listing and checks 3 min) and was stopped | a very long sdist build, or a hung engine | Retry; install a slow-building package on its own. Before 1.4.0 this surfaced as PD-INT-001 and aborted the whole batch |
 | PD-RES-001 | `ResolutionImpossible` / uv equivalent | constraints cannot be satisfied | Per-package Skip/Force choices in the preview |
 | PD-RES-002 | plan stale (>10 min) or env drift hash mismatch | env changed since preview | Re-run preview |
 | PD-RES-003 | a plan is already resolving or executing | another plan is in flight in this session | Wait for it, or cancel it |

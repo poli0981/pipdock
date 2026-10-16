@@ -6,6 +6,7 @@
     "PD-ENG-001": "The selected engine is not installed or not on PATH.",
     "PD-ENG-002": "This pip is too old to preview changes. Upgrade pip, then try again.",
     "PD-ENG-003": "This uv is newer than PipDock understands. Switch to pip for now.",
+    "PD-ENG-004": "The engine ran too long and was stopped. Try again, or install this package on its own.",
     "PD-RES-001": "These versions cannot all be satisfied at once.",
     "PD-RES-002": "The environment changed since this preview. Preview it again.",
     "PD-RES-003": "A plan is already running. Wait for it to finish, or stop it first.",

@@ -6,6 +6,7 @@
     "PD-ENG-001": "Bộ máy đã chọn chưa được cài, hoặc không có trong PATH.",
     "PD-ENG-002": "Bản pip này quá cũ để xem trước thay đổi. Hãy nâng cấp pip rồi thử lại.",
     "PD-ENG-003": "Bản uv này mới hơn những gì PipDock hiểu. Tạm chuyển sang pip.",
+    "PD-ENG-004": "Bộ máy chạy quá lâu nên đã bị dừng. Hãy thử lại, hoặc cài riêng gói này.",
     "PD-RES-001": "Không thể thỏa mãn tất cả các phiên bản này cùng lúc.",
     "PD-RES-002": "Môi trường đã đổi kể từ lần xem trước này. Hãy xem trước lại.",
     "PD-RES-003": "Đang có một kế hoạch chạy dở. Hãy đợi nó xong, hoặc dừng nó trước.",
