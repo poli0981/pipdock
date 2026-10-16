@@ -21,7 +21,7 @@ import { useTranslation } from 'react-i18next'
 
 import { useOpenExternal } from '@/components/useOpenExternal'
 import { reportBugUrl, type BugReportLink, type PdError } from '@/ipc'
-import { useUiStore } from '@/stores'
+import { useEnvStore, useUiStore } from '@/stores'
 
 export function PdErrorRow({ error, counted = true }: { error: PdError; counted?: boolean }) {
   const { t } = useTranslation()
@@ -31,6 +31,8 @@ export function PdErrorRow({ error, counted = true }: { error: PdError; counted?
   const [copied, setCopied] = useState(false)
   const addErrorRow = useUiStore((s) => s.addErrorRow)
   const removeErrorRow = useUiStore((s) => s.removeErrorRow)
+  // The selected environment, for the Python and engine versions in the issue (U31).
+  const env = useEnvStore((s) => s.rows.find((r) => r.interpreter === s.selected)?.env)
 
   // Registers while mounted, so `⚠ n` means "problems currently on screen" rather than a tally
   // that only grows. `counted={false}` is for a sheet that renders one row per failed package —
@@ -108,7 +110,18 @@ export function PdErrorRow({ error, counted = true }: { error: PdError; counted?
           <button
             type="button"
             onClick={() => {
-              openExternal(link.url)
+              // Asked again, with the environment, only when the user reports: the versions are
+              // what makes an issue answerable, and finding pip's costs a subprocess — one per
+              // click rather than one per row mounted, and a summary can mount dozens (U31). The
+              // link already in hand is the fallback, not a reason to send nothing.
+              void reportBugUrl(env ?? undefined, error.code).then(
+                (fresh) => {
+                  openExternal(fresh.url)
+                },
+                () => {
+                  openExternal(link.url)
+                },
+              )
             }}
             data-action="report-bug"
             className="text-data text-text-dim underline underline-offset-2"

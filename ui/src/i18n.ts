@@ -81,6 +81,12 @@ void i18n.use(initReactI18next).init({
   },
 })
 
+// The document's language follows the UI's, so a screen reader pronounces Vietnamese copy as
+// Vietnamese: index.html ships `lang="en"`, and nothing changed it when the language did.
+i18n.on('languageChanged', (lng) => {
+  if (typeof document !== 'undefined') document.documentElement.lang = resolveLocale(lng)
+})
+
 if (import.meta.env.DEV) {
   i18n.addResourceBundle(
     PSEUDO_LOCALE,

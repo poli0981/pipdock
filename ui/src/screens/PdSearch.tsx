@@ -54,7 +54,9 @@ export function PdSearch() {
   const envRow = rows.find((r) => r.interpreter === envSelected)
 
   // UI-SPEC §5: the Search flow's first click is spent arriving here, so the field must already
-  // have focus — "Search (autofocus) → result [Add] → Install → Confirm" is 4, not 5.
+  // have focus — "Search (autofocus) → result [Add] → Install → Confirm" is 4, not 5. In the app
+  // the shell does this, by `data-autofocus`, because its own focus effect runs after this one and
+  // used to move focus to the heading; this stays for the screen rendered on its own.
   useEffect(() => {
     field.current?.focus()
   }, [])
@@ -85,6 +87,7 @@ export function PdSearch() {
 
         <input
           ref={field}
+          data-autofocus
           type="search"
           value={query}
           onChange={(e) => {

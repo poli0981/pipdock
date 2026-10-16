@@ -41,8 +41,15 @@ function withEnv(pins: Pin[] = PINS) {
         interpreter: INTERPRETER,
         envHash: 'envhash01',
         source: 'manual',
-        env: { interpreter: INTERPRETER, pythonVersion: '3.12.4', externallyManaged: false },
-      } as never,
+        env: {
+          interpreter: INTERPRETER,
+          prefix: 'C:/proj/.venv',
+          pythonVersion: '3.12.4',
+          externallyManaged: false,
+          hiddenUserSite: null,
+          source: 'manual',
+        },
+      },
     ],
     pins,
   })

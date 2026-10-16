@@ -53,6 +53,14 @@ beforeEach(() => {
 })
 
 describe('PdSecurity', () => {
+  it('scrolls, rather than clipping a report taller than the window', () => {
+    // U2: the shell's <main> clips, so a screen that does not scroll itself cannot be scrolled at
+    // all — and Security's root was a bare <div>.
+    render(<PdSecurity />)
+    const heading = screen.getByRole('heading', { name: 'Security' })
+    expect(heading.closest('.overflow-auto')).not.toBeNull()
+  })
+
   it('says nothing has run when nothing has', () => {
     render(<PdSecurity />)
 

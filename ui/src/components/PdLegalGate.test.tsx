@@ -51,6 +51,14 @@ describe('PdLegalGate', () => {
       expect(accept).toBeEnabled()
     })
 
+    it('says so when consent cannot be recorded', () => {
+      // U29: the store kept the error and nothing rendered it, so Accept looked like a button
+      // that did nothing.
+      useLegalStore.setState({ error: { code: 'PD-PRM-003', message: 'read-only data folder' } })
+      render(<PdLegalGate />)
+      expect(screen.getByText('PD-PRM-003')).toBeInTheDocument()
+    })
+
     it('closes the window on Decline', () => {
       render(<PdLegalGate />)
       fireEvent.click(screen.getByRole('button', { name: 'Decline and exit' }))

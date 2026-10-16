@@ -16,7 +16,12 @@
 import { create } from 'zustand'
 
 import type { NavKey } from '@/components/nav'
-import { FALLBACK_LOCALE, type Locale } from '@/i18n'
+import i18n, {
+  FALLBACK_LOCALE,
+  resolveLocale,
+  SUPPORTED_LOCALES,
+  type Locale,
+} from '@/i18n'
 import {
   envProbe,
   envScan,
@@ -61,8 +66,14 @@ export function asPdError(e: unknown): PdError {
 }
 
 interface SettingsState {
-  /** Active UI language. */
+  /** Active UI language — the choice when there is one, else what the OS resolved to. */
   locale: Locale
+  /**
+   * The user's explicit choice, as stored. `null` is "follow the OS", which is what a fresh
+   * install has, and it is kept distinct from `locale` so that saving another setting cannot pin
+   * the language the OS happened to resolve to (U3).
+   */
+  localeChoice: Locale | null
   /** Configured engine. First run pre-selects uv when it is on PATH (ARCHITECTURE §3). */
   engine: EngineId
   /**
@@ -77,11 +88,16 @@ interface SettingsState {
   error: PdError | null
   load: () => Promise<void>
   save: (patch: Partial<Settings>) => Promise<void>
-  setLocale: (locale: Locale) => void
+  /** Choose a language: applied live (I18N §2) and stored, so it survives a restart. */
+  setLocale: (locale: Locale) => Promise<void>
 }
+
+const isLocale = (value: string | null | undefined): value is Locale =>
+  value != null && (SUPPORTED_LOCALES as readonly string[]).includes(value)
 
 export const useSettingsStore = create<SettingsState>((set, get) => ({
   locale: FALLBACK_LOCALE,
+  localeChoice: null,
   engine: 'pip',
   allowExternallyManaged: false,
   // Mirrors `graph::PIN_SUGGEST_THRESHOLD`. Only on screen until `load` resolves, which is what
@@ -93,27 +109,31 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
   load: async () => {
     try {
       const s = await settingsGet()
+      const choice = isLocale(s.locale) ? s.locale : null
       set({
         engine: s.engine,
         allowExternallyManaged: s.allowExternallyManaged,
         pinSuggestThreshold: s.pinSuggestThreshold,
+        localeChoice: choice,
+        locale: choice ?? resolveLocale(i18n.language),
         loading: false,
         error: null,
       })
+      if (choice !== null && i18n.language !== choice) await i18n.changeLanguage(choice)
     } catch (e) {
       set({ loading: false, error: asPdError(e) })
     }
   },
 
   save: async (patch) => {
-    const { engine, allowExternallyManaged, pinSuggestThreshold } = get()
+    const { engine, allowExternallyManaged, pinSuggestThreshold, localeChoice } = get()
     const next: Settings = {
       engine,
       allowExternallyManaged,
       pinSuggestThreshold,
-      // The store holds the *resolved* locale; `null` on the wire means "follow the OS", and only
-      // an explicit choice in Settings should overwrite that.
-      locale: null,
+      // The choice, never the resolved language: `null` on the wire means "follow the OS". This
+      // was a literal `null`, so every save erased a choice that nothing had stored anyway.
+      locale: localeChoice,
       ...patch,
     }
     try {
@@ -122,6 +142,7 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
         engine: saved.engine,
         allowExternallyManaged: saved.allowExternallyManaged,
         pinSuggestThreshold: saved.pinSuggestThreshold,
+        localeChoice: isLocale(saved.locale) ? saved.locale : null,
         error: null,
       })
     } catch (e) {
@@ -129,7 +150,11 @@ export const useSettingsStore = create<SettingsState>((set, get) => ({
     }
   },
 
-  setLocale: (locale) => set({ locale }),
+  setLocale: async (locale) => {
+    set({ locale, localeChoice: locale })
+    await i18n.changeLanguage(locale)
+    await get().save({ locale })
+  },
 }))
 
 interface EnvState {

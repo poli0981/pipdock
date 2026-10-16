@@ -61,114 +61,120 @@ export function PdSecurity() {
   const shown = row === undefined ? null : freshAudit({ report, reportFor }, row.envHash)
 
   return (
-    <div>
-      <h1 tabIndex={-1} className="text-accent">
-        {t('nav.security')}
-      </h1>
+    // One scroll container for the report, with the console drawer pinned under it, as Health
+    // does. The root was a bare <div> inside a <main> that clips, so a report taller than the
+    // window could not be scrolled to at all (U2).
+    <section aria-labelledby="security-title" className="flex h-full min-h-0 flex-col">
+      <div className="min-h-0 flex-1 overflow-auto p-6">
+        <h1 id="security-title" tabIndex={-1} className="text-accent">
+          {t('nav.security')}
+        </h1>
 
-      <div className="mt-2 flex flex-wrap items-center gap-2">
-        <button
-          type="button"
-          data-action="run-audit"
-          disabled={running || env === undefined}
-          onClick={() => {
-            if (env !== undefined && row !== undefined) void run(env, row.envHash)
-          }}
-          className="rounded-pd bg-surface-2 px-3 py-1.5 text-accent disabled:opacity-40"
-        >
-          {t('security.run')}
-        </button>
-
-        {/* Only while a run is going. An audit is 18-68 s — long enough that a user needs a way
-            out, which is the measurement that changed P4's answer for Code Health. */}
-        {running ? (
+        <div className="mt-2 flex flex-wrap items-center gap-2">
           <button
             type="button"
-            data-action="cancel-audit"
+            data-action="run-audit"
+            disabled={running || env === undefined}
             onClick={() => {
-              void cancel()
+              if (env !== undefined && row !== undefined) void run(env, row.envHash)
             }}
-            className="rounded-pd bg-surface-2 px-3 py-1.5 text-text-dim"
+            className="rounded-pd bg-surface-2 px-3 py-1.5 text-accent disabled:opacity-40"
           >
-            {t('actions.cancel')}
+            {t('security.run')}
           </button>
-        ) : null}
 
-        {shown === null ? null : (
+          {/* Only while a run is going. An audit is 18-68 s — long enough that a user needs a way
+              out, which is the measurement that changed P4's answer for Code Health. */}
+          {running ? (
+            <button
+              type="button"
+              data-action="cancel-audit"
+              onClick={() => {
+                void cancel()
+              }}
+              className="rounded-pd bg-surface-2 px-3 py-1.5 text-text-dim"
+            >
+              {t('actions.cancel')}
+            </button>
+          ) : null}
+
+          {shown === null ? null : (
+            <button
+              type="button"
+              onClick={() => {
+                void pickSavePath(t('security.saveTitle'), 'security-audit.md').then((target) => {
+                  if (target !== null) void auditSaveReport(shown, target).then(setSaved)
+                })
+              }}
+              className="rounded-pd bg-surface-2 px-3 py-1.5 text-text"
+            >
+              {t('security.save')}
+            </button>
+          )}
+
           <button
             type="button"
             onClick={() => {
-              void pickSavePath(t('security.saveTitle'), 'security-audit.md').then((target) => {
-                if (target !== null) void auditSaveReport(shown, target).then(setSaved)
-              })
+              setConsoleOpen(!consoleOpen)
             }}
-            className="rounded-pd bg-surface-2 px-3 py-1.5 text-text"
+            className="ml-auto rounded-pd px-2 py-1 text-data text-text-dim"
           >
-            {t('security.save')}
+            {t('status.log')}
           </button>
+        </div>
+
+        {/* One live region for the whole screen. Two would serialize against each other
+            unpredictably — the pair P6 folded for exactly this reason. */}
+        <p aria-live="polite" className="mt-2 text-data text-text-dim">
+          {running ? t('security.running') : saved === null ? '' : t('security.saved', { files: saved.join(', ') })}
+        </p>
+
+        {/* A run that failed outright — as opposed to a tool problem inside a report, below. */}
+        {error === null ? null : (
+          <div className="mt-2">
+            <PdErrorRow error={error} />
+          </div>
         )}
 
-        <button
-          type="button"
-          onClick={() => {
-            setConsoleOpen(!consoleOpen)
-          }}
-          className="ml-auto rounded-pd px-2 py-1 text-data text-text-dim"
-        >
-          {t('status.log')}
-        </button>
-      </div>
-
-      {/* One live region for the whole screen. Two would serialize against each other
-          unpredictably — the pair P6 folded for exactly this reason. */}
-      <p aria-live="polite" className="mt-2 text-data text-text-dim">
-        {running ? t('security.running') : saved === null ? '' : t('security.saved', { files: saved.join(', ') })}
-      </p>
-
-      {/* A run that failed outright — as opposed to a tool problem inside a report, below. */}
-      {error === null ? null : (
-        <div className="mt-2">
-          <PdErrorRow error={error} />
-        </div>
-      )}
-
-      {/* pip-audit failed but the report still came back, so the advisories (if any) stay on
-          screen beneath this. `⚠ n` counts these rows, per UI-SPEC §3. */}
-      {(shown?.problems ?? []).map((problem) => (
-        <div key={problem.tool} className="mt-2">
-          <PdErrorRow error={asError(problem)} />
-        </div>
-      ))}
-
-      {/* **Nothing here while a run is going.** `shown` is null then — the report is cleared before
-          the command so a second run cannot paint the last one's findings under a new timestamp —
-          and rendering the un-run empty state on that basis said *No audit has run for this
-          environment* while one was running. That is P4's "no issues found before anything had
-          run", inverted: a true-looking sentence derived from a state the screen had not loaded.
-          The live region above, the disabled Run and the Cancel beside it already say what is
-          happening, so the body says nothing rather than something false. Found by clicking Run
-          against a deliberately slow bridge; no test asserted on it, because every test that
-          renders this screen renders it settled. */}
-      {shown !== null ? (
-        <div className="mt-4">
-          {shown.cancelled ? (
-            // A cancel is a state, not an error, so it is said plainly and the partial result is
-            // kept rather than thrown away.
-            <p className="text-data text-warn">{t('security.cancelled')}</p>
-          ) : null}
-          <p className="text-data text-text-dim">
-            {t('security.checkedAt', { at: shown.ranAt, version: shown.toolVersion })}
-          </p>
-          <div className="mt-2">
-            <PdAuditReport report={shown} />
+        {/* pip-audit failed but the report still came back, so the advisories (if any) stay on
+            screen beneath this. `⚠ n` counts these rows, per UI-SPEC §3. */}
+        {(shown?.problems ?? []).map((problem) => (
+          <div key={problem.tool} className="mt-2">
+            <PdErrorRow error={asError(problem)} />
           </div>
-        </div>
-      ) : running ? null : (
-        <PdEmptyState
-          message={env === undefined ? t('security.noEnv') : t('security.notRunYet')}
-          {...(env === undefined ? {} : { hint: t('security.notRunYetHint') })}
-        />
-      )}
+        ))}
+
+        {/* **Nothing here while a run is going.** `shown` is null then — the report is cleared before
+            the command so a second run cannot paint the last one's findings under a new timestamp —
+            and rendering the un-run empty state on that basis said *No audit has run for this
+            environment* while one was running. That is P4's "no issues found before anything had
+            run", inverted: a true-looking sentence derived from a state the screen had not loaded.
+            The live region above, the disabled Run and the Cancel beside it already say what is
+            happening, so the body says nothing rather than something false. Found by clicking Run
+            against a deliberately slow bridge; no test asserted on it, because every test that
+            renders this screen renders it settled. */}
+        {shown !== null ? (
+          <div className="mt-4">
+            {shown.cancelled ? (
+              // A cancel is a state, not an error, so it is said plainly and the partial result is
+              // kept rather than thrown away.
+              <p className="text-data text-warn">{t('security.cancelled')}</p>
+            ) : null}
+            <p className="text-data text-text-dim">
+              {t('security.checkedAt', { at: shown.ranAt, version: shown.toolVersion })}
+            </p>
+            <div className="mt-2">
+              <PdAuditReport report={shown} />
+            </div>
+          </div>
+        ) : running ? null : (
+          <PdEmptyState
+            message={env === undefined ? t('security.noEnv') : t('security.notRunYet')}
+            {...(env === undefined ? {} : { hint: t('security.notRunYetHint') })}
+          />
+        )}
+
+      </div>
 
       <PdConsoleDrawer
         lines={lines}
@@ -179,6 +185,6 @@ export function PdSecurity() {
         done={done}
         total={total}
       />
-    </div>
+    </section>
   )
 }

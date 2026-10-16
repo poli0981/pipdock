@@ -8,12 +8,8 @@
 
 pub mod commands;
 pub mod state;
+pub mod window;
 
-/// Run the application.
-///
-/// # Panics
-/// Panics if Tauri cannot build the app context. That means a malformed `tauri.conf.json`, which
-/// is a build-time mistake rather than a runtime condition, so there is nothing to recover to.
 /// Commands that are **declared** in ARCHITECTURE §7 and `COMMANDS` but not yet implemented, each
 /// with the slice that owes it.
 ///
@@ -78,6 +74,11 @@ fn startup_failed(e: &pipdock_core::PdError, log: &std::path::Path) {
         .show();
 }
 
+/// Run the application.
+///
+/// # Panics
+/// Panics if Tauri cannot build the app context. That means a malformed `tauri.conf.json`, which
+/// is a build-time mistake rather than a runtime condition, so there is nothing to recover to.
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 #[allow(
     clippy::expect_used,
@@ -120,6 +121,19 @@ pub fn run() {
             // Already open: the one startup step that can fail for a reason the user can act on
             // ran before Tauri, where its failure can reach the user.
             app.manage(state);
+            // Created hidden (`visible: false`) so the first frame is drawn at a size that fits
+            // the monitor, not at one that hangs below a laptop's taskbar (U21, UI-SPEC §5).
+            if let Some(window) = app.get_webview_window("main") {
+                let config = app.config().app.windows.iter().find(|w| w.label == "main");
+                if let Some(config) = config
+                    && let Err(e) = window::place(&window, config)
+                {
+                    tracing::warn!(target: "pipdock::app", error = %e, "could not fit the window");
+                }
+                if let Err(e) = window.show() {
+                    tracing::error!(target: "pipdock::app", error = %e, "could not show the window");
+                }
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -173,6 +187,87 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
+    /// Every permission the webview holds, across every file in `capabilities/`.
+    fn granted() -> Vec<(String, serde_json::Value)> {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("capabilities");
+        let mut out = Vec::new();
+        for entry in std::fs::read_dir(&dir).expect("capabilities/ exists") {
+            let path = entry.expect("a readable entry").path();
+            let doc: serde_json::Value =
+                serde_json::from_str(&std::fs::read_to_string(&path).expect("readable"))
+                    .expect("a capability is JSON");
+            assert_eq!(
+                doc["windows"],
+                serde_json::json!(["main"]),
+                "{} must apply to the main window only",
+                path.display()
+            );
+            for p in doc["permissions"].as_array().expect("a permissions array") {
+                let id = p
+                    .as_str()
+                    .or_else(|| p["identifier"].as_str())
+                    .expect("a permission names itself");
+                out.push((id.to_owned(), p.clone()));
+            }
+        }
+        out
+    }
+
+    #[test]
+    fn the_webview_is_granted_exactly_what_it_calls() {
+        // `core:default` granted some sixty core commands nothing called, and not the one the
+        // legal gate's Decline does — `core:window:allow-close` — so Decline did nothing in the
+        // installed app while its component test, which mocks `getCurrentWindow().close()`,
+        // passed. A grant is a contract no frontend test can see, so the set is pinned here:
+        // widening it is a decision this test makes visible, and losing one a regression it
+        // catches before a user does.
+        let mut ids: Vec<String> = granted().into_iter().map(|(id, _)| id).collect();
+        ids.sort();
+        assert_eq!(
+            ids,
+            [
+                // Copy full log, Copy recent log, About's addresses — write, never read.
+                "clipboard-manager:allow-write-text",
+                // plan-, scan-, health- and audit-progress.
+                "core:event:allow-listen",
+                "core:event:allow-unlisten",
+                // Decline on the legal gate.
+                "core:window:allow-close",
+                // Code Health's folder, Import requirements; Save report, Export.
+                "dialog:allow-open",
+                "dialog:allow-save",
+                // Scoped; see the next test.
+                "opener:allow-open-url",
+            ]
+        );
+    }
+
+    #[test]
+    fn the_opener_reaches_four_hosts_and_no_more() {
+        // SECURITY §4: an unscoped opener is a launch-anything primitive.
+        let opener = granted()
+            .into_iter()
+            .find(|(id, _)| id == "opener:allow-open-url")
+            .map(|(_, p)| p)
+            .expect("the opener is granted");
+        let mut urls: Vec<&str> = opener["allow"]
+            .as_array()
+            .expect("the opener is scoped")
+            .iter()
+            .map(|a| a["url"].as_str().expect("each scope is a URL"))
+            .collect();
+        urls.sort_unstable();
+        assert_eq!(
+            urls,
+            [
+                "https://docs.astral.sh/*",
+                "https://github.com/*",
+                "https://osv.dev/*",
+                "https://poli0981.dev/*",
+            ]
+        );
+    }
+
     /// The handler list, read out of this file's own source.
     ///
     /// `generate_handler!` is a macro, so there is no runtime list to inspect and no way to ask
