@@ -1,0 +1,15 @@
+{
+  "scenario": "held-back-constrained",
+  "question": "SP-1 follow-up: does restating the installed set as explicit requirements make the resolver hold httpcore back to 0.15.x instead of breaking httpx? This decides whether PipDock must pass the full installed set on every plan.",
+  "expects_code": null,
+  "engine": "uv",
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 0,
+  "seed": [
+    "httpx==0.23.0"
+  ],
+  "seed_exit_code": 0
+}

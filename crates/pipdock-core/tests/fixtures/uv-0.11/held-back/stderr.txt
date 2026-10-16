@@ -1,0 +1,9 @@
+Using Python 3.12.10 environment at: <WORK>\venv
+Resolved 3 packages in <DURATION>
+Would download 2 packages
+Would uninstall 2 packages
+Would install 2 packages
+ - h11==0.12.0
+ + h11==0.16.0
+ - httpcore==0.15.0
+ + httpcore==1.0.9

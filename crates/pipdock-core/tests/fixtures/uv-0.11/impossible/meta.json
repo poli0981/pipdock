@@ -1,0 +1,15 @@
+{
+  "scenario": "impossible",
+  "question": "Unsatisfiable set: how is ResolutionImpossible reported and is it attributable?",
+  "expects_code": "PD-RES-001",
+  "engine": "uv",
+  "extra_env": {
+    "PYTHONIOENCODING": "utf-8",
+    "PYTHONUTF8": "1"
+  },
+  "exit_code": 1,
+  "seed": [
+    "httpx==0.23.0"
+  ],
+  "seed_exit_code": 0
+}

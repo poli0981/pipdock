@@ -1,0 +1,12 @@
+{
+  "scenario": "report-encoding-crash",
+  "question": "Evidence for the pip --report UnicodeEncodeError on Windows/cp1252. Kept as a fixture so a regression in the UTF-8 mitigation is recognisable.",
+  "expects_code": null,
+  "engine": "uv",
+  "extra_env": null,
+  "exit_code": 0,
+  "seed": [
+    "idna==3.4"
+  ],
+  "seed_exit_code": 0
+}
