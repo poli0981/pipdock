@@ -30,6 +30,26 @@ use pipdock_core::snapshot::{self, SnapshotProof, Trigger};
 /// One recorded install invocation: the packages it covered, and which phase made it.
 type Call = (Vec<String>, ExecMode);
 
+/// How the **batch** install (Phase A) ends, when it does not simply run the packages.
+///
+/// The real adapters do not return `Ok` when they are stopped: `exec` drops the child and the
+/// adapter's `?` turns that into an `Err`. A fake that answered `Ok` on cancel is why
+/// `plan::execute`'s cancelled-Phase-A branch passed its test for months while being unreachable
+/// in production — every real Stop during a batch surfaced as PD-INT-001.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Batch {
+    /// Install what was asked; `failing` decides each package's outcome.
+    Runs,
+    /// The token was tripped mid-batch: `Err` with `Stop::Cancelled`, as the adapters return.
+    Cancelled,
+    /// The watchdog fired: `Err` with `Stop::TimedOut` and PD-ENG-004.
+    TimedOut,
+    /// The engine could not be started at all.
+    WontStart,
+    /// The batch ran and failed for a reason that is the environment's, not a package's.
+    Offline,
+}
+
 /// An engine whose per-package outcomes are scripted.
 #[derive(Clone)]
 struct FakeEngine {
@@ -39,6 +59,8 @@ struct FakeEngine {
     calls: Arc<Mutex<Vec<Call>>>,
     /// What `check` reports afterwards.
     check: CheckReport,
+    /// How Phase A ends.
+    batch: Batch,
 }
 
 impl FakeEngine {
@@ -50,7 +72,13 @@ impl FakeEngine {
                 ok: true,
                 findings: Vec::new(),
             },
+            batch: Batch::Runs,
         }
+    }
+
+    fn with_batch(mut self, batch: Batch) -> Self {
+        self.batch = batch;
+        self
     }
 
     fn calls(&self) -> Vec<Call> {
@@ -96,6 +124,35 @@ impl Engine for FakeEngine {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .push((names.clone(), mode));
+
+        if mode == ExecMode::Batch {
+            use pipdock_core::errors::{Code, PdError};
+            use pipdock_core::exec::Stop;
+            match self.batch {
+                Batch::Runs => {}
+                Batch::Cancelled => {
+                    return Err(PdError::new(Code::IntUnexpected, "cancelled: python.exe")
+                        .with_stop(Stop::Cancelled));
+                }
+                Batch::TimedOut => {
+                    return Err(PdError::new(Code::EngTimedOut, "timed out after 1800s")
+                        .with_stop(Stop::TimedOut(std::time::Duration::from_secs(1800))));
+                }
+                Batch::WontStart => {
+                    return Err(PdError::new(Code::EngNotFound, "could not run python.exe"));
+                }
+                Batch::Offline => {
+                    return Ok(StepResult {
+                        pkg: specs[0].name.clone(),
+                        from: None,
+                        to: Some(specs[0].version.clone()),
+                        status: StepStatus::Failed,
+                        code: Some(Code::NetUnreachable),
+                        stderr_tail: Some("Failed to establish a new connection".into()),
+                    });
+                }
+            }
+        }
 
         let bad = names.iter().find(|n| self.failing.contains(n));
         let pkg = specs
@@ -180,9 +237,15 @@ fn report(packages: &[(&str, &str)]) -> ResolutionReport {
             .iter()
             .map(|(n, v)| Change {
                 name: PkgName::parse(n).unwrap(),
-                from: None,
+                // An upgrade from 0.9 for every package whose name starts with "up", so a test can
+                // tell whether the summary carried the version it moved *from*.
+                from: n.starts_with("up").then(|| Version("0.9".to_owned())),
                 to: Version((*v).to_owned()),
-                kind: ChangeKind::NewInstall,
+                kind: if n.starts_with("up") {
+                    ChangeKind::Upgrade
+                } else {
+                    ChangeKind::NewInstall
+                },
             })
             .collect(),
         held_back: Vec::new(),
@@ -552,6 +615,124 @@ async fn a_cancelled_run_skips_the_rest_rather_than_isolating_them() {
     assert_eq!(
         summary.counts.failed, 0,
         "cancelling is not a package failure"
+    );
+}
+
+#[tokio::test]
+async fn a_batch_stopped_by_the_user_is_a_cancelled_summary_not_an_error() {
+    // What the real adapters return when Stop arrives during Phase A — an `Err` with
+    // `Stop::Cancelled`, the token already tripped. It used to propagate out of `execute` as
+    // PD-INT-001: no summary, no "cancelled", and the rollback offer never drawn.
+    let packages = [("alpha", "1.0"), ("beta", "1.0")];
+    let engine = FakeEngine::new(&[]).with_batch(Batch::Cancelled);
+    let (tx, rx) = tokio::sync::mpsc::unbounded_channel();
+    std::mem::forget(rx);
+    let token = tokio_util::sync::CancellationToken::new();
+    token.cancel();
+    let summary = run_with(&engine, &packages, ProgressSink::new(tx, 0, token)).await;
+
+    assert!(summary.cancelled);
+    assert_eq!(summary.counts.skipped, 2, "{:?}", summary.results);
+    assert_eq!(
+        summary.counts.failed, 0,
+        "cancelling is not a package failure"
+    );
+    assert_eq!(engine.calls().len(), 1, "nothing ran after the stop");
+}
+
+#[tokio::test]
+async fn a_batch_watchdog_fails_every_row_with_pd_eng_004_and_does_not_isolate() {
+    // A batch that ran 30 minutes and was killed. Retrying each package with its own 30 minutes
+    // is not skip-and-continue, it is the same hang N times over.
+    let packages = [("alpha", "1.0"), ("beta", "1.0"), ("gamma", "1.0")];
+    let engine = FakeEngine::new(&[]).with_batch(Batch::TimedOut);
+    let summary = run(&engine, &packages).await;
+
+    assert!(!summary.cancelled, "a watchdog is not the user's cancel");
+    assert_eq!(summary.counts.failed, 3, "{:?}", summary.results);
+    assert!(
+        summary
+            .results
+            .iter()
+            .all(|r| r.code == Some(pipdock_core::errors::Code::EngTimedOut)),
+        "{:?}",
+        summary.results
+    );
+    assert_eq!(
+        engine.calls().len(),
+        1,
+        "no per-package retry after a timeout"
+    );
+}
+
+#[tokio::test]
+async fn an_engine_that_will_not_start_is_reported_per_row_not_raised() {
+    let packages = [("alpha", "1.0"), ("beta", "1.0")];
+    let engine = FakeEngine::new(&[]).with_batch(Batch::WontStart);
+    let summary = run(&engine, &packages).await;
+
+    assert_eq!(summary.counts.failed, 2, "{:?}", summary.results);
+    assert_eq!(
+        summary.results[0].code,
+        Some(pipdock_core::errors::Code::EngNotFound)
+    );
+    assert_eq!(
+        engine.calls().len(),
+        1,
+        "the same missing engine would fail every retry"
+    );
+}
+
+#[tokio::test]
+async fn an_environmental_failure_is_not_retried_one_package_at_a_time() {
+    // Offline is offline for every package. Isolating would re-run all N with pip's own retry
+    // backoff each — minutes of waiting to learn the same thing N times.
+    let packages = [("alpha", "1.0"), ("beta", "1.0"), ("gamma", "1.0")];
+    let engine = FakeEngine::new(&[]).with_batch(Batch::Offline);
+    let summary = run(&engine, &packages).await;
+
+    assert_eq!(summary.counts.failed, 3, "{:?}", summary.results);
+    assert_eq!(summary.phase, ExecMode::Batch);
+    assert_eq!(engine.calls().len(), 1);
+    // The stderr tail is on the first row only: three copies of one network trace is noise.
+    assert!(summary.results[0].stderr_tail.is_some());
+    assert!(summary.results[1].stderr_tail.is_none());
+}
+
+#[tokio::test]
+async fn every_row_says_what_it_moved_from() {
+    // `StepResult.from` is documented as "absent for a fresh install", and was absent for every
+    // row — so `--json` and the summary sheet called every upgrade a fresh install.
+    let summary = run(
+        &FakeEngine::new(&[]),
+        &[("upgraded", "2.0"), ("fresh", "1.0")],
+    )
+    .await;
+    let from = |name: &str| {
+        summary
+            .results
+            .iter()
+            .find(|r| r.pkg.as_str() == name)
+            .and_then(|r| r.from.as_ref().map(|v| v.0.clone()))
+    };
+    assert_eq!(from("upgraded").as_deref(), Some("0.9"));
+    assert_eq!(from("fresh"), None);
+
+    // And through the isolated pass, where the engine's own row has no `from` to give.
+    let isolated = run(
+        &FakeEngine::new(&["badone"]),
+        &[("upgraded", "2.0"), ("badone", "1.0")],
+    )
+    .await;
+    assert_eq!(isolated.phase, ExecMode::Isolated);
+    assert_eq!(
+        isolated
+            .results
+            .iter()
+            .find(|r| r.pkg.as_str() == "upgraded")
+            .and_then(|r| r.from.as_ref())
+            .map(|v| v.0.as_str()),
+        Some("0.9")
     );
 }
 
