@@ -8,7 +8,7 @@ pub use preview::{
     Decision, ForcedPlan, apply_decisions, default_decision, derive_held_back, forced_requirements,
 };
 
-use crate::engine::{Engine, InstallSet, ProgressSink};
+use crate::engine::{Engine, InstallSet, ProgressSink, SystemPackages};
 use crate::errors::{Code, PdError, Result};
 use crate::model::{
     CheckReport, ExecMode, PinnedSpec, PkgName, PyEnv, Spec, StepResult, StepStatus, Version,
@@ -411,6 +411,8 @@ pub struct AcceptedPlan {
     pub env_hash: String,
     /// Fingerprint of the installed set at resolve time, for the drift check.
     pub probe_hash: String,
+    /// Whether the PEP 668 override applies to the installs this plan runs.
+    pub system: SystemPackages,
 }
 
 impl AcceptedPlan {
@@ -435,7 +437,15 @@ impl AcceptedPlan {
             accepted_at: resolved_at,
             env_hash,
             probe_hash: fingerprint(installed),
+            system: SystemPackages::Protected,
         }
+    }
+
+    /// The same plan, run with the PEP 668 override. Only a flow's preamble decides this.
+    #[must_use]
+    pub const fn with_system_packages(mut self, system: SystemPackages) -> Self {
+        self.system = system;
+        self
     }
 
     /// DATA-FLOW §9.3: refuse a plan that is too old, or one whose environment has drifted.
@@ -621,6 +631,7 @@ pub async fn execute(
             &InstallSet {
                 specs: pinned.clone(),
                 constraints: hold_still(installed_now, &pinned, None),
+                system: plan.system,
             },
             ExecMode::Batch,
             batch_sink.clone(),
@@ -700,6 +711,7 @@ pub async fn execute(
                 &InstallSet {
                     specs: vec![spec.clone()],
                     constraints: hold_still(installed_now, &pinned, Some(&spec.name)),
+                    system: plan.system,
                 },
                 ExecMode::Isolated,
                 step_sink.clone(),
@@ -849,6 +861,7 @@ pub async fn execute_rollback(
     restore: &crate::snapshot::RollbackPlan,
     _snapshot: SnapshotProof<'_>,
     sink: ProgressSink,
+    system: SystemPackages,
 ) -> Result<ExecutionSummary> {
     let mut results = Vec::new();
 
@@ -860,7 +873,7 @@ pub async fn execute_rollback(
     // own `pip check`, which here ran between the removals and the restores — a check of a state
     // that exists for a few seconds, against an environment about to change again.
     if !restore.uninstall.is_empty() {
-        results.extend(removal_steps(engine, env, &restore.uninstall, &sink, 0).await);
+        results.extend(removal_steps(engine, env, &restore.uninstall, &sink, 0, system).await);
     }
 
     for (index, spec) in restore.install.iter().enumerate() {
@@ -896,6 +909,7 @@ pub async fn execute_rollback(
                 &InstallSet {
                     specs: vec![spec.clone()],
                     constraints,
+                    system,
                 },
                 ExecMode::Isolated,
                 step_sink.clone(),
@@ -949,11 +963,8 @@ pub async fn execute_rollback(
 /// The reverse-dependency guard is the caller's job and runs **once against the full set** before
 /// this is called; by the time execution starts the user has already decided.
 ///
-/// `base` is where this run's steps begin in the sink's index space. It exists because
-/// [`execute_rollback`] calls this for the removal half of a restore and then installs on top,
-/// under **one** `ProgressSink` whose `total` counts both — so the removals are steps
-/// `base..base+names.len()` and the restores continue from there. Passing `0` is right for a plain
-/// uninstall, where the removals are the whole plan.
+/// The removals are the whole plan here, so they are steps `0..names.len()`; only
+/// [`execute_rollback`], which installs on top under one sink, starts them anywhere else.
 ///
 /// # Errors
 /// Never for a package failure — those land in the summary. Only a stale plan aborts.
@@ -964,9 +975,9 @@ pub async fn execute_uninstall(
     names: &[PkgName],
     _snapshot: SnapshotProof<'_>,
     sink: ProgressSink,
-    base: usize,
+    system: SystemPackages,
 ) -> Result<ExecutionSummary> {
-    let results = removal_steps(engine, env, names, &sink, base).await;
+    let results = removal_steps(engine, env, names, &sink, 0, system).await;
     let counts = ExecutionSummary::tally(&results);
     Ok(ExecutionSummary {
         plan_id,
@@ -979,12 +990,16 @@ pub async fn execute_uninstall(
 }
 
 /// The removal loop shared by [`execute_uninstall`] and [`execute_rollback`]'s first half.
+///
+/// `base` is where these steps begin in the sink's index space: a rollback removes and then
+/// installs under **one** `ProgressSink` whose `total` counts both.
 async fn removal_steps(
     engine: &dyn Engine,
     env: &PyEnv,
     names: &[PkgName],
     sink: &ProgressSink,
     base: usize,
+    system: SystemPackages,
 ) -> Vec<StepResult> {
     let mut results = Vec::with_capacity(names.len());
     for (index, name) in names.iter().enumerate() {
@@ -1012,7 +1027,7 @@ async fn removal_steps(
         step_sink.started(Some(name.clone()), ExecMode::Isolated);
 
         let step = engine
-            .uninstall(env, std::slice::from_ref(name), step_sink.clone())
+            .uninstall(env, std::slice::from_ref(name), system, step_sink.clone())
             .await;
 
         // Killed by us is not the package's failure — the same reclassification the install path

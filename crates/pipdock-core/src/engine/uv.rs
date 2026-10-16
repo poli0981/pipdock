@@ -25,7 +25,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, InstallSet, ProgressSink, ResolveCtx, single_pkg};
+use super::{Engine, InstallSet, ProgressSink, ResolveCtx, SystemPackages, single_pkg};
 
 /// Drives uv as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -59,6 +59,34 @@ impl UvEngine {
             python.into(),
         ];
         argv.extend(files.iter().cloned());
+        argv
+    }
+
+    /// argv for an install from requirement files. The PEP 668 flag only when `system` says so.
+    #[must_use]
+    pub fn argv_install(python: &str, files: &[String], system: SystemPackages) -> Vec<String> {
+        let mut argv = vec![
+            "pip".to_owned(),
+            "install".to_owned(),
+            "--python".to_owned(),
+            python.to_owned(),
+        ];
+        argv.extend(system.args().iter().map(|a| (*a).to_owned()));
+        argv.extend(files.iter().cloned());
+        argv
+    }
+
+    /// argv for `uv pip uninstall`, which also refuses a managed environment without the flag.
+    #[must_use]
+    pub fn argv_uninstall(python: &str, names: &[PkgName], system: SystemPackages) -> Vec<String> {
+        let mut argv = vec![
+            "pip".to_owned(),
+            "uninstall".to_owned(),
+            "--python".to_owned(),
+            python.to_owned(),
+        ];
+        argv.extend(system.args().iter().map(|a| (*a).to_owned()));
+        argv.extend(names.iter().map(ToString::to_string));
         argv
     }
 
@@ -150,8 +178,11 @@ impl Engine for UvEngine {
         let lines = super::plan_lines(req, &installed, &ctx.adjust);
         let files = super::RequirementFiles::write(&lines, &[])?;
         let python = env.interpreter.display().to_string();
+        let mut argv = Self::argv_dry_run(&python, &files.args());
+        // uv refuses even a dry run in a managed environment without it (verified, uv 0.13.1).
+        argv.extend(ctx.system.args().iter().map(|a| (*a).to_owned()));
         let out = Command::new("uv")
-            .args(Self::argv_dry_run(&python, &files.args()))
+            .args(argv)
             .timeout(watchdog::RESOLVE)
             .cancel(ctx.cancel.clone())
             .run()
@@ -172,15 +203,8 @@ impl Engine for UvEngine {
         let python = env.interpreter.display().to_string();
         let requirements: Vec<String> = set.specs.iter().map(PinnedSpec::to_requirement).collect();
         let files = super::RequirementFiles::write(&requirements, &set.constraints)?;
-        let mut argv = vec![
-            "pip".to_owned(),
-            "install".to_owned(),
-            "--python".to_owned(),
-            python,
-        ];
-        argv.extend(files.args());
         let out = Command::new("uv")
-            .args(argv)
+            .args(Self::argv_install(&python, &files.args(), set.system))
             .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, single_pkg(&set.specs), mode)
@@ -192,18 +216,12 @@ impl Engine for UvEngine {
         &self,
         env: &PyEnv,
         names: &[PkgName],
+        system: SystemPackages,
         sink: ProgressSink,
     ) -> Result<StepResult> {
         let python = env.interpreter.display().to_string();
-        let mut argv = vec![
-            "pip".to_owned(),
-            "uninstall".to_owned(),
-            "--python".to_owned(),
-            python,
-        ];
-        argv.extend(names.iter().map(ToString::to_string));
         let out = Command::new("uv")
-            .args(argv)
+            .args(Self::argv_uninstall(&python, names, system))
             .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, names.first().cloned(), ExecMode::Isolated)
@@ -290,5 +308,26 @@ mod tests {
             .await
             .expect_err("uv cannot upgrade pip");
         assert_eq!(err.code, crate::errors::Code::EngNotFound);
+    }
+
+    #[test]
+    fn the_pep668_flag_appears_only_when_the_override_applies() {
+        let files = ["-r".to_owned(), "req.txt".to_owned()];
+        let names = [PkgName::parse("idna").unwrap()];
+        for (system, expected) in [
+            (SystemPackages::Protected, 0),
+            (SystemPackages::OverrideAllowed, 1),
+        ] {
+            for argv in [
+                UvEngine::argv_install(PY, &files, system),
+                UvEngine::argv_uninstall(PY, &names, system),
+            ] {
+                let count = argv
+                    .iter()
+                    .filter(|a| *a == "--break-system-packages")
+                    .count();
+                assert_eq!(count, expected, "{system:?}: {argv:?}");
+            }
+        }
     }
 }

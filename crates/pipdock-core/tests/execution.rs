@@ -201,6 +201,7 @@ impl Engine for FakeEngine {
         &self,
         _env: &PyEnv,
         names: &[PkgName],
+        _system: pipdock_core::engine::SystemPackages,
         _sink: ProgressSink,
     ) -> Result<StepResult> {
         // Recorded like installs are. Without this, "the engine was not invoked for the packages
@@ -241,6 +242,16 @@ impl Engine for FakeEngine {
     async fn freeze(&self, _env: &PyEnv) -> Result<String> {
         Ok("idna==3.4\n".to_owned())
     }
+    async fn probe(&self, env: &PyEnv) -> Result<pipdock_core::envs::ProbeResult> {
+        // Every flow probes before it decides anything (DATA-FLOW §2); the default would run the
+        // real probe.py against an interpreter this suite does not have.
+        Ok(pipdock_core::envs::ProbeResult {
+            env: env.clone(),
+            dists: Vec::new(),
+            markers: std::collections::BTreeMap::new(),
+        })
+    }
+
     async fn upgrade_pip(&self, _env: &PyEnv) -> Result<StepResult> {
         unreachable!("not exercised")
     }
@@ -869,7 +880,7 @@ async fn remove_collecting(
         &parsed,
         SnapshotProof::Taken(&snap),
         ProgressSink::new(tx, parsed.len(), token),
-        0,
+        pipdock_core::engine::SystemPackages::Protected,
     )
     .await
     .expect("execute_uninstall");
@@ -886,8 +897,8 @@ async fn remove_collecting(
 async fn a_rollback_stops_when_the_token_is_tripped() {
     // `RollbackFlow` held a token from the day it was written and exposed no way to trip it, so a
     // GUI restore could not be stopped — a two-phase install of a whole snapshot, which is exactly
-    // when a user reaches for Stop. Unlike `UninstallFlow::start`, this one never probes, so a
-    // fake engine and a temp directory drive the whole flow with no interpreter involved.
+    // when a user reaches for Stop. The fake answers the probe every flow now starts with, so it
+    // and a temp directory drive the whole flow with no interpreter involved.
     let dir = scratch();
     let _ = std::fs::remove_dir_all(&dir);
     let engine = FakeEngine::new(&[]);

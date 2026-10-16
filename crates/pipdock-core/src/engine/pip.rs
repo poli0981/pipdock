@@ -14,7 +14,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, InstallSet, ProgressSink, ResolveCtx, single_pkg};
+use super::{Engine, InstallSet, ProgressSink, ResolveCtx, SystemPackages, single_pkg};
 
 /// Drives pip as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -42,6 +42,29 @@ impl PipEngine {
             "--outdated".into(),
             "--format=json".into(),
         ]
+    }
+
+    /// argv for an install from requirement files. The PEP 668 flag only when `system` says so.
+    #[must_use]
+    pub fn argv_install(files: &[String], system: SystemPackages) -> Vec<String> {
+        let mut argv = vec!["-m".to_owned(), "pip".to_owned(), "install".to_owned()];
+        argv.extend(system.args().iter().map(|a| (*a).to_owned()));
+        argv.extend(files.iter().cloned());
+        argv
+    }
+
+    /// argv for `pip uninstall -y`. pip ≥ 23.0.1 refuses this in a managed environment too.
+    #[must_use]
+    pub fn argv_uninstall(names: &[PkgName], system: SystemPackages) -> Vec<String> {
+        let mut argv = vec![
+            "-m".to_owned(),
+            "pip".to_owned(),
+            "uninstall".to_owned(),
+            "-y".to_owned(),
+        ];
+        argv.extend(system.args().iter().map(|a| (*a).to_owned()));
+        argv.extend(names.iter().map(ToString::to_string));
+        argv
     }
 
     /// argv for the dry-run resolve, whose JSON report goes to stdout.
@@ -164,10 +187,8 @@ impl Engine for PipEngine {
     ) -> Result<StepResult> {
         let requirements: Vec<String> = set.specs.iter().map(PinnedSpec::to_requirement).collect();
         let files = super::RequirementFiles::write(&requirements, &set.constraints)?;
-        let mut argv = vec!["-m".to_owned(), "pip".to_owned(), "install".to_owned()];
-        argv.extend(files.args());
         let mut out = Command::python(&env.interpreter)
-            .args(argv)
+            .args(Self::argv_install(&files.args(), set.system))
             .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, single_pkg(&set.specs), mode)
@@ -180,17 +201,11 @@ impl Engine for PipEngine {
         &self,
         env: &PyEnv,
         names: &[PkgName],
+        system: SystemPackages,
         sink: ProgressSink,
     ) -> Result<StepResult> {
-        let mut argv = vec![
-            "-m".to_owned(),
-            "pip".to_owned(),
-            "uninstall".to_owned(),
-            "-y".to_owned(),
-        ];
-        argv.extend(names.iter().map(ToString::to_string));
         let out = Command::python(&env.interpreter)
-            .args(argv)
+            .args(Self::argv_uninstall(names, system))
             .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
             .run_streaming(&sink, names.first().cloned(), ExecMode::Isolated)
@@ -406,5 +421,32 @@ mod tests {
         assert_eq!(err.code, Code::EnvExternallyManaged);
         // Not PD-ENG-001: reaching the spawn would mean the guard ran too late.
         assert!(!err.message.contains("could not run"), "{}", err.message);
+    }
+
+    #[test]
+    fn the_pep668_flag_appears_only_when_the_override_applies() {
+        let files = ["-r".to_owned(), "req.txt".to_owned()];
+        let names = [PkgName::parse("idna").unwrap()];
+        for (system, expected) in [
+            (SystemPackages::Protected, 0),
+            (SystemPackages::OverrideAllowed, 1),
+        ] {
+            for argv in [
+                PipEngine::argv_install(&files, system),
+                PipEngine::argv_uninstall(&names, system),
+            ] {
+                let count = argv
+                    .iter()
+                    .filter(|a| *a == "--break-system-packages")
+                    .count();
+                assert_eq!(count, expected, "{system:?}: {argv:?}");
+            }
+        }
+        // pip's dry run is exempt from PEP 668 (`--dry-run --report`) and is never given it.
+        assert!(
+            !PipEngine::argv_dry_run(&files)
+                .iter()
+                .any(|a| a == "--break-system-packages")
+        );
     }
 }

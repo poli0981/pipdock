@@ -15,7 +15,9 @@ use std::collections::BTreeMap;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use async_trait::async_trait;
-use pipdock_core::engine::{Engine, GuardAdjust, InstallSet, ProgressSink, ResolveCtx};
+use pipdock_core::engine::{
+    Engine, GuardAdjust, InstallSet, ProgressSink, ResolveCtx, SystemPackages,
+};
 use pipdock_core::envs::ProbeResult;
 use pipdock_core::errors::{Code, PdError, Result};
 use pipdock_core::exec::Stop;
@@ -46,10 +48,21 @@ struct World {
     externally_managed: bool,
     /// The resolve blocks until its token is tripped, as a backtracking pip does.
     resolve_hangs: bool,
-    /// Every resolve the flow asked for: the request and what it changed about the guard set.
-    resolves: Vec<(PlanRequest, GuardAdjust)>,
+    /// Every resolve the flow asked for.
+    resolves: Vec<ResolveCall>,
     /// Every install invocation.
     installs: Vec<InstallSet>,
+    /// Every removal: the names, and whether the PEP 668 override applied.
+    removals: Vec<(Vec<String>, SystemPackages)>,
+}
+
+/// What one resolve was asked: the request, what the flow changed about the guard set, and
+/// whether the PEP 668 override applied.
+#[allow(dead_code)]
+struct ResolveCall {
+    req: PlanRequest,
+    adjust: GuardAdjust,
+    system: SystemPackages,
 }
 
 #[derive(Clone, Default)]
@@ -142,7 +155,11 @@ impl Engine for Scripted {
     ) -> Result<ResolutionReport> {
         let hangs = {
             let mut world = self.world();
-            world.resolves.push((req.clone(), ctx.adjust.clone()));
+            world.resolves.push(ResolveCall {
+                req: req.clone(),
+                adjust: ctx.adjust.clone(),
+                system: ctx.system,
+            });
             world.resolve_hangs
         };
         if hangs {
@@ -227,9 +244,13 @@ impl Engine for Scripted {
         &self,
         _env: &PyEnv,
         names: &[PkgName],
+        system: SystemPackages,
         _sink: ProgressSink,
     ) -> Result<StepResult> {
         let mut world = self.world();
+        world
+            .removals
+            .push((names.iter().map(ToString::to_string).collect(), system));
         for name in names {
             world.installed.remove(name.as_str());
         }
@@ -529,4 +550,159 @@ async fn a_rollback_previewed_against_an_older_environment_is_refused() {
         "only the target exists: no pre-rollback snapshot was written"
     );
     let _ = std::fs::remove_dir_all(&dir);
+}
+
+fn managed(engine: Scripted) -> Scripted {
+    engine.world().externally_managed = true;
+    engine
+}
+
+#[tokio::test]
+async fn a_managed_environment_is_refused_on_what_the_probe_says_not_what_the_caller_sent() {
+    // H12. The caller's PyEnv says "not managed" — a value cached from some earlier scan. The
+    // gate trusted it and ran the resolve; the probe it does first now decides.
+    let engine = managed(
+        Scripted::default()
+            .with("idna", "3.4", &[])
+            .offering("idna", "3.10"),
+    );
+    assert!(!env().externally_managed, "the caller believes otherwise");
+    let Err(err) = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &update_all(),
+        &[],
+        FlowOptions::default(),
+    )
+    .await
+    else {
+        panic!("a managed environment must be refused");
+    };
+    assert_eq!(err.code, Code::EnvExternallyManaged);
+    assert!(
+        engine.world().resolves.is_empty(),
+        "refused before the engine ran"
+    );
+}
+
+#[tokio::test]
+async fn a_rollback_into_a_managed_environment_needs_the_override_too() {
+    // H12: the rollback flow had no PEP 668 gate at all.
+    let engine = managed(Scripted::default().with("idna", "3.4", &[]));
+    let dir = app_data("rollback-managed");
+    let hash = pipdock_core::envs::env_hash(std::path::Path::new("python.exe"));
+    let target = snapshot::create(
+        &dir,
+        &hash,
+        "idna==3.2\n".to_owned(),
+        Trigger::Manual,
+        EngineId::Pip,
+        jiff::Timestamp::now(),
+    )
+    .expect("target snapshot");
+    let refused = RollbackFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &dir,
+        &target.meta.id,
+        FlowOptions::default(),
+    )
+    .await;
+    let _ = std::fs::remove_dir_all(&dir);
+    assert_eq!(
+        refused.err().map(|e| e.code),
+        Some(Code::EnvExternallyManaged)
+    );
+}
+
+#[tokio::test]
+async fn with_the_override_the_flag_reaches_every_mutating_call() {
+    // H11: the Settings checkbox saved and nothing read it. With it on, a managed environment's
+    // resolve, installs and removals all carry the override.
+    let engine = managed(
+        Scripted::default()
+            .with("idna", "3.4", &[])
+            .offering("idna", "3.10"),
+    );
+    let opts = FlowOptions {
+        allow_externally_managed: true,
+        ..FlowOptions::default()
+    };
+    let mut flow = start_update(&engine, opts.clone()).await;
+    assert!(flow.overrides_pep668());
+    let dir = app_data("override");
+    flow.take_snapshot(SnapshotPolicy::Take, &dir)
+        .await
+        .expect("snapshot");
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    flow.execute(tx).await.expect("execute");
+
+    let (mut removal, _) =
+        UninstallFlow::start(env(), Box::new(engine.clone()), &["idna".to_owned()], opts)
+            .await
+            .expect("start");
+    removal
+        .take_snapshot(SnapshotPolicy::Take, &dir)
+        .await
+        .expect("snapshot");
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    removal
+        .execute(pipdock_core::flow::GuardAck::Clear, tx)
+        .await
+        .expect("execute");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    let world = engine.world();
+    assert!(
+        world
+            .resolves
+            .iter()
+            .all(|r| r.system == SystemPackages::OverrideAllowed)
+    );
+    assert!(!world.installs.is_empty());
+    assert!(
+        world
+            .installs
+            .iter()
+            .all(|i| i.system == SystemPackages::OverrideAllowed)
+    );
+    assert_eq!(
+        world.removals,
+        [(vec!["idna".to_owned()], SystemPackages::OverrideAllowed)]
+    );
+}
+
+#[tokio::test]
+async fn an_unmanaged_environment_never_gets_the_flag_even_with_the_override_on() {
+    // Hard invariant 5: the override is permission, not an instruction. Without the marker the
+    // flag is never passed.
+    let engine = Scripted::default()
+        .with("idna", "3.4", &[])
+        .offering("idna", "3.10");
+    let opts = FlowOptions {
+        allow_externally_managed: true,
+        ..FlowOptions::default()
+    };
+    let mut flow = start_update(&engine, opts).await;
+    assert!(!flow.overrides_pep668());
+    let dir = app_data("no-override");
+    flow.take_snapshot(SnapshotPolicy::Waive, &dir)
+        .await
+        .expect("waived");
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    flow.execute(tx).await.expect("execute");
+
+    let world = engine.world();
+    assert!(
+        world
+            .resolves
+            .iter()
+            .all(|r| r.system == SystemPackages::Protected)
+    );
+    assert!(
+        world
+            .installs
+            .iter()
+            .all(|i| i.system == SystemPackages::Protected)
+    );
 }

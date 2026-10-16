@@ -49,6 +49,29 @@ pub fn engine_for(opts: &GlobalOpts) -> Box<dyn Engine> {
     engine::for_id(id)
 }
 
+/// What every mutating flow is started with: the stored PEP 668 override (SECURITY §3).
+///
+/// Read from the store both heads share. The CLI has deliberately no flag to turn it on — the
+/// override is meant to be hard to reach, and a flag would put it one shell-history search away.
+fn flow_options() -> FlowOptions {
+    FlowOptions {
+        allow_externally_managed: Store::open(&app_data_dir())
+            .and_then(|store| settings::load(&store))
+            .is_ok_and(|s| s.allow_externally_managed),
+        ..FlowOptions::default()
+    }
+}
+
+/// Say, on every run, that the PEP 668 override is in force. The GUI's warning chip, as text.
+fn warn_pep668(overrides: bool) {
+    if overrides {
+        eprintln!(
+            "warning: this Python is externally managed (PEP 668) and the Settings override is \
+             on, so --break-system-packages will be passed. Prefer a virtual environment."
+        );
+    }
+}
+
 /// `pipdock engine <pip|uv>` — set the configured engine.
 ///
 /// # Errors
@@ -521,14 +544,9 @@ pub async fn plan_and_run(opts: &GlobalOpts, intent: Intent, dry_run: bool) -> R
     // Read before the flow starts: `UpdateFlow` takes the pins rather than the store they came
     // from, so its future stays `Send` for the GUI's sake.
     let env_pins = pins::list(&store, &envs::env_hash(&env.interpreter))?;
-    let (mut flow, mut step) = UpdateFlow::start(
-        env,
-        engine_for(opts),
-        &intent,
-        &env_pins,
-        FlowOptions::default(),
-    )
-    .await?;
+    let (mut flow, mut step) =
+        UpdateFlow::start(env, engine_for(opts), &intent, &env_pins, flow_options()).await?;
+    warn_pep668(flow.overrides_pep668());
 
     // The flow returns the exclusion as data; the wording is the head's business (I18N §1).
     if !flow.excluded_pins().is_empty() && !opts.json {
@@ -1440,7 +1458,8 @@ pub async fn snapshot_rollback(opts: &GlobalOpts, id: &str) -> Result<Exit> {
     let app_data = app_data_dir();
 
     let (mut flow, preview) =
-        RollbackFlow::start(env, engine_for(opts), &app_data, id, FlowOptions::default()).await?;
+        RollbackFlow::start(env, engine_for(opts), &app_data, id, flow_options()).await?;
+    warn_pep668(flow.overrides_pep668());
 
     if preview.restore.is_empty() {
         println!("environment already matches snapshot {}", preview.target.id);
@@ -1784,8 +1803,8 @@ pub async fn uninstall(opts: &GlobalOpts, pkgs: &[String], force: bool) -> Resul
     let env = select_env(opts).await?;
     let engine = engine_for(opts);
 
-    let (mut flow, report) =
-        UninstallFlow::start(env, engine, pkgs, FlowOptions::default()).await?;
+    let (mut flow, report) = UninstallFlow::start(env, engine, pkgs, flow_options()).await?;
+    warn_pep668(flow.overrides_pep668());
 
     if !report.is_clear() {
         if opts.json {

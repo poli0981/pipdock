@@ -36,7 +36,7 @@
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::Path;
 
-use crate::engine::{Engine, EventSink, ProgressSink};
+use crate::engine::{Engine, EventSink, ProgressSink, SystemPackages};
 use crate::errors::{Code, PdError, Result};
 use crate::graph::ReverseDeps;
 use crate::model::{Dist, OutdatedDist, PkgName, PyEnv, Spec};
@@ -148,6 +148,12 @@ pub struct FlowOptions {
     pub cancel: CancellationToken,
     /// What time it is. A function so a test can age a preview without waiting ten minutes.
     pub clock: fn() -> jiff::Timestamp,
+    /// The Settings PEP 668 override, as the caller read it (SECURITY §3).
+    ///
+    /// Read by nothing until 1.4.0: the checkbox saved, and every flow refused a managed
+    /// environment regardless (H11). On its own it still changes nothing — the flag is passed only
+    /// when this is on **and** the probe finds the marker.
+    pub allow_externally_managed: bool,
 }
 
 impl Default for FlowOptions {
@@ -155,8 +161,41 @@ impl Default for FlowOptions {
         Self {
             cancel: CancellationToken::new(),
             clock: jiff::Timestamp::now,
+            allow_externally_managed: false,
         }
     }
+}
+
+/// DATA-FLOW §2's step zero, shared by every mutating flow: probe, then decide on what the probe
+/// says (SECURITY §3).
+///
+/// The gate read `env.externally_managed` — whatever the caller last cached about the environment —
+/// before anything had been probed, and the rollback flow had no gate at all (H12). Now each flow
+/// probes first and the fresh answer decides; the Settings override is the only way past, and with
+/// it the flow carries [`SystemPackages::OverrideAllowed`] to every mutating engine call.
+///
+/// # Errors
+/// `PD-ENV-002` for a managed environment without the override, or with a pip that cannot be
+/// overridden; otherwise the probe's own failures.
+async fn preamble(
+    engine: &dyn Engine,
+    env: &mut PyEnv,
+    opts: &FlowOptions,
+) -> Result<(crate::envs::ProbeResult, SystemPackages)> {
+    let probed = engine.probe(env).await?;
+    env.externally_managed = probed.env.externally_managed;
+    if !env.externally_managed {
+        return Ok((probed, SystemPackages::Protected));
+    }
+    if !opts.allow_externally_managed {
+        return Err(PdError::new(
+            Code::EnvExternallyManaged,
+            "this Python is externally managed (PEP 668). Use a virtual environment; \
+             the override lives in Settings and is discouraged",
+        ));
+    }
+    let system = crate::engine::system_packages_for(&engine.info(env).await)?;
+    Ok((probed, system))
 }
 
 /// Whether to take the pre-execution snapshot.
@@ -196,6 +235,8 @@ pub struct UpdateFlow {
     snapshot: SnapshotState,
     /// Pinned packages kept out of this plan, so the caller can say which and why.
     excluded_pins: Vec<Pin>,
+    /// Whether the PEP 668 override applies to this flow's engine calls.
+    system: SystemPackages,
     cancel: CancellationToken,
     clock: fn() -> jiff::Timestamp,
 }
@@ -210,10 +251,11 @@ impl UpdateFlow {
     /// into a database at all — it can be driven in a test without one.
     ///
     /// # Errors
-    /// `PD-ENV-002` when the environment is externally managed (PEP 668), which is checked before
-    /// any engine command runs. Otherwise propagates probe and engine failures.
+    /// `PD-ENV-002` when the environment is externally managed (PEP 668) and the override is off,
+    /// decided on a fresh probe before any engine command runs. Otherwise propagates probe and
+    /// engine failures.
     pub async fn start(
-        env: PyEnv,
+        mut env: PyEnv,
         engine: Box<dyn Engine>,
         intent: &Intent,
         pins: &[Pin],
@@ -222,15 +264,7 @@ impl UpdateFlow {
         let env_hash = crate::envs::env_hash(&env.interpreter);
 
         // DATA-FLOW §2: PEP 668 environments are blocked at step zero, before any engine command.
-        if env.externally_managed {
-            return Err(PdError::new(
-                Code::EnvExternallyManaged,
-                "this Python is externally managed (PEP 668). Use a virtual environment; \
-                 the override lives in Settings and is discouraged",
-            ));
-        }
-
-        let probed = engine.probe(&env).await?;
+        let (probed, system) = preamble(engine.as_ref(), &mut env, &opts).await?;
         // Built against this interpreter so marker-gated requirements are read correctly: without
         // it a `python_version < "3.11"` branch is reported as a blocker on 3.12 (SP-5 dogfood).
         let graph = ReverseDeps::for_probe(&probed);
@@ -255,6 +289,7 @@ impl UpdateFlow {
             plan_id,
             snapshot: SnapshotState::NotTaken,
             excluded_pins,
+            system,
             cancel: opts.cancel,
             clock: opts.clock,
         };
@@ -303,6 +338,7 @@ impl UpdateFlow {
         let ctx = crate::engine::ResolveCtx {
             cancel: self.cancel.clone(),
             adjust: crate::engine::GuardAdjust::default(),
+            system: self.system,
         };
         let mut report = match self.engine.resolve(&self.env, &self.req, &ctx).await {
             Ok(report) => report,
@@ -414,6 +450,13 @@ impl UpdateFlow {
             &self.installed,
             self.resolved_at,
         )
+        .with_system_packages(self.system)
+    }
+
+    /// Whether this flow passes `--break-system-packages` — so a head can say so, every time.
+    #[must_use]
+    pub const fn overrides_pep668(&self) -> bool {
+        matches!(self.system, SystemPackages::OverrideAllowed)
     }
 
     /// Pinned packages kept out of this plan (DATA-FLOW §9.5).
@@ -476,6 +519,7 @@ pub struct UninstallFlow {
     guard: crate::graph::GuardReport,
     /// What the guard was computed against, and when (DATA-FLOW §9.3).
     basis: (jiff::Timestamp, String),
+    system: SystemPackages,
     cancel: CancellationToken,
     clock: fn() -> jiff::Timestamp,
 }
@@ -503,30 +547,20 @@ impl UninstallFlow {
     /// # Errors
     /// `PD-PKG-002` when a name does not parse; otherwise propagates probe failures.
     pub async fn start(
-        env: PyEnv,
+        mut env: PyEnv,
         engine: Box<dyn Engine>,
         pkgs: &[String],
         opts: FlowOptions,
     ) -> Result<(Self, crate::graph::GuardReport)> {
-        // DATA-FLOW §2's preamble is "all mutating flows", and a removal is one. `UpdateFlow` has
-        // refused these since S1 and this did not, so PipDock would happily strip packages out of
-        // a system Python it declines to *upgrade* — the worse of the two operations, since there
-        // is no resolver between the user and the damage.
-        if env.externally_managed {
-            return Err(PdError::new(
-                Code::EnvExternallyManaged,
-                "this Python is externally managed (PEP 668). Use a virtual environment; \
-                 the override lives in Settings and is discouraged",
-            ));
-        }
-
         let names: Vec<PkgName> = pkgs
             .iter()
             .map(|p| PkgName::parse(p))
             .collect::<Result<_>>()?;
 
-        // The graph is built from probe.py, which is the only source carrying requires_dist.
-        let probed = engine.probe(&env).await?;
+        // DATA-FLOW §2's preamble is "all mutating flows", and a removal is one — the worse of the
+        // two, since there is no resolver between the user and the damage. The graph is built
+        // from the same probe, the only source carrying requires_dist.
+        let (probed, system) = preamble(engine.as_ref(), &mut env, &opts).await?;
         let report = ReverseDeps::for_probe(&probed).guard(&names);
 
         let env_hash = crate::envs::env_hash(&env.interpreter);
@@ -541,6 +575,7 @@ impl UninstallFlow {
                 snapshot: SnapshotState::NotTaken,
                 guard: report.clone(),
                 basis: ((opts.clock)(), plan::fingerprint(&probed.dists)),
+                system,
                 cancel: opts.cancel,
                 clock: opts.clock,
             },
@@ -636,9 +671,7 @@ impl UninstallFlow {
             &self.names,
             proof,
             sink,
-            // The removals are the whole plan here, so they start at step zero. Only a rollback
-            // has anything in front of them.
-            0,
+            self.system,
         )
         .await
     }
@@ -647,6 +680,12 @@ impl UninstallFlow {
     #[must_use]
     pub fn names(&self) -> &[PkgName] {
         &self.names
+    }
+
+    /// Whether this flow passes `--break-system-packages` — so a head can say so, every time.
+    #[must_use]
+    pub const fn overrides_pep668(&self) -> bool {
+        matches!(self.system, SystemPackages::OverrideAllowed)
     }
 
     /// A handle that stops this flow's execution.
@@ -694,6 +733,7 @@ pub struct RollbackFlow {
     pre: SnapshotState,
     /// The freeze the restore plan was computed from, and when (DATA-FLOW §9.3).
     basis: (jiff::Timestamp, String),
+    system: SystemPackages,
     cancel: CancellationToken,
     clock: fn() -> jiff::Timestamp,
 }
@@ -702,9 +742,11 @@ impl RollbackFlow {
     /// Load the target snapshot and work out the minimal restore plan.
     ///
     /// # Errors
-    /// `PD-SNP-002` when no such snapshot exists; otherwise propagates engine failures.
+    /// `PD-SNP-002` when no such snapshot exists; `PD-ENV-002` for a managed environment without
+    /// the override — a restore is a mutating flow, and this one had no gate at all (H12);
+    /// otherwise propagates engine failures.
     pub async fn start(
-        env: PyEnv,
+        mut env: PyEnv,
         engine: Box<dyn Engine>,
         app_data: &Path,
         id: &str,
@@ -712,6 +754,7 @@ impl RollbackFlow {
     ) -> Result<(Self, RollbackPreview)> {
         let env_hash = crate::envs::env_hash(&env.interpreter);
         let target = snapshot::load(app_data, &env_hash, id)?;
+        let (_, system) = preamble(engine.as_ref(), &mut env, &opts).await?;
         let current_freeze = engine.freeze(&env).await?;
         let current = snapshot::parse_freeze(&current_freeze);
         let diff = snapshot::diff(&current, &target.entries());
@@ -731,6 +774,7 @@ impl RollbackFlow {
                 restore,
                 pre: SnapshotState::NotTaken,
                 basis: ((opts.clock)(), current_freeze),
+                system,
                 cancel: opts.cancel,
                 clock: opts.clock,
             },
@@ -792,8 +836,15 @@ impl RollbackFlow {
             &self.restore,
             proof,
             sink,
+            self.system,
         )
         .await
+    }
+
+    /// Whether this flow passes `--break-system-packages` — so a head can say so, every time.
+    #[must_use]
+    pub const fn overrides_pep668(&self) -> bool {
+        matches!(self.system, SystemPackages::OverrideAllowed)
     }
 
     /// A handle that stops this flow's execution.
