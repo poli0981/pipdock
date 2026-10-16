@@ -38,11 +38,10 @@ const target = join('src-tauri', 'binaries')
 mkdirSync(target, { recursive: true })
 
 // `--locked` for the reason the release workflow passes it: a bundle is not the place to discover
-// that a dependency resolved differently than the lockfile says.
-// NOSONAR: see the header — the developer's own cargo.
-execFileSync('cargo', ['build', '--release', '--locked', '-p', 'pipdock-cli'], {
-  stdio: 'inherit',
-})
+// that a dependency resolved differently than the lockfile says. The NOSONAR is on the call itself:
+// SonarCloud reads one only on the flagged line, and on the line above it suppressed nothing.
+const cargoArgs = ['build', '--release', '--locked', '-p', 'pipdock-cli']
+execFileSync('cargo', cargoArgs, { stdio: 'inherit' }) // NOSONAR: see the header — the developer's own cargo
 
 const from = join('target', 'release', 'pipdock.exe')
 const to = join(target, `pipdock-${triple}.exe`)
