@@ -25,7 +25,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, ProgressSink, single_pkg};
+use super::{Engine, InstallSet, ProgressSink, single_pkg};
 
 /// Drives uv as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -49,7 +49,7 @@ impl UvEngine {
     /// `requirements` comes from [`super::plan_argv_specs`] and carries all three groups: bare
     /// names to move, explicit installs, and the pinned guard set.
     #[must_use]
-    pub fn argv_dry_run(python: &str, requirements: &[String]) -> Vec<String> {
+    pub fn argv_dry_run(python: &str, files: &[String]) -> Vec<String> {
         let mut argv = vec![
             "pip".into(),
             "install".into(),
@@ -58,7 +58,7 @@ impl UvEngine {
             "--python".into(),
             python.into(),
         ];
-        argv.extend(requirements.iter().cloned());
+        argv.extend(files.iter().cloned());
         argv
     }
 
@@ -142,10 +142,10 @@ impl Engine for UvEngine {
         // SP-1: without the installed set restated, uv plans an upgrade that breaks installed
         // dependents and exits 0. Identical requirement to pip's adapter.
         let installed = self.list_installed(env).await?;
-        let requirements = super::plan_argv_specs(req, &installed);
+        let files = super::RequirementFiles::write(&super::plan_argv_specs(req, &installed), &[])?;
         let python = env.interpreter.display().to_string();
         let out = Command::new("uv")
-            .args(Self::argv_dry_run(&python, &requirements))
+            .args(Self::argv_dry_run(&python, &files.args()))
             .timeout(watchdog::RESOLVE)
             .run()
             .await?;
@@ -157,25 +157,27 @@ impl Engine for UvEngine {
     async fn install(
         &self,
         env: &PyEnv,
-        specs: &[PinnedSpec],
+        set: &InstallSet,
         mode: ExecMode,
         sink: ProgressSink,
     ) -> Result<StepResult> {
         let python = env.interpreter.display().to_string();
+        let requirements: Vec<String> = set.specs.iter().map(PinnedSpec::to_requirement).collect();
+        let files = super::RequirementFiles::write(&requirements, &set.constraints)?;
         let mut argv = vec![
             "pip".to_owned(),
             "install".to_owned(),
             "--python".to_owned(),
             python,
         ];
-        argv.extend(specs.iter().map(PinnedSpec::to_requirement));
+        argv.extend(files.args());
         let out = Command::new("uv")
             .args(argv)
             .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
-            .run_streaming(&sink, single_pkg(specs), mode)
+            .run_streaming(&sink, single_pkg(&set.specs), mode)
             .await?;
-        Ok(super::step_result(specs, &out))
+        Ok(super::step_result(&set.specs, &out))
     }
 
     async fn uninstall(

@@ -212,14 +212,14 @@ pub trait Engine: Send + Sync {
     /// without a report accepted in the same session.
     async fn resolve(&self, env: &PyEnv, req: &PlanRequest) -> Result<ResolutionReport>;
 
-    /// Install an exact pinned set.
+    /// Install an exact pinned set, holding everything in `set.constraints` where it is.
     ///
     /// `Batch` mode passes the whole set in one invocation (Phase A); `Isolated` mode is the
     /// per-package retry loop (Phase B), where a failure must **not** stop the caller's loop.
     async fn install(
         &self,
         env: &PyEnv,
-        specs: &[PinnedSpec],
+        set: &InstallSet,
         mode: ExecMode,
         sink: ProgressSink,
     ) -> Result<StepResult>;
@@ -247,6 +247,91 @@ pub trait Engine: Send + Sync {
     /// Upgrade pip inside `env`. The uv adapter returns an `Unsupported` error — DATA-FLOW §7
     /// says pip upkeep is surfaced only when pip is the active engine or present in the env.
     async fn upgrade_pip(&self, env: &PyEnv) -> Result<StepResult>;
+}
+
+/// One install invocation: what to install, and what must not move while it happens.
+///
+/// SP-1's rule — restate the installed set or the resolver breaks it — was applied to the
+/// *resolve* only. Phase B then installed each package as a bare `pip install name==v`, with no
+/// guard: free to pull a dependency past an installed package's upper bound, which pip reports as
+/// a warning and exits 0 on. `constraints` carries the target state of everything else, passed as
+/// `-c`, which constrains without installing.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct InstallSet {
+    /// The exact pins to install.
+    pub specs: Vec<PinnedSpec>,
+    /// Everything that must stay at these versions if the engine touches it at all.
+    pub constraints: Vec<PinnedSpec>,
+}
+
+impl InstallSet {
+    /// Install `specs`, constraining nothing else.
+    #[must_use]
+    pub const fn only(specs: Vec<PinnedSpec>) -> Self {
+        Self {
+            specs,
+            constraints: Vec::new(),
+        }
+    }
+}
+
+/// The requirements (and constraints) files one engine invocation reads, deleted when dropped.
+///
+/// **Files, not argv.** Every plan restates the whole installed set (SP-1), one argv entry per
+/// package — and at around 1,300 packages that passes Windows' 32,767-character command line, so
+/// the spawn failed and the user was told to install an engine (PD-ENG-001). `-r`/`-c` keep the
+/// command line a constant length. The files hold only rendered [`PinnedSpec`]s and validated
+/// [`crate::model::Spec`]s — the same tokens argv held — written under fresh random names.
+#[derive(Debug)]
+pub struct RequirementFiles {
+    requirements: crate::exec::TempFile,
+    constraints: Option<crate::exec::TempFile>,
+}
+
+impl RequirementFiles {
+    /// Write `requirements` (one per line) and, when there are any, `constraints`.
+    ///
+    /// # Errors
+    /// As [`crate::exec::TempFile::create`].
+    pub fn write(requirements: &[String], constraints: &[PinnedSpec]) -> Result<Self> {
+        let lines = |items: &mut dyn Iterator<Item = String>| {
+            let mut text = items.collect::<Vec<_>>().join("\n");
+            text.push('\n');
+            text
+        };
+        let requirements = crate::exec::TempFile::create(
+            "pipdock-req",
+            "txt",
+            &lines(&mut requirements.iter().cloned()),
+        )?;
+        let constraints = if constraints.is_empty() {
+            None
+        } else {
+            Some(crate::exec::TempFile::create(
+                "pipdock-con",
+                "txt",
+                &lines(&mut constraints.iter().map(PinnedSpec::to_requirement)),
+            )?)
+        };
+        Ok(Self {
+            requirements,
+            constraints,
+        })
+    }
+
+    /// `-r <requirements> [-c <constraints>]`, one argv entry each.
+    #[must_use]
+    pub fn args(&self) -> Vec<String> {
+        let mut out = vec![
+            "-r".to_owned(),
+            self.requirements.path().display().to_string(),
+        ];
+        if let Some(c) = &self.constraints {
+            out.push("-c".to_owned());
+            out.push(c.path().display().to_string());
+        }
+        out
+    }
 }
 
 /// The adapter for `id`.
@@ -608,5 +693,38 @@ mod tests {
         let guards = plan_requirements(&req, &installed);
         assert_eq!(guards.len(), 1);
         assert_eq!(guards[0].to_requirement(), "good==1.0");
+    }
+
+    #[test]
+    fn a_huge_environment_still_fits_on_a_command_line() {
+        // Every plan restates the installed set (SP-1). As argv, ~1,300 packages passed Windows'
+        // 32,767-character limit, the spawn failed with os error 206, and the user was told to
+        // install an engine. As a file, the command line no longer grows with the environment.
+        let installed: Vec<crate::model::Dist> = (0..2000)
+            .map(|i| crate::model::Dist {
+                name: PkgName::parse(&format!("package-with-a-long-name-{i:04}")).expect("name"),
+                version: crate::model::Version("12.34.5678".into()),
+                requires_dist: Vec::new(),
+                requires_python: None,
+                size_bytes: None,
+            })
+            .collect();
+        let req = PlanRequest {
+            upgrades: Vec::new(),
+            installs: Vec::new(),
+            strategy: crate::plan::Strategy::Compatible,
+        };
+        let lines = plan_argv_specs(&req, &installed);
+        assert!(
+            lines.iter().map(|l| l.len() + 1).sum::<usize>() > 32_767,
+            "the fixture must be big enough to have broken argv"
+        );
+        let files = RequirementFiles::write(&lines, &[]).expect("written");
+        let argv = pip::PipEngine::argv_dry_run(&files.args());
+        let command_line: usize = argv.iter().map(|a| a.len() + 1).sum();
+        assert!(
+            command_line < 1_000,
+            "command line is {command_line} characters"
+        );
     }
 }

@@ -8,7 +8,7 @@ pub use preview::{
     Decision, ForcedPlan, apply_decisions, default_decision, derive_held_back, forced_requirements,
 };
 
-use crate::engine::{Engine, ProgressSink};
+use crate::engine::{Engine, InstallSet, ProgressSink};
 use crate::errors::{Code, PdError, Result};
 use crate::model::{
     CheckReport, ExecMode, PinnedSpec, PkgName, PyEnv, Spec, StepResult, StepStatus, Version,
@@ -546,7 +546,15 @@ pub async fn execute(
     // all three out of `execute` as PD-INT-001: no summary, no "cancelled", no rollback offer, and
     // the cancelled-Phase-A branch below unreachable outside a test whose fake returned `Ok`.
     let batch = engine
-        .install(env, &pinned, ExecMode::Batch, batch_sink.clone())
+        .install(
+            env,
+            &InstallSet {
+                specs: pinned.clone(),
+                constraints: hold_still(installed_now, &pinned, None),
+            },
+            ExecMode::Batch,
+            batch_sink.clone(),
+        )
         .await;
     let stopped_by_user = sink.is_cancelled() || batch.as_ref().is_err_and(PdError::is_cancelled);
     batch_sink.finished(
@@ -619,7 +627,10 @@ pub async fn execute(
         let step = engine
             .install(
                 env,
-                std::slice::from_ref(spec),
+                &InstallSet {
+                    specs: vec![spec.clone()],
+                    constraints: hold_still(installed_now, &pinned, Some(&spec.name)),
+                },
                 ExecMode::Isolated,
                 step_sink.clone(),
             )
@@ -661,6 +672,35 @@ pub async fn execute(
 
     let cancelled = sink.is_cancelled();
     Ok(summary(plan, ExecMode::Isolated, results, engine, env, cancelled).await)
+}
+
+/// What must not move while part of a plan installs: every **other** planned package at the
+/// version the preview showed, and everything installed that the plan does not touch at the
+/// version it has now.
+///
+/// Phase A passes `except: None` (the whole plan is the requirement); a Phase B step passes its
+/// own package. Without this a Phase B `pip install alpha==2` was free to pull a dependency past
+/// an installed package's upper bound — pip warns and exits 0 — leaving a state no preview showed.
+fn hold_still(
+    installed: &[crate::model::Dist],
+    pinned: &[PinnedSpec],
+    except: Option<&crate::model::PkgName>,
+) -> Vec<PinnedSpec> {
+    let planned: std::collections::BTreeSet<&crate::model::PkgName> =
+        pinned.iter().map(|p| &p.name).collect();
+    let others = pinned
+        .iter()
+        .filter(|p| except.is_some_and(|name| *name != p.name))
+        .cloned();
+    let untouched = installed
+        .iter()
+        .filter(|d| !planned.contains(&d.name))
+        .filter(|d| crate::pep440::is_argv_safe(&d.version.0))
+        .map(|d| PinnedSpec {
+            name: d.name.clone(),
+            version: d.version.clone(),
+        });
+    others.chain(untouched).collect()
 }
 
 /// Whether retrying package by package could get further than the batch did.
@@ -771,10 +811,20 @@ pub async fn execute_rollback(
         let step_sink = sink.at(restore.uninstall.len() + index);
         step_sink.started(Some(spec.name.clone()), ExecMode::Isolated);
 
+        // The rest of the restore is the target state, so it is what this step must not move.
+        let constraints: Vec<PinnedSpec> = restore
+            .install
+            .iter()
+            .filter(|other| other.name != spec.name)
+            .cloned()
+            .collect();
         let step = engine
             .install(
                 env,
-                std::slice::from_ref(spec),
+                &InstallSet {
+                    specs: vec![spec.clone()],
+                    constraints,
+                },
                 ExecMode::Isolated,
                 step_sink.clone(),
             )

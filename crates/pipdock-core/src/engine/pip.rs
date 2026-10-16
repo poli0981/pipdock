@@ -14,7 +14,7 @@ use crate::model::{
 };
 use crate::plan::{PlanRequest, ResolutionReport};
 
-use super::{Engine, ProgressSink, single_pkg};
+use super::{Engine, InstallSet, ProgressSink, single_pkg};
 
 /// Drives pip as a subprocess.
 #[derive(Debug, Clone, Copy, Default)]
@@ -46,10 +46,10 @@ impl PipEngine {
 
     /// argv for the dry-run resolve, whose JSON report goes to stdout.
     ///
-    /// `requirements` comes from [`super::plan_argv_specs`] and carries all three groups: bare
-    /// names to move, explicit installs, and the pinned guard set.
+    /// `files` is [`super::RequirementFiles::args`] over [`super::plan_argv_specs`], which carries
+    /// all three groups: bare names to move, explicit installs, and the pinned guard set.
     #[must_use]
-    pub fn argv_dry_run(requirements: &[String]) -> Vec<String> {
+    pub fn argv_dry_run(files: &[String]) -> Vec<String> {
         let mut argv = vec![
             "-m".into(),
             "pip".into(),
@@ -64,7 +64,7 @@ impl PipEngine {
             "--report".into(),
             "-".into(),
         ];
-        argv.extend(requirements.iter().cloned());
+        argv.extend(files.iter().cloned());
         argv
     }
 
@@ -137,9 +137,9 @@ impl Engine for PipEngine {
         // SP-1: the installed set must be restated or the resolver ignores it and plans an
         // upgrade that breaks installed dependents. The caller assembles that set into `req`.
         let installed = self.list_installed(env).await?;
-        let requirements = super::plan_argv_specs(req, &installed);
+        let files = super::RequirementFiles::write(&super::plan_argv_specs(req, &installed), &[])?;
         let out = Command::python(&env.interpreter)
-            .args(Self::argv_dry_run(&requirements))
+            .args(Self::argv_dry_run(&files.args()))
             .timeout(watchdog::RESOLVE)
             .run()
             .await?;
@@ -152,19 +152,21 @@ impl Engine for PipEngine {
     async fn install(
         &self,
         env: &PyEnv,
-        specs: &[PinnedSpec],
+        set: &InstallSet,
         mode: ExecMode,
         sink: ProgressSink,
     ) -> Result<StepResult> {
+        let requirements: Vec<String> = set.specs.iter().map(PinnedSpec::to_requirement).collect();
+        let files = super::RequirementFiles::write(&requirements, &set.constraints)?;
         let mut argv = vec!["-m".to_owned(), "pip".to_owned(), "install".to_owned()];
-        argv.extend(specs.iter().map(PinnedSpec::to_requirement));
+        argv.extend(files.args());
         let out = Command::python(&env.interpreter)
             .args(argv)
             .timeout(watchdog::INSTALL)
             .cancel(sink.cancel.clone())
-            .run_streaming(&sink, single_pkg(specs), mode)
+            .run_streaming(&sink, single_pkg(&set.specs), mode)
             .await?;
-        Ok(super::step_result(specs, &out))
+        Ok(super::step_result(&set.specs, &out))
     }
 
     async fn uninstall(
@@ -341,8 +343,9 @@ mod tests {
     }
 
     #[test]
-    fn requirements_are_appended_as_separate_argv_entries() {
-        // One token per argument is what makes shell quoting irrelevant (SECURITY §2).
+    fn requirements_reach_pip_as_a_file_not_as_argv() {
+        // A requirements file keeps the command line a constant length whatever the size of the
+        // environment, and each path is still exactly one argv entry (SECURITY §2).
         let specs = [
             PinnedSpec {
                 name: PkgName::parse("httpx").unwrap(),
@@ -354,15 +357,16 @@ mod tests {
             },
         ];
         let requirements: Vec<String> = specs.iter().map(PinnedSpec::to_requirement).collect();
-        let argv = PipEngine::argv_dry_run(&requirements);
-        assert_eq!(
-            &argv[argv.len() - 2..],
-            ["httpx==0.28.1", "requests==2.32.3"]
-        );
-        assert!(
-            argv.iter().all(|a| !a.contains(' ')),
-            "no argv entry may bundle multiple arguments"
-        );
+        let files = super::super::RequirementFiles::write(&requirements, &specs[..1])
+            .expect("files are written");
+        let argv = PipEngine::argv_dry_run(&files.args());
+        assert_eq!(&argv[argv.len() - 4..argv.len() - 3], ["-r"]);
+        assert_eq!(&argv[argv.len() - 2..argv.len() - 1], ["-c"]);
+        let written =
+            std::fs::read_to_string(&argv[argv.len() - 3]).expect("requirements file exists");
+        assert_eq!(written, "httpx==0.28.1\nrequests==2.32.3\n");
+        let constrained = std::fs::read_to_string(&argv[argv.len() - 1]).expect("constraints");
+        assert_eq!(constrained, "httpx==0.28.1\n");
     }
 
     #[test]
