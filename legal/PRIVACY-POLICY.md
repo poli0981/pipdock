@@ -1,6 +1,6 @@
 # PipDock — Privacy Policy
 
-*Version 1.1 · Effective 2026-08-14 · Governing language: English.*
+*Version 1.2 · Effective 2026-10-16 · Governing language: English.*
 
 ## 1. The short version
 
@@ -13,20 +13,21 @@ All application data lives under `%LOCALAPPDATA%\PipDock\data\` and never leaves
 | Data | Purpose |
 |---|---|
 | Settings (engine, locale, thresholds, consent record) | app configuration |
-| Environment list & package index cache | discovery and instant search |
+| Environment list, package index cache, and the Python versions each release supports | discovery, instant search, and refusing a version your Python cannot run |
 | Snapshots (package lists of your environments) | rollback |
 | Pins | update exclusions |
-| Log files (14-day rotation) | troubleshooting; may contain package names and file paths |
+| PipDock's own tool environments (`tools\`, `audit\`) | running deptry, vulture and ruff for Code Health, and pip-audit for the Security tab; reinstalled on demand, clearable in Settings |
+| Log files in `logs\` (14-day rotation) | troubleshooting; they record the commands PipDock ran, so they contain package names and file paths |
 
 Deleting the `data\` folder is a complete reset. **Delete `data\`, not its parent:** PipDock's own program files are installed in `%LOCALAPPDATA%\PipDock\`, so removing that folder uninstalls the application as well — use the uninstaller for that. No data is synced or backed up anywhere by PipDock.
 
 ## 3. Network connections
 
-PipDock connects to exactly one destination: **pypi.org / files.pythonhosted.org**, for the package name index and per-package metadata — standard web requests carrying no personal data beyond your IP address, as with any website.
+PipDock connects to exactly one destination: **pypi.org / files.pythonhosted.org**, for the package name index, per-package and per-release metadata, the advisory data the Security tab's pip-audit reads, and the Code Health and Security tools PipDock installs into its own environments — standard web requests carrying no personal data beyond your IP address, as with any website.
 
 **PipDock does not update itself**, so it never contacts GitHub or anywhere else to look for a new version. New versions are downloaded by you from the Releases page.
 
-Some buttons hand a URL to your browser rather than fetching anything: the legal documents and the bug-report form on **github.com**, ruff's rule pages on **docs.astral.sh**, and the author's contact page on **poli0981.dev**. Those are visits your browser makes, under its own settings, only after you click.
+Some buttons hand a URL to your browser rather than fetching anything: the legal documents and the bug-report form on **github.com**, ruff's rule pages on **docs.astral.sh**, an advisory's page on **osv.dev** from the Security tab, and the author's contact page on **poli0981.dev**. Those are visits your browser makes, under its own settings, only after you click.
 
 The pip/uv engines make their own connections to the package indexes configured on your system (including any private indexes you have set up); PipDock does not alter or observe those configurations beyond invoking the engines.
 
@@ -50,4 +51,4 @@ Privacy questions: email <contact@poli0981.dev>, or open a discussion or issue a
 
 ## Tóm tắt Tiếng Việt (tham khảo)
 
-PipDock **không thu thập bất kỳ dữ liệu nào**: không telemetry, không analytics, không tài khoản. Mọi dữ liệu (cài đặt, cache chỉ mục, snapshot, log) nằm trong `%LOCALAPPDATA%\PipDock\data\` trên máy bạn; xóa thư mục `data\` là xóa sạch — **đừng xóa thư mục cha**, vì chính chương trình được cài ở đó và xóa nó là gỡ luôn ứng dụng. Ứng dụng **chỉ** kết nối tới pypi.org (dữ liệu gói); PipDock không tự cập nhật nên không bao giờ gọi về GitHub. Một vài nút giao URL cho trình duyệt của bạn mở (github.com, docs.astral.sh, poli0981.dev) — đó là trình duyệt truy cập, sau khi bạn bấm. Nút báo lỗi chỉ mở form GitHub đã điền sẵn — không gì được gửi đi cho tới khi bạn tự xem lại và bấm gửi. Liên hệ: <contact@poli0981.dev>.
+PipDock **không thu thập bất kỳ dữ liệu nào**: không telemetry, không analytics, không tài khoản. Mọi dữ liệu (cài đặt, cache chỉ mục, snapshot, môi trường công cụ riêng của PipDock, log ghi lại các lệnh đã chạy) nằm trong `%LOCALAPPDATA%\PipDock\data\` trên máy bạn; xóa thư mục `data\` là xóa sạch — **đừng xóa thư mục cha**, vì chính chương trình được cài ở đó và xóa nó là gỡ luôn ứng dụng. Ứng dụng **chỉ** kết nối tới pypi.org (dữ liệu gói); PipDock không tự cập nhật nên không bao giờ gọi về GitHub. Một vài nút giao URL cho trình duyệt của bạn mở (github.com, docs.astral.sh, osv.dev, poli0981.dev) — đó là trình duyệt truy cập, sau khi bạn bấm. Nút báo lỗi chỉ mở form GitHub đã điền sẵn — không gì được gửi đi cho tới khi bạn tự xem lại và bấm gửi. Liên hệ: <contact@poli0981.dev>.
