@@ -11,7 +11,6 @@ import {
   healthDirty,
   healthFix,
   healthRun,
-  isPdError,
   onHealthProgress,
   type HealthReport,
   type PdError,
@@ -21,6 +20,7 @@ import {
   type RuffFinding,
 } from '@/ipc'
 import { apply, type ConsoleLine } from '@/stores/plan'
+import { asPdError } from '@/ipc/errors'
 
 /** Which tab is showing. Deliberately the tool's own name — never translated (I18N §2). */
 export type HealthTab = 'deptry' | 'vulture' | 'ruff'
@@ -177,10 +177,6 @@ const NO_HEALTH = {
 }
 
 /** Turn an unknown rejection into something a screen can render with a code. */
-function asPdError(e: unknown): PdError {
-  return isPdError(e) ? e : { code: 'PD-INT-001', message: String(e) }
-}
-
 /** Subscription to `health-progress`, at module scope so a re-run cannot leak the previous one. */
 let unlisten: (() => void) | undefined
 

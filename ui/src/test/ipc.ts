@@ -67,6 +67,7 @@ export interface IpcMock {
   appInfo: ReturnType<typeof vi.fn>
   settingsGet: ReturnType<typeof vi.fn>
   settingsSet: ReturnType<typeof vi.fn>
+  engineInfo: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
 
@@ -153,6 +154,8 @@ export function ipcMock(): IpcMock {
       pinSuggestThreshold: 5,
     }),
     settingsSet: vi.fn(),
+    // Nothing known by default: a version beside a radio is something a test asks for.
+    engineInfo: vi.fn().mockResolvedValue([]),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
     // and a stub that always answered one way would make every error test agree with itself. And
     // the real one, not a lookalike — the lookalike accepted `{ code: 1, message: null }`.

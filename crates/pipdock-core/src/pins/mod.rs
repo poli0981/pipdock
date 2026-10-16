@@ -109,10 +109,10 @@ pub fn list(store: &Store, env_hash: &str) -> Result<Vec<Pin>> {
 /// but `Version` is a transparent newtype over whatever the engine reported — so the one place a
 /// *user* supplies a version is the one place that claim needs enforcing.
 ///
-/// Deliberately a character-class check and not a full PEP 440 parse. The job is to refuse
-/// whitespace, quotes, path separators and control characters, not to second-guess an epoch or a
-/// local-version segment that the resolver understands better than PipDock does. Rejecting a
-/// legitimate version would be the worse failure: it would make a package unpinnable.
+/// The PEP 440 grammar check every argv boundary shares (`pep440::is_version`), not a resolver's
+/// parse: it refuses whitespace, quotes, separators and anything else no version contains, and
+/// leaves epochs and local segments to the engine. Rejecting a legitimate version would be the
+/// worse failure — it would make a package unpinnable.
 fn validated_hold(version: &Version) -> Result<&str> {
     let raw = version.0.as_str();
     let invalid = || {

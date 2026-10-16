@@ -209,19 +209,7 @@ pub fn pins_for(tools: &[&str]) -> Result<Vec<PinnedSpec>> {
 /// Same construction as `envs::env_hash`, so there is one hashing idiom in the codebase.
 #[must_use]
 pub fn pins_hash(pins: &[PinnedSpec]) -> String {
-    use std::fmt::Write as _;
-
-    use sha2::{Digest as _, Sha256};
-
-    let digest = Sha256::digest(requirements_body(pins).as_bytes());
-    digest
-        .iter()
-        .fold(String::with_capacity(64), |mut acc, byte| {
-            // Infallible: writing to a String cannot fail, and `?` here would need a Result return
-            // for a function that has no other failure mode.
-            let _ = write!(acc, "{byte:02x}");
-            acc
-        })
+    crate::model::sha256_hex(requirements_body(pins).as_bytes())
 }
 
 /// The requirements file written into the tools directory, and the bytes the hash covers.
@@ -448,10 +436,9 @@ fn parse_ledger(text: &str) -> Result<BTreeMap<PkgName, Version>> {
 
 /// Refuse a ledger version that is not shaped like one.
 ///
-/// The same character-class check `pins::validated_hold` applies, and for the same reason: these
-/// strings reach argv as `name==version`, so SECURITY §2's "validated before argv" claim has to
-/// hold here too. Deliberately not a full PEP 440 parse — the job is to refuse whitespace, quotes,
-/// path separators and control characters, not to second-guess an epoch or a local-version segment.
+/// The same `pep440::is_version` check `pins::validated_hold` applies, and for the same reason:
+/// these strings reach argv as `name==version`, so SECURITY §2's "validated before argv" claim has
+/// to hold here too.
 fn validated_version(raw: &str) -> Result<Version> {
     let invalid = || {
         PdError::new(

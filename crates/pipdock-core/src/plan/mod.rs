@@ -540,24 +540,15 @@ pub fn verify_age(made_at: jiff::Timestamp, now: jiff::Timestamp) -> Result<()> 
 /// is not drift. Only the set of `name==version` pairs matters.
 #[must_use]
 pub fn fingerprint(installed: &[crate::model::Dist]) -> String {
-    use std::fmt::Write as _;
-
-    use sha2::{Digest as _, Sha256};
-
     let mut pairs: Vec<String> = installed
         .iter()
         .map(|d| format!("{}=={}", d.name, d.version))
         .collect();
     pairs.sort_unstable();
 
-    let digest = Sha256::digest(pairs.join("\n").as_bytes());
-    digest
-        .iter()
-        .take(16)
-        .fold(String::with_capacity(32), |mut acc, b| {
-            let _ = write!(acc, "{b:02x}");
-            acc
-        })
+    let mut hex = crate::model::sha256_hex(pairs.join("\n").as_bytes());
+    hex.truncate(32);
+    hex
 }
 
 /// Execute a confirmed plan (ARCHITECTURE §8, DATA-FLOW §3).

@@ -21,7 +21,9 @@ export default defineConfig({
     emptyOutDir: true,
     // Tauri ships its own WebView2; there is no legacy browser to support.
     target: 'esnext',
-    sourcemap: true,
+    // No source maps: Tauri embeds dist/ in the executable, so `sourcemap: true` shipped 2 MB of
+    // them to every user, and nothing in a release build ever reads one (X51).
+    sourcemap: false,
   },
   server: {
     port: 1420,

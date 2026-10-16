@@ -5,7 +5,7 @@
 //! whatever the local index actually contains now, which is the number that matters — the index
 //! grew from 858k to 864k projects in the week between those two measurements.
 //!
-//! `#[ignore]` by default: it needs `%LOCALAPPDATA%\PipDock\index.db` populated by a real
+//! `#[ignore]` by default: it needs `%LOCALAPPDATA%\PipDock\data\index.db` populated by a real
 //! `pipdock index refresh`, which CI does not have and should not spend four seconds getting. Run
 //! it deliberately:
 //!

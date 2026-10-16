@@ -17,7 +17,8 @@
 
 import { create } from 'zustand'
 
-import { depsGraph, isPdError, type DepsGraph, type DepsNode, type PdError, type PyEnv } from '@/ipc'
+import { depsGraph, type DepsGraph, type DepsNode, type PdError, type PyEnv } from '@/ipc'
+import { asPdError } from '@/ipc/errors'
 
 /** Where a fetch is. */
 export type DepsPhase = 'idle' | 'loading' | 'ready' | 'failed'
@@ -71,9 +72,6 @@ const NO_DEPS = {
 
 /** Which environment the load in flight is for, so a switch can start the next one. */
 let loadingFor: string | null = null
-
-const asPdError = (e: unknown): PdError =>
-  isPdError(e) ? e : { code: 'PD-INT-001', message: String(e) }
 
 export const useDepsStore = create<DepsState>((set, get) => ({
   ...NO_DEPS,

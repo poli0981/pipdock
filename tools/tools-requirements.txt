@@ -1,9 +1,11 @@
 # Code Health tools — CODE-HEALTH-SPEC §2.
 #
 # These are installed into PipDock's own isolated environment at
-# %LOCALAPPDATA%\PipDock\tools\.venv, NEVER into the user's environment. Exact `==` pins are
+# %LOCALAPPDATA%\PipDock\data\tools\.venv, NEVER into the user's environment. Exact `==` pins are
 # resolved at PipDock release time; there are no floating versions at runtime, so a report is
-# reproducible for a given PipDock build.
+# reproducible for a given PipDock build. Their dependencies are pinned too, by
+# tools-constraints.txt beside this file — regenerate it whenever a pin here moves (the command is
+# in its header).
 #
 # Dependabot bumps these in their own group (see .github/dependabot.yml) so a tool upgrade is
 # never bundled with application dependencies — a ruff minor can change findings across every

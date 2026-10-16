@@ -19,7 +19,6 @@ import { create } from 'zustand'
 import {
   auditCancel,
   auditRun,
-  isPdError,
   onAuditProgress,
   type AuditReport,
   type PdError,
@@ -27,6 +26,7 @@ import {
   type PyEnv,
 } from '@/ipc'
 import { apply, type ConsoleLine } from '@/stores/plan'
+import { asPdError } from '@/ipc/errors'
 
 /** Where a run is. */
 export type SecurityPhase = 'idle' | 'running' | 'ready' | 'failed'
@@ -79,9 +79,6 @@ const NO_SECURITY = {
   total: 0,
   current: null,
 }
-
-const asPdError = (e: unknown): PdError =>
-  isPdError(e) ? e : { code: 'PD-INT-001', message: String(e) }
 
 let unlisten: (() => void) | undefined
 

@@ -11,6 +11,10 @@ authors.workspace = true
 [lints]
 workspace = true
 
+[features]
+# `fixtures.rs`: the L3 payloads xtask writes for the frontend's tests.
+fixtures = []
+
 [dependencies]
 async-trait = "0.1.92"
 jiff = { version = "0.2.38", features = ["serde"] }

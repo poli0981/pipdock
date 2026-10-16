@@ -10,9 +10,9 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import * as ipc from '@/ipc'
-import type { Settings } from '@/ipc'
+import type { EnvRow, Settings } from '@/ipc'
 import { PdSettings } from '@/screens/PdSettings'
-import { useSettingsStore } from '@/stores'
+import { useEnvStore, useSettingsStore } from '@/stores'
 import { resetStore } from '@/test/stores'
 
 vi.mock('@/ipc', async () => {
@@ -90,5 +90,45 @@ describe('the PEP 668 override', () => {
     expect(ipc.settingsSet).toHaveBeenCalledWith(
       expect.objectContaining({ allowExternallyManaged: false }),
     )
+  })
+})
+
+describe('the engine radios', () => {
+  const ROW: EnvRow = {
+    interpreter: 'C:/work/.venv/Scripts/python.exe',
+    source: 'venv-scan',
+    envHash: 'hash-work',
+    env: {
+      interpreter: 'C:/work/.venv/Scripts/python.exe',
+      prefix: 'C:/work/.venv',
+      pythonVersion: '3.12.4',
+      externallyManaged: false,
+      hiddenUserSite: null,
+      source: 'venv-scan',
+    },
+  }
+
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetStore(useSettingsStore)
+    resetStore(useEnvStore)
+  })
+
+  it('show each engine’s version for the selected environment, and say which is missing', async () => {
+    useEnvStore.setState({ rows: [ROW], selected: ROW.interpreter })
+    vi.mocked(ipc.engineInfo).mockResolvedValue([
+      { id: 'pip', available: true, version: '26.2.1' },
+      { id: 'uv', available: false },
+    ])
+    await setup()
+
+    expect(await screen.findByText('26.2.1')).toBeInTheDocument()
+    expect(screen.getByText('not found')).toBeInTheDocument()
+    expect(ipc.engineInfo).toHaveBeenCalledWith(ROW.env)
+  })
+
+  it('ask nothing without an environment to ask about', async () => {
+    await setup()
+    expect(ipc.engineInfo).not.toHaveBeenCalled()
   })
 })

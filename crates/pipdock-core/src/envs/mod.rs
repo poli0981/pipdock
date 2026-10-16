@@ -51,19 +51,8 @@ pub struct ProbeResult {
 /// directory and the recents list, so a change here orphans a user's data.
 #[must_use]
 pub fn env_hash(interpreter: &Path) -> String {
-    use std::fmt::Write as _;
-
-    use sha2::{Digest as _, Sha256};
     let canonical = canonical_interpreter(interpreter);
-    let digest = Sha256::digest(canonical.as_bytes());
-    digest
-        .iter()
-        .fold(String::with_capacity(64), |mut acc, byte| {
-            // Infallible: writing to a String cannot fail, and `?` here would need a Result return
-            // for a function that has no other failure mode.
-            let _ = write!(acc, "{byte:02x}");
-            acc
-        })
+    crate::model::sha256_hex(canonical.as_bytes())
 }
 
 /// Run `probe.py` against an interpreter.
