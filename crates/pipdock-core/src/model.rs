@@ -211,19 +211,87 @@ impl std::fmt::Display for Version {
 }
 
 /// What the user asked for: a name, optionally constrained.
-#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
+#[derive(Debug, Clone, serde::Serialize, schemars::JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct Spec {
     /// Normalized distribution name.
     pub name: PkgName,
-    /// PEP 440 specifier such as `">=2,<3"`, or `None` for "latest".
+    /// PEP 440 specifier such as `">=2,<3"` (or a bare version, read as `==`), or `None` for
+    /// "latest". Validated on every way in — [`Spec::parse`] and deserialization — so it is
+    /// never prose, a marker or an option by the time it reaches argv.
     pub version_req: Option<String>,
 }
 
+impl Spec {
+    /// Parse what a user typed, or what a requirements file said: `name`, `name==1.0`,
+    /// `name>=5.0,<6`, `name ~= 1.4`, `name===legacy`.
+    ///
+    /// The flow used to split on `==` alone, so every imported range failed — `django>=5.0,<6`
+    /// became the "package name" `django>=5.0,<6` and PD-PKG-002 — and `pkg===1.0` became
+    /// `pkg` at version `=1.0`.
+    ///
+    /// # Errors
+    /// `PD-PKG-002` when the name is not a distribution name or the rest is not a PEP 440
+    /// specifier set.
+    pub fn parse(raw: &str) -> Result<Self> {
+        let raw = raw.trim();
+        let end = raw
+            .find(|c: char| matches!(c, '=' | '<' | '>' | '!' | '~') || c.is_whitespace())
+            .unwrap_or(raw.len());
+        let name = PkgName::parse(raw[..end].trim())?;
+        let rest = raw[end..].trim();
+        if rest.is_empty() {
+            return Ok(Self {
+                name,
+                version_req: None,
+            });
+        }
+        if !crate::pep440::is_specifier_set(rest) {
+            return Err(PdError::new(
+                Code::PkgNotFound,
+                format!("not a version specifier: {rest:?}"),
+            ));
+        }
+        Ok(Self {
+            name,
+            version_req: Some(crate::pep440::normalize_specifier_set(rest)),
+        })
+    }
+}
+
+/// Deserialize through the same checks as [`Spec::parse`] — the IPC door, as for [`PkgName`].
+impl<'de> serde::Deserialize<'de> for Spec {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        #[serde(rename_all = "camelCase")]
+        struct Raw {
+            name: PkgName,
+            version_req: Option<String>,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        let version_req = match raw.version_req {
+            None => None,
+            Some(v) if crate::pep440::is_version(&v) => Some(v),
+            Some(v) if crate::pep440::is_specifier_set(&v) => {
+                Some(crate::pep440::normalize_specifier_set(&v))
+            }
+            Some(v) => {
+                return Err(serde::de::Error::custom(format!(
+                    "not a version specifier: {v:?}"
+                )));
+            }
+        };
+        Ok(Self {
+            name: raw.name,
+            version_req,
+        })
+    }
+}
+
 /// A resolved, exact `name==version` pair. Only these reach a mutating engine command.
-#[derive(
-    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
-)]
+#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, schemars::JsonSchema)]
 pub struct PinnedSpec {
     /// Normalized distribution name.
     pub name: PkgName,
@@ -232,10 +300,43 @@ pub struct PinnedSpec {
 }
 
 impl PinnedSpec {
-    /// Render as the `name==version` argv token.
+    /// Render as the argv token: `name==version`, or `name===version` for an installed version
+    /// that is not PEP 440 (packaging dropped `LegacyVersion`, so `==` would be refused).
+    ///
+    /// Every producer of a `PinnedSpec` admits only a [`crate::pep440::is_argv_safe`] version —
+    /// the parsers, the guard set, the snapshot reader and deserialization all check — so this
+    /// cannot render a marker, a URL or whitespace into one token.
     #[must_use]
     pub fn to_requirement(&self) -> String {
-        format!("{}=={}", self.name, self.version)
+        if crate::pep440::is_version(&self.version.0) {
+            format!("{}=={}", self.name, self.version)
+        } else {
+            format!("{}==={}", self.name, self.version)
+        }
+    }
+}
+
+/// Deserialize with the version checked, the same door [`PkgName`] closes for names.
+impl<'de> serde::Deserialize<'de> for PinnedSpec {
+    fn deserialize<D: serde::Deserializer<'de>>(
+        deserializer: D,
+    ) -> std::result::Result<Self, D::Error> {
+        #[derive(serde::Deserialize)]
+        struct Raw {
+            name: PkgName,
+            version: Version,
+        }
+        let raw = Raw::deserialize(deserializer)?;
+        if !crate::pep440::is_argv_safe(&raw.version.0) {
+            return Err(serde::de::Error::custom(format!(
+                "not a version: {:?}",
+                raw.version.0
+            )));
+        }
+        Ok(Self {
+            name: raw.name,
+            version: raw.version,
+        })
     }
 }
 
@@ -438,5 +539,42 @@ mod tests {
             version: Version("4.12.2".into()),
         };
         assert_eq!(spec.to_requirement(), "typing-extensions==4.12.2");
+    }
+
+    #[test]
+    fn a_spec_from_the_ipc_door_is_validated_like_one_from_a_parser() {
+        let ok: Spec = serde_json::from_str(r#"{"name":"Django","versionReq":">=5.0, <6"}"#)
+            .expect("a range deserializes");
+        assert_eq!(ok.name.as_str(), "django");
+        assert_eq!(ok.version_req.as_deref(), Some(">=5.0,<6"));
+
+        let bare: Spec = serde_json::from_str(r#"{"name":"idna","versionReq":"3.10"}"#)
+            .expect("a bare version deserializes");
+        assert_eq!(bare.version_req.as_deref(), Some("3.10"));
+
+        for junk in [
+            r#"{"name":"x","versionReq":"2.0 ; python_version<'0'"}"#,
+            r#"{"name":"x","versionReq":"--break-system-packages"}"#,
+        ] {
+            assert!(serde_json::from_str::<Spec>(junk).is_err(), "{junk}");
+        }
+    }
+
+    #[test]
+    fn a_pinned_spec_refuses_a_version_that_could_be_more_than_one() {
+        assert!(serde_json::from_str::<PinnedSpec>(r#"{"name":"x","version":"1.0 ; x"}"#).is_err());
+        let ok: PinnedSpec =
+            serde_json::from_str(r#"{"name":"x","version":"1.0"}"#).expect("a version");
+        assert_eq!(ok.to_requirement(), "x==1.0");
+    }
+
+    #[test]
+    fn a_legacy_installed_version_is_restated_with_arbitrary_equality() {
+        // packaging dropped LegacyVersion, so `==1.0-SNAPSHOT` is refused; `===` compares strings.
+        let spec = PinnedSpec {
+            name: PkgName::parse("old").expect("name"),
+            version: Version("1.0-SNAPSHOT".into()),
+        };
+        assert_eq!(spec.to_requirement(), "old===1.0-SNAPSHOT");
     }
 }

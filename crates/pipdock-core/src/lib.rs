@@ -37,6 +37,7 @@ pub mod graph;
 pub mod health;
 pub mod index;
 pub mod model;
+pub mod pep440;
 pub mod pins;
 pub mod plan;
 pub mod report;

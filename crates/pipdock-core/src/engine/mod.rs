@@ -297,6 +297,11 @@ pub fn plan_requirements(req: &PlanRequest, installed: &[crate::model::Dist]) ->
     installed
         .iter()
         .filter(|d| !moving.contains(&d.name))
+        // A version that could be read as more than a version — whitespace, a marker, a URL —
+        // never reaches argv. pip itself cannot install such a distribution, so restating it
+        // would only fail the resolve; leaving it out leaves it untouched, which is what a guard
+        // is for.
+        .filter(|d| crate::pep440::is_argv_safe(&d.version.0))
         .map(|d| PinnedSpec {
             name: d.name.clone(),
             version: d.version.clone(),
@@ -575,5 +580,33 @@ mod tests {
             strategy: Strategy::Compatible,
         };
         assert!(plan_requirements(&req, &[]).is_empty());
+    }
+
+    #[test]
+    fn the_guard_set_leaves_out_a_version_that_is_not_argv_safe() {
+        let installed = [
+            crate::model::Dist {
+                name: PkgName::parse("good").expect("name"),
+                version: crate::model::Version("1.0".into()),
+                requires_dist: Vec::new(),
+                requires_python: None,
+                size_bytes: None,
+            },
+            crate::model::Dist {
+                name: PkgName::parse("odd").expect("name"),
+                version: crate::model::Version("1.0 ; python_version < '0'".into()),
+                requires_dist: Vec::new(),
+                requires_python: None,
+                size_bytes: None,
+            },
+        ];
+        let req = PlanRequest {
+            upgrades: Vec::new(),
+            installs: Vec::new(),
+            strategy: crate::plan::Strategy::Compatible,
+        };
+        let guards = plan_requirements(&req, &installed);
+        assert_eq!(guards.len(), 1);
+        assert_eq!(guards[0].to_requirement(), "good==1.0");
     }
 }

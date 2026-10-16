@@ -426,14 +426,7 @@ fn validated_version(raw: &str) -> Result<Version> {
             format!("invalid version in tools-requirements.txt: {raw:?}"),
         )
     };
-    let bytes = raw.as_bytes();
-    if bytes.is_empty() || !bytes[0].is_ascii_alphanumeric() {
-        return Err(invalid());
-    }
-    if !bytes
-        .iter()
-        .all(|&b| b.is_ascii_alphanumeric() || matches!(b, b'.' | b'-' | b'_' | b'+' | b'!'))
-    {
+    if !crate::pep440::is_version(raw) {
         return Err(invalid());
     }
     Ok(Version(raw.to_owned()))
