@@ -344,11 +344,13 @@ enum SelfCommand {
     ReportBug,
 }
 
+mod log;
 mod run;
 
 #[tokio::main]
 async fn main() -> ExitCode {
     let cli = Cli::parse();
+    let log_path = log::init(&cli.global);
 
     let result = match &cli.command {
         Command::Env(EnvCommand::List) => run::env_list(&cli.global).await,
@@ -422,6 +424,8 @@ async fn main() -> ExitCode {
     match result {
         Ok(exit) => exit.into(),
         Err(e) => {
+            tracing::error!(target: "pipdock::cli", code = %e.code, message = %e.message, "failed");
+            let exit = run::exit_for(e.code);
             // ERROR-CATALOG §3: `error[PD-XXX-NNN]: <one-liner>` on stderr, or the JSON envelope.
             if cli.global.json {
                 println!(
@@ -438,7 +442,12 @@ async fn main() -> ExitCode {
                     eprintln!("{tail}");
                 }
             }
-            run::exit_for(e.code).into()
+            // CLI-SPEC §5: an internal error says where the log is. On stderr in both modes, so
+            // `--json`'s stdout stays the one envelope.
+            if exit == Exit::Internal {
+                eprintln!("log: {}", log_path.display());
+            }
+            exit.into()
         }
     }
 }

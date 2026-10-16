@@ -220,6 +220,7 @@ impl Command {
     /// user -- every caller turns a cancelled step into a *skipped* one -- while a timeout is
     /// `PD-ENG-004`, which callers on other paths (Code Health, the audit) remap to their own code.
     fn stopped(&self, stop: Stop) -> PdError {
+        tracing::warn!(target: "pipdock::exec", program = %self.program.display(), ?stop, "stopped");
         let program = self.program.display();
         match stop {
             Stop::Cancelled => PdError::new(Code::IntUnexpected, format!("cancelled: {program}")),
@@ -246,6 +247,7 @@ impl Command {
         } else {
             Code::EngNotFound
         };
+        tracing::warn!(target: "pipdock::exec", %program, error = %e, "could not start");
         PdError::new(code, format!("could not run {program}: {e}"))
     }
 
@@ -289,6 +291,7 @@ impl Command {
     /// # Errors
     /// `PD-ENG-001` when the program cannot be spawned, `PD-INT-001` when the watchdog fires.
     pub async fn run(&self) -> Result<Output> {
+        let started = self.logged_start();
         // Spawned rather than `.output()`ed, so the child can be put in a job before it is waited
         // on. `.output()` owns the child and never lends out a handle.
         let child = self.build().spawn().map_err(|e| self.spawn_error(&e))?;
@@ -310,11 +313,28 @@ impl Command {
                 format!("waiting on {} failed: {e}", self.program.display()),
             )
         })?;
+        self.logged_exit(started, out.status.code());
         Ok(Output {
             code: out.status.code(),
             stdout: String::from_utf8_lossy(&out.stdout).into_owned(),
             stderr: String::from_utf8_lossy(&out.stderr).into_owned(),
         })
+    }
+
+    /// The argv, at INFO: what PipDock ran is the first thing a bug report needs.
+    fn logged_start(&self) -> std::time::Instant {
+        tracing::info!(target: "pipdock::exec", argv = ?self.argv(), "spawn");
+        std::time::Instant::now()
+    }
+
+    fn logged_exit(&self, started: std::time::Instant, code: Option<i32>) {
+        tracing::info!(
+            target: "pipdock::exec",
+            program = %self.program.display(),
+            ?code,
+            ms = u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
+            "exited"
+        );
     }
 
     /// Run while streaming each output line to `sink`, for the live console drawer.
@@ -333,6 +353,7 @@ impl Command {
         // The step index comes from the caller's sink rather than a parameter: an adapter cannot
         // know its own position in the plan, which is why every call site used to pass 0.
         let step = sink.step;
+        let started = self.logged_start();
         let mut child = self.build().spawn().map_err(|e| self.spawn_error(&e))?;
         // Held until this function returns. Dropping it — which the timeout and cancel arms below
         // do by returning — terminates the whole tree, not just `child`.
@@ -370,6 +391,7 @@ impl Command {
         let status = status.map_err(|e| {
             PdError::new(Code::IntUnexpected, format!("waiting on child failed: {e}"))
         })?;
+        self.logged_exit(started, status.code());
 
         Ok(Output {
             code: status.code(),
@@ -410,6 +432,9 @@ async fn pump<R: AsyncRead + Unpin>(reader: Option<R>, tag: LineTag) -> String {
         }
         let text = String::from_utf8_lossy(&raw);
         let line = text.trim_end_matches(['\n', '\r']);
+        // The engine's own words, at DEBUG: everything a run printed is in the log when asked for
+        // (`PIPDOCK_LOG=debug`, `--verbose`), and a default log stays readable.
+        tracing::debug!(target: "pipdock::engine", stream = ?tag.stream, "{line}");
         // Send failure means the UI stopped listening; keep capturing regardless so the summary
         // and the log are still complete.
         let _ = tag.tx.send(ProgressEvent::Line {

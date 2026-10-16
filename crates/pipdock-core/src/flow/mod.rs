@@ -454,6 +454,17 @@ impl UpdateFlow {
                 .any(|m| m.pkg == h.pkg && m.version == h.latest)
         });
         plan::derive_forced(&mut report, &forced, &self.outdated, &self.graph);
+        tracing::info!(
+            target: "pipdock::flow",
+            plan = %self.plan_id,
+            round = self.round,
+            changes = report.changes.len(),
+            held_back = report.held_back.len(),
+            impossible = report.impossible.is_some(),
+            forced = forced.len(),
+            ruled_out = ruled_out.len(),
+            "resolved"
+        );
         let mut incompatible = self.left_out.clone();
         for m in ruled_out {
             if !incompatible.contains(&m) {
@@ -522,6 +533,7 @@ impl UpdateFlow {
             (self.clock)(),
         )?;
         let meta = snap.meta.clone();
+        tracing::info!(target: "pipdock::flow", plan = %self.plan_id, snapshot = %meta.id, "snapshot");
         self.snapshot = SnapshotState::Taken(Box::new(snap));
         Ok(Some(meta))
     }
@@ -539,7 +551,7 @@ impl UpdateFlow {
         // pinned-set length.
         let sink = ProgressSink::new(tx, 0, self.cancel.clone());
 
-        plan::execute(
+        let summary = plan::execute(
             self.engine.as_ref(),
             &self.env,
             &self.accepted(),
@@ -548,7 +560,9 @@ impl UpdateFlow {
             (self.clock)(),
             sink,
         )
-        .await
+        .await;
+        log_summary("update", &summary);
+        summary
     }
 
     /// The current preview as a plan, against the basis it was resolved over.
@@ -709,6 +723,26 @@ impl UpdateFlow {
                 )
             })
             .collect()
+    }
+}
+
+/// One line for every run that ended, or the error that ended it.
+fn log_summary(flow: &str, summary: &Result<crate::plan::ExecutionSummary>) {
+    match summary {
+        Ok(s) => tracing::info!(
+            target: "pipdock::flow",
+            flow,
+            plan = %s.plan_id,
+            ok = s.counts.ok,
+            failed = s.counts.failed,
+            skipped = s.counts.skipped,
+            cancelled = s.cancelled,
+            check_ok = s.check.ok,
+            "executed"
+        ),
+        Err(e) => {
+            tracing::warn!(target: "pipdock::flow", flow, code = %e.code, message = %e.message, "refused")
+        }
     }
 }
 
@@ -898,7 +932,7 @@ impl UninstallFlow {
             SnapshotState::Taken(snap) => snap.meta.id.clone(),
             _ => self.plan_id.clone(),
         };
-        plan::execute_uninstall(
+        let summary = plan::execute_uninstall(
             self.engine.as_ref(),
             &self.env,
             correlation,
@@ -907,7 +941,9 @@ impl UninstallFlow {
             sink,
             self.system,
         )
-        .await
+        .await;
+        log_summary("uninstall", &summary);
+        summary
     }
 
     /// The packages this flow will remove.
@@ -1064,7 +1100,7 @@ impl RollbackFlow {
             SnapshotState::Taken(snap) => snap.meta.id.clone(),
             _ => self.target_id.clone(),
         };
-        plan::execute_rollback(
+        let summary = plan::execute_rollback(
             self.engine.as_ref(),
             &self.env,
             correlation,
@@ -1073,7 +1109,9 @@ impl RollbackFlow {
             sink,
             self.system,
         )
-        .await
+        .await;
+        log_summary("rollback", &summary);
+        summary
     }
 
     /// Whether this flow passes `--break-system-packages` — so a head can say so, every time.
