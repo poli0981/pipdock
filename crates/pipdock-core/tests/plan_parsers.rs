@@ -22,6 +22,16 @@ fn fixtures_root() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures")
 }
 
+/// Every corpus of real engine output, newest uv first.
+///
+/// `uv-0.11/` is frozen: uv 0.13.0 replaced its miette rendering (`×`, `╰─▶`, "Caused by:") with
+/// "error:" / "cause:", and `UV_MIN_VERSION` is still 0.10, so users run both. The weekly drift
+/// job re-captures `pip/` and `uv/` only.
+const CORPORA: [&str; 3] = ["pip", "uv", "uv-0.11"];
+
+/// The uv corpora alone, for assertions about uv's channel and wording.
+const UV_CORPORA: [&str; 2] = ["uv", "uv-0.11"];
+
 struct Capture {
     stdout: String,
     stderr: String,
@@ -65,7 +75,7 @@ fn both_engines_agree_on_the_clean_upgrade() {
     // uv, must produce the same normalized change. That equivalence is the entire premise of the
     // Engine trait (ARCHITECTURE §3).
     let installed = [dist("idna", "3.4")];
-    for engine in ["pip", "uv"] {
+    for engine in CORPORA {
         let plan = parse(engine, "clean-upgrade", &installed);
         let idna = plan
             .report
@@ -78,7 +88,10 @@ fn both_engines_agree_on_the_clean_upgrade() {
             Some("3.4"),
             "{engine}"
         );
-        assert_eq!(idna.to.0, "3.18", "{engine}");
+        // The live corpora upgrade to a pinned idna==3.10; the frozen one was captured when the
+        // scenario still asked for "latest", which is the data drift `capture.py` now prevents.
+        let expected = if engine == "uv-0.11" { "3.18" } else { "3.10" };
+        assert_eq!(idna.to.0, expected, "{engine}");
         assert!(plan.report.is_clean(), "{engine}");
     }
 }
@@ -93,7 +106,7 @@ fn both_engines_plan_the_same_environment_breaking_upgrade() {
         dist("httpcore", "0.15.0"),
         dist("h11", "0.12.0"),
     ];
-    for engine in ["pip", "uv"] {
+    for engine in CORPORA {
         let plan = parse(engine, "held-back", &installed);
         let httpcore = plan
             .report
@@ -113,7 +126,7 @@ fn both_engines_produce_an_empty_plan_once_the_installed_set_is_restated() {
     // The other half of SP-1: with httpx restated as a requirement, the correct answer is "no
     // changes". This is what PipDock's planner relies on, so it is a regression gate.
     let installed = [dist("httpx", "0.23.0"), dist("httpcore", "0.15.0")];
-    for engine in ["pip", "uv"] {
+    for engine in CORPORA {
         let plan = parse(engine, "held-back-constrained", &installed);
         assert!(
             plan.report.changes.is_empty(),
@@ -125,17 +138,25 @@ fn both_engines_produce_an_empty_plan_once_the_installed_set_is_restated() {
 
 #[test]
 fn uv_impossibility_carries_an_explanation_a_user_can_act_on() {
-    let plan = parse("uv", "impossible", &[]);
-    let detail = plan.report.impossible.expect("uv reports impossibility");
+    for engine in UV_CORPORA {
+        let plan = parse(engine, "impossible", &[]);
+        let detail = plan
+            .report
+            .impossible
+            .unwrap_or_else(|| panic!("{engine} reports impossibility"));
 
-    // SP-1: uv names the blocking constraint where pip does not. That advantage is the reason the
-    // preview can explain a conflict at all under uv, so assert the substance is present.
-    assert!(
-        detail.explanation.contains("httpcore>=0.15.0,<0.16.0"),
-        "lost the constraint: {}",
-        detail.explanation
-    );
-    assert!(detail.packages.iter().any(|p| p.as_str() == "httpx"));
+        // SP-1: uv names the blocking constraint where pip does not. That advantage is the reason
+        // the preview can explain a conflict at all under uv, so assert the substance is present.
+        assert!(
+            detail.explanation.contains("httpcore>=0.15.0,<0.16.0"),
+            "{engine} lost the constraint: {}",
+            detail.explanation
+        );
+        assert!(
+            detail.packages.iter().any(|p| p.as_str() == "httpx"),
+            "{engine}"
+        );
+    }
 }
 
 #[test]
@@ -152,7 +173,7 @@ fn pip_impossibility_is_recognised_even_though_it_says_less() {
 #[test]
 fn both_engines_flag_the_yanked_release_without_failing() {
     // SP-2: a yank exits 0 in both engines. The plan is valid; the warning rides alongside it.
-    for engine in ["pip", "uv"] {
+    for engine in CORPORA {
         let plan = parse(engine, "yanked", &[]);
         assert_eq!(
             plan.yanked.len(),
@@ -201,7 +222,7 @@ fn every_successful_capture_parses() {
         "yanked",
         "requires-python",
     ];
-    for engine in ["pip", "uv"] {
+    for engine in CORPORA {
         for scenario in scenarios {
             let Some(cap) = load(engine, scenario) else {
                 continue;
@@ -223,27 +244,29 @@ fn uv_scenarios_all_arrive_on_stderr() {
     // SP-1's channel finding, guarded: if a future uv moves the plan to stdout, this fails and the
     // adapter's stdout fallback needs promoting to the primary path.
     let mut checked = 0;
-    for scenario in [
-        "clean-upgrade",
-        "held-back",
-        "held-back-constrained",
-        "yanked",
-    ] {
-        let Some(cap) = load("uv", scenario) else {
-            continue;
-        };
-        assert!(
-            cap.stdout.trim().is_empty(),
-            "uv/{scenario} now writes to stdout"
-        );
-        assert!(
-            !cap.stderr.trim().is_empty(),
-            "uv/{scenario} wrote nothing to stderr"
-        );
-        checked += 1;
+    for engine in UV_CORPORA {
+        for scenario in [
+            "clean-upgrade",
+            "held-back",
+            "held-back-constrained",
+            "yanked",
+        ] {
+            let Some(cap) = load(engine, scenario) else {
+                continue;
+            };
+            assert!(
+                cap.stdout.trim().is_empty(),
+                "{engine}/{scenario} now writes to stdout"
+            );
+            assert!(
+                !cap.stderr.trim().is_empty(),
+                "{engine}/{scenario} wrote nothing to stderr"
+            );
+            checked += 1;
+        }
     }
     assert!(
-        checked >= 4,
-        "expected at least four uv fixtures, saw {checked}"
+        checked >= 8,
+        "expected four fixtures per uv corpus, saw {checked}"
     );
 }

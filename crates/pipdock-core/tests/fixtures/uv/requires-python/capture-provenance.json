@@ -1,9 +1,9 @@
 {
   "scenario": "requires-python",
-  "engine_version": "uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)",
+  "engine_version": "uv 0.13.1 (62faed335 2026-10-13 x86_64-pc-windows-msvc)",
   "python": "Python 3.12.10",
   "argv": [
-    "<PATH>\\uv.exe",
+    ".uvtools\\Scripts\\uv.exe",
     "pip",
     "install",
     "-U",
@@ -14,5 +14,5 @@
     "<WORK>\\venv\\Scripts\\python.exe"
   ],
   "stdout_bytes": 0,
-  "stderr_bytes": 219
+  "stderr_bytes": 223
 }

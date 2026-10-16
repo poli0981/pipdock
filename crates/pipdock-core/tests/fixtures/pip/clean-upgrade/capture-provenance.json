@@ -1,6 +1,6 @@
 {
   "scenario": "clean-upgrade",
-  "engine_version": "pip 25.0.1 (python 3.12)",
+  "engine_version": "pip 26.2.1 (python 3.12)",
   "python": "Python 3.12.10",
   "argv": [
     "<WORK>\\venv\\Scripts\\python.exe",
@@ -13,8 +13,8 @@
     "--quiet",
     "--report",
     "-",
-    "idna"
+    "idna==3.10"
   ],
-  "stdout_bytes": 7526,
-  "stderr_bytes": 203
+  "stdout_bytes": 11559,
+  "stderr_bytes": 0
 }

@@ -1,6 +1,6 @@
 {
   "scenario": "requires-python",
-  "engine_version": "pip 25.0.1 (python 3.12)",
+  "engine_version": "pip 26.2.1 (python 3.12)",
   "python": "Python 3.12.10",
   "argv": [
     "<WORK>\\venv\\Scripts\\python.exe",
@@ -16,5 +16,5 @@
     "scipy==1.7.3"
   ],
   "stdout_bytes": 0,
-  "stderr_bytes": 1066
+  "stderr_bytes": 1713
 }

@@ -1,15 +1,15 @@
 {
   "version": "1",
-  "pip_version": "25.0.1",
+  "pip_version": "<PIP>",
   "install": [
     {
       "download_info": {
         "url": "https://files.pythonhosted.org/packages/ca/25/fe81738a115a2f1005b19bd69b6253b7b5cd6c9119164f13f02ec627fc41/urllib3-2.0.0-py3-none-any.whl",
         "archive_info": {
-          "hash": "sha256=8f7f917bc6ff1c021c4b7b677229c455a7612878748581f6de39fd45e4fa21ae",
           "hashes": {
             "sha256": "8f7f917bc6ff1c021c4b7b677229c455a7612878748581f6de39fd45e4fa21ae"
-          }
+          },
+          "hash": "sha256=8f7f917bc6ff1c021c4b7b677229c455a7612878748581f6de39fd45e4fa21ae"
         }
       },
       "is_direct": false,
