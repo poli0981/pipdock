@@ -717,16 +717,12 @@ pub async fn plan_decide(
         }
     };
 
-    match flow.decide(&parsed).await {
-        Ok(step) => {
-            state.park(Session::Update(flow)).await;
-            Ok(step)
-        }
-        Err(e) => {
-            state.release().await;
-            Err(e.into())
-        }
-    }
+    // Parked either way. A failed re-resolve leaves the flow as it was (`UpdateFlow::decide`), so
+    // the preview on screen is still a plan that can be decided again or confirmed; releasing it
+    // here left a preview whose Confirm answered "no plan" (U24).
+    let step = flow.decide(&parsed).await;
+    state.park(Session::Update(flow)).await;
+    Ok(step?)
 }
 
 /// Take the snapshot, then run the plan (ARCHITECTURE §8's two phases).

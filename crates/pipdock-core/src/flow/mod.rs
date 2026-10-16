@@ -249,6 +249,8 @@ pub struct UpdateFlow {
     /// Pins left out because this environment's Python cannot install them — every report this
     /// flow produces says so (`PD-PKG-001`).
     left_out: Vec<PythonMismatch>,
+    /// `Hold` pins, restated at their version in every resolve (PRD P0-7, H17).
+    holds: Vec<PinnedSpec>,
     cancel: CancellationToken,
     clock: fn() -> jiff::Timestamp,
 }
@@ -280,7 +282,12 @@ impl UpdateFlow {
         // Built against this interpreter so marker-gated requirements are read correctly: without
         // it a `python_version < "3.11"` branch is reported as a blocker on 3.12 (SP-5 dogfood).
         let graph = ReverseDeps::for_probe(&probed);
-        let outdated = engine.list_outdated(&env).await?;
+        // `list --outdated` asks the index about every installed package — tens of seconds on a
+        // large environment — and an install uses none of it (M28).
+        let outdated = match intent {
+            Intent::Update { .. } => engine.list_outdated(&env).await?,
+            Intent::Install { .. } => Vec::new(),
+        };
         let (req, excluded_pins) = build_request(intent, &outdated, pins)?;
         // Unique per plan: the snapshot's trigger and the summary carry it, and "update-<env>"
         // alone named every plan ever made for one environment the same.
@@ -304,6 +311,7 @@ impl UpdateFlow {
             system,
             releases: opts.releases,
             left_out: Vec::new(),
+            holds: pins::hold_requirements(pins),
             cancel: opts.cancel,
             clock: opts.clock,
         };
@@ -340,6 +348,7 @@ impl UpdateFlow {
             });
         }
 
+        let before = (self.req.clone(), self.round);
         self.req = plan::apply_decisions(&self.req, decisions);
         self.round = self.round.saturating_add(1);
 
@@ -349,7 +358,14 @@ impl UpdateFlow {
             });
         }
 
-        self.resolve().await
+        // A failed re-resolve leaves the flow exactly as it was: the preview on screen still
+        // describes it, and can be decided again or confirmed (U24). It used to keep the new
+        // request beside the old report, which no longer described each other.
+        let step = self.resolve().await;
+        if step.is_err() {
+            (self.req, self.round) = before;
+        }
+        step
     }
 
     /// Resolve the current request and classify what the caller must do next.
@@ -373,6 +389,14 @@ impl UpdateFlow {
                 exclude: Vec::new(),
             }
         };
+        // A `Hold` pin is "fixed at this version", so every plan says so. `hold_requirements`
+        // existed for this and nothing called it: a held package was only left out of the
+        // upgrade list, and free to move as anyone's dependency (H17).
+        for hold in &self.holds {
+            if !adjust.pins.iter().any(|p| p.name == hold.name) {
+                adjust.pins.push(hold.clone());
+            }
+        }
 
         let mut rounds = 0;
         let mut python_rounds = 0;
@@ -394,7 +418,8 @@ impl UpdateFlow {
                 }
                 Err(e) => return Err(e),
             };
-            let collisions = plan::forced_collisions(&report, &adjust, &self.req, &self.installed);
+            let collisions =
+                plan::forced_collisions(&report, &adjust, &forced, &self.req, &self.installed);
             if !collisions.is_empty() && rounds < plan::FORCE_RELEASE_ROUNDS {
                 adjust.release.extend(collisions);
                 rounds += 1;
@@ -966,7 +991,8 @@ impl RollbackFlow {
         let (_, system) = preamble(engine.as_ref(), &mut env, &opts).await?;
         let current_freeze = engine.freeze(&env).await?;
         let current = snapshot::parse_freeze(&current_freeze);
-        let diff = snapshot::diff(&current, &target.entries());
+        let diff =
+            snapshot::restorable_diff(&current, &target.entries(), target.meta.engine, engine.id());
         let restore = snapshot::rollback_plan(&diff);
 
         let preview = RollbackPreview {

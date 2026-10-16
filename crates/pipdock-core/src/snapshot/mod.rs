@@ -266,6 +266,37 @@ pub fn diff(current: &BTreeMap<PkgName, Version>, snapshot: &BTreeMap<PkgName, V
     out
 }
 
+/// The packages an engine manages for itself, which a rollback reasons about apart.
+pub const BOOTSTRAP: [&str; 3] = ["pip", "setuptools", "wheel"];
+
+/// [`diff`], made safe to restore with `restoring_with` a snapshot taken with `taken_with`.
+///
+/// uv's freeze has no `--all`, so a uv snapshot never lists pip, setuptools or wheel. Compared
+/// with pip's freeze, which does, every one of them looked *added since the snapshot* — and the
+/// restore uninstalled pip from the environment (C7). `Meta::engine` was recorded for exactly
+/// this and read by nothing. Across engines those three are left out of the comparison; and
+/// whichever engine, **a rollback never removes pip**: a snapshot taken before pip arrived would
+/// otherwise take away the tool the next plan needs.
+#[must_use]
+pub fn restorable_diff(
+    current: &BTreeMap<PkgName, Version>,
+    snapshot: &BTreeMap<PkgName, Version>,
+    taken_with: crate::model::EngineId,
+    restoring_with: crate::model::EngineId,
+) -> Diff {
+    let comparable =
+        |name: &PkgName| taken_with == restoring_with || !BOOTSTRAP.contains(&name.as_str());
+    let only = |set: &BTreeMap<PkgName, Version>| -> BTreeMap<PkgName, Version> {
+        set.iter()
+            .filter(|(name, _)| comparable(name))
+            .map(|(n, v)| (n.clone(), v.clone()))
+            .collect()
+    };
+    let mut out = diff(&only(current), &only(snapshot));
+    out.added.retain(|s| s.name.as_str() != "pip");
+    out
+}
+
 /// The operations that would restore a snapshot.
 #[derive(
     Debug, Clone, Default, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
@@ -757,5 +788,64 @@ mod tests {
             unrestorable_lines(freeze),
             vec!["odd==1.0 ; python_version < '0'".to_owned()]
         );
+    }
+
+    #[test]
+    fn a_snapshot_from_the_other_engine_is_compared_without_what_engines_manage() {
+        use crate::model::EngineId;
+        let pins = |text: &str| parse_freeze(text);
+        let now = pins(
+            "pip==26.2.1
+setuptools==80.9.0
+wheel==0.45.1
+idna==3.4
+",
+        );
+        let by_uv = pins(
+            "idna==3.2
+",
+        );
+        let d = restorable_diff(&now, &by_uv, EngineId::Uv, EngineId::Pip);
+        assert!(
+            d.added.is_empty(),
+            "pip, setuptools, wheel are not 'added since': {d:?}"
+        );
+        assert_eq!(d.changed.len(), 1);
+
+        // The other way round, pip's snapshot does not make uv reinstall an old pip.
+        let by_pip = pins(
+            "pip==24.0
+idna==3.2
+",
+        );
+        let d = restorable_diff(
+            &pins(
+                "idna==3.4
+",
+            ),
+            &by_pip,
+            EngineId::Pip,
+            EngineId::Uv,
+        );
+        assert!(d.removed.is_empty(), "{d:?}");
+
+        // Same engine, a snapshot from before pip arrived: setuptools may go, pip never does.
+        let before_pip = pins(
+            "idna==3.4
+",
+        );
+        let d = restorable_diff(
+            &pins(
+                "pip==26.2.1
+setuptools==80.9.0
+idna==3.4
+",
+            ),
+            &before_pip,
+            EngineId::Pip,
+            EngineId::Pip,
+        );
+        let added: Vec<&str> = d.added.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(added, ["setuptools"]);
     }
 }
