@@ -954,7 +954,15 @@ pub async fn snapshot_diff(
     let hash = envs::env_hash(&env.interpreter);
     let snap = snapshot::load(&state.app_data, &hash, &id)?;
     let current = snapshot::parse_freeze(&engine.freeze(&env).await?);
-    Ok(snapshot::diff(&current, &snap.entries()))
+    // What a rollback with this engine would see, as the CLI's `snapshot diff` and the rollback
+    // itself do. A plain diff here showed pip and setuptools as changes across engines that the
+    // rollback, rightly, would never touch — the two heads disagreed (G5).
+    Ok(snapshot::restorable_diff(
+        &current,
+        &snap.entries(),
+        snap.meta.engine,
+        engine.id(),
+    ))
 }
 
 /// What restoring a snapshot would do, parking the flow that would do it (DATA-FLOW §8).

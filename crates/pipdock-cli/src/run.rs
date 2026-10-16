@@ -26,10 +26,10 @@ use pipdock_core::{health, index, pins, plan, report, settings, snapshot};
 
 use crate::{EngineArg, Exit, GlobalOpts, ToolArg};
 
-/// Resolve which engine to drive.
+/// Resolve which engine to drive: `--engine` for one invocation, else the configured one.
 ///
-/// ARCHITECTURE §3: first run probes `uv --version` on PATH and preselects uv when present. The
-/// `--engine` flag overrides for one invocation.
+/// ARCHITECTURE §3 describes a first run that probes for uv and preselects it; neither head does
+/// that yet (Audit backlog X19), and this deliberately does not — see the comment below.
 #[must_use]
 pub fn engine_for(opts: &GlobalOpts) -> Box<dyn Engine> {
     let id = match opts.engine {
@@ -963,6 +963,16 @@ fn preview_text(report: &plan::ResolutionReport) -> String {
             }
         }
     }
+    if !report.yanked.is_empty() {
+        // PD-PKG-003 is a warning, not a failure (SP-2). Shown in JSON only until 1.4.0.
+        line!("\nWithdrawn releases (yanked):");
+        for y in &report.yanked {
+            match &y.reason {
+                Some(reason) => line!("  {} {} — {reason}", y.pkg, y.version),
+                None => line!("  {} {}", y.pkg, y.version),
+            }
+        }
+    }
     if let Some(detail) = &report.impossible {
         line!("\nImpossible:");
         line!("  {}", detail.explanation);
@@ -1086,8 +1096,8 @@ pub async fn tools_sync(opts: &GlobalOpts, force: bool, python: Option<&Path>) -
         }
     });
 
-    // A fresh token nothing trips, matching every other CLI path: the CLI installs no Ctrl-C
-    // handler, and the flows build their own tokens for the GUI's `plan_cancel` to reach. Killing
+    // A fresh token nothing trips: only the mutating commands install a Ctrl-C handler, and a
+    // sync is not one of them, so Ctrl-C ends the process and the sync with it. Killing
     // the process still tears the tree down — `exec::TreeGuard`'s job object closes with the last
     // handle — which is verified rather than assumed: a killed sync leaves no orphan pip.
     let sink = engine::ProgressSink::new(
@@ -1383,8 +1393,10 @@ pub async fn health(
 /// `--yes` means "assume defaults", and **the default over uncommitted work is don't**. A clean
 /// tree proceeds: one `git checkout .` puts it back, so an unattended fix there is recoverable,
 /// and refusing would make `--fix` useless in the pre-commit hook the exit-code rule was written
-/// for. A dirty tree — or no repository at all — refuses with exit 2, because those are the cases
-/// where a script could destroy work with no way back.
+/// for. A dirty tree refuses with exit 2, because that is where a script could destroy work with
+/// no way back. **Outside a repository `--yes` proceeds**: `fix::dirty` answers `None` both for a
+/// clean tree and for no repository, so the two cannot be told apart here. Refusing there too is in
+/// ROADMAP's Audit backlog; this comment used to claim it already did.
 ///
 /// The escape hatch is deliberately **not a flag**. It is `git commit` or `git stash`, which is the
 /// actual remedy and leaves the user something to return to; a `--force-fix` would exist only to be
@@ -1429,7 +1441,8 @@ async fn apply_fix(
         true
     } else if interactive {
         if let Some(tree) = dirty {
-            println!(
+            // stderr, with the prompt it introduces: under `--json` stdout carries one document.
+            eprintln!(
                 "\n{} uncommitted change(s) in this repository. PipDock cannot undo a fix, and \
                  `git checkout .` would take your own edits with it.",
                 tree.entries
@@ -2202,13 +2215,23 @@ pub async fn engine_status(opts: &GlobalOpts) -> Result<Exit> {
         print_json(&[&pip, &uv]);
         return Ok(Exit::Success);
     }
+    // The help has always said this command shows the current engine; it listed both and never
+    // said which one PipDock would use.
+    let configured = Store::open(&app_data_dir())
+        .and_then(|store| settings::load(&store))
+        .map_or(EngineId::Pip, |s| s.engine);
     for info in [&pip, &uv] {
         let detail = match (&info.version, info.id, &env) {
             (Some(v), _, _) => v.clone(),
             (None, EngineId::Pip, None) => "no environment selected".to_owned(),
             (None, _, _) => "not available".to_owned(),
         };
-        println!("{:<4} {detail}", info.id.as_str());
+        let mark = if info.id == configured {
+            "  (configured)"
+        } else {
+            ""
+        };
+        println!("{:<4} {detail}{mark}", info.id.as_str());
     }
     Ok(Exit::Success)
 }

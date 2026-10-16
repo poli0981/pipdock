@@ -63,8 +63,8 @@ impl ParsedPlan {
 ///
 /// # Errors
 /// `PD-ENG-002` when stdout is empty, which is what pip leaves behind when it is too old for
-/// `--report` **or** when the SP-2 encoding crash struck; `PD-ENG-003` when the JSON is present
-/// but not the shape we know.
+/// `--report` **or** when the SP-2 encoding crash struck; `PD-ENG-999` when the JSON is present
+/// but not the shape we know — not `PD-ENG-003`, whose advice is to switch to pip.
 pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedPlan> {
     // Checked before anything is parsed, because the SP-2 crash does not leave stdout empty — it
     // leaves a *truncated* report, written up to the byte that could not be encoded. That is more

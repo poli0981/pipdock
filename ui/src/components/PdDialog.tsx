@@ -79,7 +79,10 @@ export function PdDialog({
         e.preventDefault()
         if (!busy) onCancel()
       }}
-      className="max-w-lg rounded-pd border border-border bg-surface p-6 text-text backdrop:bg-bg/80"
+      // `m-auto`: Tailwind's preflight sets `margin: 0` on everything, which removes the
+      // `margin: auto` a modal <dialog> is centred by — so every dialog opened in the window's
+      // top-left corner. Seen in the installed build; jsdom computes no layout to show it.
+      className="m-auto max-w-lg rounded-pd border border-border bg-surface p-6 text-text backdrop:bg-bg/80"
     >
       <h2 className="text-accent">{title}</h2>
       <div className="mt-3 text-data">{children}</div>

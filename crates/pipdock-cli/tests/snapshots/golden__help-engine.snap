@@ -8,7 +8,7 @@ Usage: pipdock engine [OPTIONS] [ENGINE]
 
 Arguments:
   [ENGINE]
-          Engine to switch to; omit to print the current one
+          Engine to switch to; omit to list both, with versions, marking the configured one
 
           Possible values:
           - pip: `<python> -m pip`
@@ -19,19 +19,21 @@ Options:
           Interpreter or environment directory. Defaults to the one `env use` set, else an auto-detected `.venv` in the working directory
 
       --json
-          Machine-readable output; NDJSON for streaming commands
+          Machine-readable output: exactly one JSON document on stdout (CLI-SPEC §6).
+          
+          Prompts, warnings and engine output go to stderr. This said "NDJSON for streaming commands" until [VERSION], when several commands printed several documents.
 
   -y, --yes
-          Assume defaults on all prompts. Conflicts resolve to *skip*, never *force*
+          Assume the default at every prompt: a held-back package keeps its compatible version and an impossible one is skipped. Only `--strategy latest` forces
 
       --quiet
-          Reduce log output
+          Do not stream engine output to stderr. (The log file is written regardless.)
 
       --verbose
-          Increase log output
+          Also write the log to stderr, at debug level
 
       --log-file <PATH>
-          Tee logs to a file
+          Also write the log to this file. The daily log in `data\logs\` is always kept
 
       --no-snapshot
           DANGEROUS: skip the pre-batch snapshot. CI images only; prints a warning.

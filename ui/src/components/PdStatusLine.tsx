@@ -40,9 +40,9 @@ export function PdStatusLine() {
       <span aria-hidden="true">{'·'}</span>
       <span aria-live="polite">{scanning ? t('status.scanning') : t('status.idle')}</span>
 
-      {/* §3 draws a log toggle here and it has been plain text since S1 — a control that looks
-          like one and does nothing. It opens the console drawer, which is the only log surface
-          that exists until M3's logging subsystem; disabled when there is no run to show. */}
+      {/* §3 draws a log toggle here and it was plain text from S1 — a control that looked like
+          one and did nothing. It opens the console drawer for the run in progress, and is disabled
+          when there is none. The persistent log is a file since 1.4.0 (Settings → Logs). */}
       <button
         type="button"
         onClick={() => {

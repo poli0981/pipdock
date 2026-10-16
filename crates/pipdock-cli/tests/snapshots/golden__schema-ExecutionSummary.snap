@@ -370,7 +370,7 @@ expression: out
   "properties": {
     "cancelled": {
       "default": false,
-      "description": "True when the user stopped this run part-way.\n\nARCHITECTURE §7 words this as `Skipped(UserCancelled)`, but [`StepStatus`] is a\npayload-free enum and giving it one changes the wire shape for every consumer. A flag on\nthe summary also matches what the summary sheet actually needs: \"cancelled\" is said once\nat the top, not repeated on forty rows.\n\nSteps that never ran are `Skipped`, which is already the honest status for them.",
+      "description": "True when the user stopped this run part-way.\n\nDATA-FLOW §3 used to word this as `Skipped(UserCancelled)`, but [`StepStatus`] is a\npayload-free enum and giving it one changes the wire shape for every consumer. A flag on\nthe summary also matches what the summary sheet actually needs: \"cancelled\" is said once\nat the top, not repeated on forty rows.\n\nSteps that never ran are `Skipped`, which is already the honest status for them.",
       "type": "boolean"
     },
     "check": {

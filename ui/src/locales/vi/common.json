@@ -47,7 +47,7 @@
     "pipUpgradeNoSnapshot": "Không tạo bản chụp: khôi phục nó sẽ cần chính pip đang được thay thế.",
     "title": "Môi trường",
     "empty": "không tìm thấy môi trường Python nào",
-    "emptyHint": "Hãy cài Python, hoặc dùng Duyệt… để chọn một trình thông dịch.",
+    "emptyHint": "Hãy cài Python, hoặc tạo một môi trường ảo tên .venv, venv, env hoặc .env trong thư mục này.",
     "scanning": "Đang tìm môi trường…",
     "scanPhase": {
       "registry": "Đang đọc registry của Windows",
@@ -81,8 +81,8 @@
     "badge": {
       "update": "UPDATE",
       "pinned": "đã ghim",
-      "pinnedDetail": "Đã ghim: không nằm trong các lần cập nhật hàng loạt. Bạn vẫn có thể cập nhật riêng gói này.",
-      "heldDetail": "Giữ ở {{version}}: không nằm trong cập nhật hàng loạt, và luôn được giữ ở phiên bản này trong mọi kế hoạch."
+      "pinnedDetail": "Đã ghim: không nằm trong bất kỳ lần cập nhật nào, kể cả khi được chọn đích danh. Bỏ ghim để cập nhật.",
+      "heldDetail": "Giữ ở {{version}}: luôn giữ phiên bản này trong mọi kế hoạch, kể cả khi được chọn đích danh."
     },
     "actions": {
       "pin": "Ghim gói này",
@@ -414,7 +414,7 @@
     "docsHash": "Tài liệu pháp lý",
     "docsHashDetail": "Việc bạn chấp nhận được ghi lại kèm giá trị này. Sửa bất kỳ tài liệu nào cũng làm nó đổi, và màn hình chấp nhận sẽ hiện lại một lần ở lần mở tiếp theo.",
     "aiTitle": "Ứng dụng này được làm ra thế nào",
-    "aiBody": "PipDock được viết với sự hỗ trợ đáng kể của một trợ lý lập trình AI — Claude Opus 5, do Anthropic phát triển — dưới sự rà soát của con người. Nó viết mã nguồn, kiểm thử và bản dịch; mọi thay đổi đều do người bảo trì đọc và hợp nhất, và bản dựng hoàn chỉnh được chạy tay trước khi phát hành. Bản quyền và giấy phép GPL-3.0-only không thay đổi.",
+    "aiBody": "PipDock được viết với sự hỗ trợ đáng kể của một trợ lý lập trình AI — Claude Opus 5, và từ 1.4.0 là Claude Opus 5.5, do Anthropic phát triển — dưới sự rà soát của con người. Nó viết mã nguồn, kiểm thử và bản dịch. Người bảo trì quyết định những gì được phát hành: tới 1.3.0, họ tự đọc và hợp nhất mọi thay đổi; bản 1.4.0 do trợ lý phát hành theo chỉ thị bằng văn bản của họ, sau khi các bước kiểm tra đã đạt. Bản quyền và giấy phép GPL-3.0-only không thay đổi.",
     "aiRead": "Đọc bản công bố đầy đủ",
     "openRepo": "Mở kho mã nguồn",
     "reopen": "Xem lại các tài liệu",

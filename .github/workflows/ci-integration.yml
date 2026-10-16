@@ -82,6 +82,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       - name: Setup Python ${{ matrix.python }}
         uses: actions/setup-python@v7
@@ -399,6 +401,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v7
+        with:
+          persist-credentials: false
 
       # An exact patch, on purpose. pip's report records `python_full_version` and uv prints "Using
       # Python 3.12.x environment", so a floating `3.12` turns every runner-image Python bump into

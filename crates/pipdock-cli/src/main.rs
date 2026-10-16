@@ -99,23 +99,27 @@ pub struct GlobalOpts {
     #[arg(long, global = true, value_enum)]
     pub engine: Option<EngineArg>,
 
-    /// Machine-readable output; NDJSON for streaming commands.
+    /// Machine-readable output: exactly one JSON document on stdout (CLI-SPEC §6).
+    ///
+    /// Prompts, warnings and engine output go to stderr. This said "NDJSON for streaming
+    /// commands" until 1.4.0, when several commands printed several documents.
     #[arg(long, global = true)]
     pub json: bool,
 
-    /// Assume defaults on all prompts. Conflicts resolve to *skip*, never *force*.
+    /// Assume the default at every prompt: a held-back package keeps its compatible version and
+    /// an impossible one is skipped. Only `--strategy latest` forces.
     #[arg(long, short = 'y', global = true)]
     pub yes: bool,
 
-    /// Reduce log output.
+    /// Do not stream engine output to stderr. (The log file is written regardless.)
     #[arg(long, global = true, conflicts_with = "verbose")]
     pub quiet: bool,
 
-    /// Increase log output.
+    /// Also write the log to stderr, at debug level.
     #[arg(long, global = true)]
     pub verbose: bool,
 
-    /// Tee logs to a file.
+    /// Also write the log to this file. The daily log in `data\logs\` is always kept.
     #[arg(long, global = true, value_name = "PATH")]
     pub log_file: Option<PathBuf>,
 
@@ -174,7 +178,7 @@ enum Command {
 
     /// Install packages.
     Install {
-        /// `name` or `name==version`.
+        /// A name with an optional PEP 440 specifier: `six`, `six==1.16.0`, `"six>=1.16,<2"`.
         #[arg(required = true)]
         specs: Vec<String>,
         /// Print the resolution report and exit without changing anything.
@@ -246,7 +250,7 @@ enum Command {
 
     /// Show or set the configured engine.
     Engine {
-        /// Engine to switch to; omit to print the current one.
+        /// Engine to switch to; omit to list both, with versions, marking the configured one.
         engine: Option<EngineArg>,
     },
 
@@ -503,7 +507,7 @@ mod tests {
             "--yes",
             "--json",
             "--log-file",
-            r"C:\logs\pd.json",
+            r"C:\logs\pd.log",
         ])
         .expect("nightly maintenance example");
 

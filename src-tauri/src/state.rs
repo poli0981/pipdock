@@ -511,15 +511,22 @@ impl AppState {
         })
     }
 
-    /// Claim the index slot for a load, if one is not already done or running.
+    /// Claim the index slot for a load, if one has not been tried yet.
     ///
     /// Returns `true` when the caller is now responsible for loading. Idempotent, so calling it on
     /// every Search render is harmless — which is what lets the screen ask without coordinating.
+    ///
+    /// **Only from `Cold`.** A failed load stays failed until a refresh clears it
+    /// ([`Self::invalidate_index`]) or the app restarts. This used to restart from `Failed` too,
+    /// which flipped the slot back to `Warming` *before* the search could report why — so on a
+    /// profile that had never downloaded the index, every answer said "warming", the screen asked
+    /// again every 150 ms, and the prompt to download the index never appeared. Found by running
+    /// the installed 1.4.0 build on a fresh profile.
     pub fn begin_index_load(&self) -> bool {
         let Ok(mut slot) = self.index.lock() else {
             return false;
         };
-        if matches!(*slot, IndexSlot::Cold | IndexSlot::Failed(_)) {
+        if matches!(*slot, IndexSlot::Cold) {
             *slot = IndexSlot::Warming;
             return true;
         }
@@ -584,6 +591,53 @@ mod tests {
     /// real interpreter to probe — and the protocol is what has the bugs, not the payload.
     fn sessions() -> Sessions<u32> {
         Sessions::default()
+    }
+
+    /// An `AppState` over a store in a fresh temporary directory.
+    fn app_state(tag: &str) -> (AppState, PathBuf) {
+        let dir = std::env::temp_dir().join(format!("pipdock-state-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let store = Store::open(&dir).expect("a store in a temp dir");
+        let state = AppState {
+            app_data: dir.clone(),
+            store: tokio::sync::Mutex::new(store),
+            index: std::sync::Mutex::new(IndexSlot::Cold),
+            sessions: Sessions::default(),
+            health: Sessions::default(),
+            audit: Sessions::default(),
+            log: std::sync::Arc::new(LogRing::default()),
+        };
+        (state, dir)
+    }
+
+    #[test]
+    fn a_failed_index_load_says_why_rather_than_warming_forever() {
+        let (state, dir) = app_state("index");
+        assert!(state.begin_index_load(), "the first search starts a load");
+        state.finish_index_load(Err(pipdock_core::PdError::new(
+            Code::NetIndexRefreshFailed,
+            "the package index is empty",
+        )));
+
+        // The next search must not restart it: restarting reset the slot to Warming before the
+        // failure could be read, and the screen showed "warming" for ever on a fresh profile.
+        assert!(
+            !state.begin_index_load(),
+            "a failed load is not retried by a search"
+        );
+        assert_eq!(
+            state.index_failure().as_deref(),
+            Some("the package index is empty")
+        );
+
+        // A refresh is what clears it.
+        state.invalidate_index();
+        assert!(
+            state.begin_index_load(),
+            "after a refresh the next search loads again"
+        );
+        drop(state);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

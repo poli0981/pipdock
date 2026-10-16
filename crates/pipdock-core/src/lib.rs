@@ -34,11 +34,11 @@ pub mod exec;
 // reads them, so they are not compiled into one.
 #[cfg(any(test, feature = "fixtures"))]
 pub mod fixtures;
-// build.rs's legal-documents hash, compiled here only so its tests run with the others.
 pub mod flow;
 pub mod graph;
 pub mod health;
 pub mod index;
+// build.rs's legal-documents hash, compiled here only so its tests run with the others.
 #[cfg(test)]
 mod legal_hash;
 pub mod logging;

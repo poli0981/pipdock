@@ -260,8 +260,8 @@ pub async fn recheck(
 /// and `RuffFindings.fixable` counts only `Safe` for the same reason — the number in the dialog
 /// has to be the number the fix delivers.
 ///
-/// **`ruff format` is deliberately not wired.** §4's `--check` toggle is read-only and stays
-/// default-off. Formatting a whole project is a far larger blast radius than fixing seventeen lint
+/// **`ruff format` is deliberately not wired**, not even as a check (CODE-HEALTH-SPEC §1).
+/// Formatting a whole project is a far larger blast radius than fixing seventeen lint
 /// findings, and §7's non-goals are contractual per ROADMAP's standing risks.
 ///
 /// # Errors

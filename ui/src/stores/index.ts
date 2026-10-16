@@ -68,7 +68,10 @@ interface SettingsState {
    * the language the OS happened to resolve to (U3).
    */
   localeChoice: Locale | null
-  /** Configured engine. First run pre-selects uv when it is on PATH (ARCHITECTURE §3). */
+  /**
+   * Configured engine; pip until the user picks. ARCHITECTURE §3 describes a first run that
+   * pre-selects uv when it is on PATH — that is not built (Audit backlog X19).
+   */
   engine: EngineId
   /**
    * PEP 668 override. Off by default and deliberately hard to turn on — SECURITY §3 requires

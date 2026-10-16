@@ -272,8 +272,10 @@ pub struct RefreshReport {
 /// offers to disable verification.
 ///
 /// # Errors
-/// `PD-NET-010` when the fetch or ingest fails. The previous index is left in place and stays
-/// searchable, because a failed refresh must not cost the user the index they already had.
+/// `PD-NET-001`/`PD-NET-002` when PyPI cannot be reached or TLS fails (read from the error's
+/// source chain), `PD-NET-010` when it answers with something that is not an index. Either way
+/// the previous index is left in place and stays searchable, because a failed refresh must not
+/// cost the user the index they already had.
 pub async fn refresh(app_data: &std::path::Path, now: jiff::Timestamp) -> Result<RefreshReport> {
     let started = std::time::Instant::now();
 
@@ -517,7 +519,9 @@ fn cached_metadata(
 
 async fn fetch_metadata(name: &PkgName) -> Result<PackageMeta> {
     let url = format!("https://pypi.org/pypi/{}/json", name.as_str());
-    let response = http_client()?
+    // The shared client: a new one per call meant a new connection pool and TLS handshake for
+    // every package opened in Search (M37).
+    let response = shared_client()?
         .get(&url)
         .send()
         .await

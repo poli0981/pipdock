@@ -101,7 +101,7 @@ describe('pins', () => {
     // names the version. Matched by title, not text: a hold is usually at the package's current
     // version, so "1.26.4" legitimately appears in both the version cell and the chip.
     expect(
-      within(rowFor('scipy') as HTMLElement).getByTitle(/left out of bulk updates/i),
+      within(rowFor('scipy') as HTMLElement).getByTitle(/left out of every update/i),
     ).toHaveTextContent('pinned')
     expect(within(rowFor('numpy') as HTMLElement).getByTitle(/^Held at 1\.26\.4/)).toBeInTheDocument()
   })

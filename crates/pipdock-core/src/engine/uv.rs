@@ -7,8 +7,10 @@
 //!
 //! Two consequences shape this adapter:
 //!
-//! - `resolve` parses the plan whether or not uv exited zero, because its failure message is the
-//!   most useful thing it produces.
+//! - `resolve` is decided by uv's exit status first: zero is a plan; a non-zero exit whose text
+//!   says no solution exists is a report (`impossible`), and anything else — a build failure, an
+//!   unreachable index — is classified as the failure it is. Parsing the plan regardless of the
+//!   exit status is how a failed build used to read as "nothing to change" (C3).
 //! - Every plan restates the installed set as explicit requirements. Without that, uv upgrades
 //!   straight past an installed package's constraint and exits 0 — see [`super::plan_requirements`].
 //!

@@ -37,7 +37,8 @@ pub const TOOL_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(120
 /// CODE-HEALTH-SPEC §4: vulture's default confidence floor.
 pub const DEFAULT_MIN_CONFIDENCE: u8 = 80;
 
-/// CODE-HEALTH-SPEC §4: directories excluded from every tool, plus user globs from Settings.
+/// CODE-HEALTH-SPEC §4: directories excluded from every tool. (Settings has no globs of its
+/// own; a project's `exclude` in its own config is respected by ruff as usual.)
 pub const DEFAULT_EXCLUDES: &[&str] = &[".venv", "venv", "node_modules", "build", "dist", ".git"];
 
 /// The release-time pin ledger, baked into the binary (CODE-HEALTH-SPEC §2).
@@ -1340,8 +1341,9 @@ mod tests {
 
     /// The whole bootstrap, against real PyPI, into a scratch directory.
     ///
-    /// `#[ignore]`d because `cargo test --workspace` must not need a network. CI runs it explicitly
-    /// (`ci-integration.yml`), and so should anyone touching this module:
+    /// `#[ignore]`d because `cargo test --workspace` must not need a network. No CI job runs this
+    /// test — `ci-integration.yml` drives the same bootstrap end to end through `pipdock tools
+    /// sync` instead — so anyone touching this module should:
     /// `cargo test -p pipdock-core -- --ignored the_bootstrap`.
     #[tokio::test]
     #[ignore = "hits real PyPI; run with --ignored"]
