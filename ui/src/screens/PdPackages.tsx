@@ -16,6 +16,7 @@ import { useTranslation } from 'react-i18next'
 import { PdEmptyState } from '@/components/PdEmptyState'
 import { PdErrorRow } from '@/components/PdErrorRow'
 import { PdPackageTable } from '@/components/PdPackageTable'
+import { PdOverrideChip } from '@/components/PdOverrideChip'
 import { PdDeps } from '@/screens/PdDeps'
 import { outdatedOnly, selectableForUpdate } from '@/screens/rows'
 import { useEnvPackages } from '@/screens/useEnvPackages'
@@ -109,6 +110,7 @@ export function PdPackages({ mode }: PdPackagesProps) {
           {title}
         </h1>
         <div className="flex items-center gap-2 text-data text-text-dim">
+          <PdOverrideChip env={row?.env} />
           {outdatedStatus === 'loading' ? <span>{t('packages.checkingUpdates')}</span> : null}
           {selection.size > 0 ? (
             <>

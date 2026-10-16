@@ -11,9 +11,13 @@
 
 import { useTranslation } from 'react-i18next'
 
+import { PdOverrideChip } from '@/components/PdOverrideChip'
+import type { PyEnv } from '@/ipc'
 import type { QueuedPackage } from '@/stores/index-search'
 
 interface PdDockBayProps {
+  /** The environment an install would change, for the PEP 668 chip. */
+  env?: PyEnv | null | undefined
   queue: readonly QueuedPackage[]
   onVersionChange: (name: string, version: string) => void
   onRemove: (name: string) => void
@@ -23,6 +27,7 @@ interface PdDockBayProps {
 }
 
 export function PdDockBay({
+  env,
   queue,
   onVersionChange,
   onRemove,
@@ -75,6 +80,10 @@ export function PdDockBay({
       </ul>
 
       <div className="shrink-0 border-t border-border p-2">
+        {/* `empty:hidden`: the chip renders nothing unless the override applies here. */}
+        <div className="mb-2 empty:hidden">
+          <PdOverrideChip env={env} />
+        </div>
         <button
           type="button"
           onClick={onInstall}

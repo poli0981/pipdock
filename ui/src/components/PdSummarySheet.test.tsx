@@ -120,4 +120,14 @@ describe('the post-run check', () => {
     // The headline is unchanged: the check is not a step outcome.
     expect(screen.getByText('2 successful, 1 failed, 1 skipped')).toBeInTheDocument()
   })
+
+  it('says when the check could not run, rather than showing nothing', () => {
+    // M30: a check that never ran was `ok: true`, and an empty block here read as a pass.
+    setup({ summary: { ...SUMMARY, check: { ok: false, error: 'PD-ENG-001', findings: [] } } })
+    expect(
+      screen.getByText(
+        'PipDock could not check the environment afterwards (PD-ENG-001), so nothing here is verified.',
+      ),
+    ).toBeInTheDocument()
+  })
 })

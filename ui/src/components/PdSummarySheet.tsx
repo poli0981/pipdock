@@ -121,6 +121,17 @@ export function PdSummarySheet({ outcome, onDone, onRollback }: PdSummarySheetPr
         </div>
       )}
 
+      {/* A check that could not run is said, never shown as a pass (M30). It reported "ok" in
+          exactly the case where nothing was verified — a pip broken by the run it was checking. */}
+      {summary.check.error != null ? (
+        <p
+          data-check="unavailable"
+          className="rounded-pd border-l-2 border-warn p-2 text-data text-warn"
+        >
+          {t('plan.checkUnavailable', { code: summary.check.error })}
+        </p>
+      ) : null}
+
       {/* Post-run `pip check`. A finding here means the environment is inconsistent *after* a run
           that may have reported every step ok, so it is not folded into the counts. */}
       {findings.length > 0 ? (

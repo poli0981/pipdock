@@ -19,7 +19,14 @@ import { PdSearch } from '@/screens/PdSearch'
 import { PdSecurity } from '@/screens/PdSecurity'
 import { PdSettings } from '@/screens/PdSettings'
 import { PANEL_PHASES } from '@/stores/plan'
-import { useDepsStore, useEnvStore, useLegalStore, usePlanStore, useUiStore } from '@/stores'
+import {
+  useDepsStore,
+  useEnvStore,
+  useLegalStore,
+  usePlanStore,
+  useSettingsStore,
+  useUiStore,
+} from '@/stores'
 
 /**
  * Which screen each tab shows. A lookup rather than a ternary chain: the chain's last branch was a
@@ -75,6 +82,14 @@ export function App() {
   useEffect(() => {
     void checkConsent()
   }, [checkConsent])
+
+  // Settings are the app's, not the Settings screen's: the status line names the engine and the
+  // PEP 668 chip reads the override. Loaded only when Settings mounted, so both showed the
+  // defaults — "pip", and no chip — until someone happened to open Settings (U13).
+  const loadSettings = useSettingsStore((s) => s.load)
+  useEffect(() => {
+    if (accepted === true) void loadSettings()
+  }, [accepted, loadSettings])
 
   // UI-SPEC §8's "full keyboard traversal": after Ctrl+3 the focus was still on whatever the user
   // last clicked, so the next Tab resumed in the old screen and a screen reader announced nothing.

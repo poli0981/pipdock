@@ -16,7 +16,7 @@ import { useTranslation } from 'react-i18next'
 
 import { PdConflictRow } from '@/components/PdConflictRow'
 import { PdEmptyState } from '@/components/PdEmptyState'
-import type { Change, ChangeKind, Decision, ResolutionReport } from '@/ipc'
+import type { Blocker, Change, ChangeKind, Decision, ResolutionReport } from '@/ipc'
 
 /** Sections in the order they are read: what happens, then what is asked of you. */
 const SECTIONS: readonly { kind: ChangeKind; tone: string }[] = [
@@ -45,13 +45,32 @@ function ChangeRow({ change, tone }: { change: Change; tone: string }) {
   )
 }
 
+/** A dependent's version, when the probe knew it — composed as `PdConflictRow` composes it. */
+const dependent = (b: Blocker) => (b.version == null ? (b.by ?? '') : `${b.by ?? ''} ${b.version}`)
+
 export function PdPreviewDiff({ report, decisions, onChoose }: PdPreviewDiffProps) {
   const { t } = useTranslation()
   const changes = report.changes ?? []
   const heldBack = report.heldBack ?? []
   const impossible = report.impossible ?? null
 
-  const nothingToShow = changes.length === 0 && heldBack.length === 0 && impossible === null
+  const incompatible = report.incompatible ?? []
+  const forced = report.forced ?? []
+  const yanked = report.yanked ?? []
+  // One per broken dependent, the same count the Confirm button carries.
+  const breaks = new Set(
+    forced.flatMap((f) => (f.blockers ?? []).map((b) => b.by ?? b.constraint)),
+  ).size
+
+  // A plan whose only content is a package left out for its Python is not "nothing to change":
+  // the user asked for something and is owed the reason it is not happening.
+  const nothingToShow =
+    changes.length === 0 &&
+    heldBack.length === 0 &&
+    impossible === null &&
+    incompatible.length === 0 &&
+    forced.length === 0 &&
+    yanked.length === 0
 
   if (nothingToShow) {
     return <PdEmptyState message={t('plan.emptyPreview')} hint={t('plan.emptyPreviewHint')} />
@@ -75,6 +94,76 @@ export function PdPreviewDiff({ report, decisions, onChoose }: PdPreviewDiffProp
           </section>
         )
       })}
+
+      {forced.length > 0 ? (
+        // DISCLAIMER §2: what forcing breaks is said before it happens, naming each dependent
+        // and the constraint of its that the forced version violates.
+        <section aria-labelledby="preview-forced" data-section="forced">
+          <h2 id="preview-forced" className="text-data text-danger">
+            {breaks > 0
+              ? t('plan.section.forced', { count: breaks })
+              : t('plan.section.forcedOnly', { count: forced.length })}
+          </h2>
+          <ul className="mt-1 space-y-1">
+            {forced.map((f) => (
+              <li key={f.pkg} className="font-mono text-data">
+                {/* Versions are data and are never localized (I18N §2). */}
+                <code className="text-danger">{`${f.pkg} → ${f.latest}`}</code>
+                <ul className="ml-4 text-text-dim">
+                  {(f.blockers ?? []).map((b, i) => (
+                    <li key={`${b.by ?? ''}-${b.constraint}-${String(i)}`}>
+                      {b.by == null
+                        ? b.constraint
+                        : t('plan.blocker', { by: dependent(b), constraint: b.constraint })}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {incompatible.length > 0 ? (
+        // Hard invariant 10: left out, with the range set against this interpreter — never the
+        // "not found" pip says for a version that exists.
+        <section aria-labelledby="preview-incompatible" data-section="incompatible">
+          <h2 id="preview-incompatible" className="text-data text-warn">
+            {t('plan.section.incompatible', { count: incompatible.length })}
+          </h2>
+          <ul className="mt-1 space-y-0.5">
+            {incompatible.map((m) => (
+              <li key={`${m.pkg}-${m.version}`} className="font-mono text-data text-text-dim">
+                {t('plan.incompatibleRow', {
+                  pkg: m.pkg,
+                  version: m.version,
+                  range: m.requiresPython,
+                  python: m.python,
+                })}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
+
+      {yanked.length > 0 ? (
+        // PD-PKG-003 is a warning, not a failure (SP-2): both engines install a yanked release.
+        // Both parsers extracted these and the adapters dropped them, so none was ever shown.
+        <section aria-labelledby="preview-yanked" data-section="yanked">
+          <h2 id="preview-yanked" className="text-data text-warn">
+            {t('plan.section.yanked', { count: yanked.length })}
+          </h2>
+          <ul className="mt-1 space-y-0.5">
+            {yanked.map((y) => (
+              <li key={`${y.pkg}-${y.version}`} className="font-mono text-data text-text-dim">
+                {y.reason == null
+                  ? t('plan.yankedRow', { pkg: y.pkg, version: y.version })
+                  : t('plan.yankedReason', { pkg: y.pkg, version: y.version, reason: y.reason })}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {heldBack.length > 0 || impossible !== null ? (
         <section aria-labelledby="preview-decisions" data-section="needs-decision">

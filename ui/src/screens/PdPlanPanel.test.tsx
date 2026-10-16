@@ -11,9 +11,11 @@ import { render, screen } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { PdPlanPanel } from '@/screens/PdPlanPanel'
-import type { ExecutionOutcome, ExecutionSummary, SnapshotMeta } from '@/ipc'
+import type { ExecutionOutcome, ExecutionSummary, FlowStep, PyEnv, SnapshotMeta } from '@/ipc'
+import { useSettingsStore } from '@/stores'
 import { usePlanStore } from '@/stores/plan'
 import { resetStore } from '@/test/stores'
+import flowStepForced from '@/test/fixtures/flow_step_forced.json'
 import snapshotFixture from '@/test/fixtures/snapshot_list.json'
 import summaryFixture from '@/test/fixtures/execution_summary.json'
 
@@ -58,5 +60,69 @@ describe('the summary phase', () => {
     render(<PdPlanPanel onFinished={vi.fn()} />)
 
     expect(screen.getAllByText('Back to packages')).toHaveLength(1)
+  })
+})
+
+const FORCED_STEP = flowStepForced as FlowStep
+
+const ENV: PyEnv = {
+  interpreter: 'C:/work/.venv/Scripts/python.exe',
+  prefix: 'C:/work/.venv',
+  pythonVersion: '3.12.4',
+  externallyManaged: false,
+  hiddenUserSite: null,
+  source: 'venv-scan',
+}
+
+/** The panel showing the forced plan's preview, for `env`. */
+function preview(env: PyEnv = ENV) {
+  usePlanStore.setState({ phase: 'preview', kind: 'update', step: FORCED_STEP, env })
+  render(<PdPlanPanel onFinished={vi.fn()} />)
+}
+
+describe('a forced plan', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetStore(usePlanStore)
+    resetStore(useSettingsStore)
+  })
+
+  it('counts what it breaks on the button that does it', () => {
+    // DISCLAIMER §2: the cost is on the control, not only in a section above the fold.
+    preview()
+    const confirm = screen.getByRole('button', { name: 'Confirm (2 changes, breaks 2)' })
+    expect(confirm).toHaveClass('text-danger')
+  })
+
+  it('names the environment it changes', () => {
+    // U15: the panel replaces the screen it was started from, so nothing else on screen says.
+    preview()
+    expect(screen.getByText(ENV.interpreter)).toBeInTheDocument()
+  })
+})
+
+describe('the PEP 668 chip', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+    resetStore(usePlanStore)
+    resetStore(useSettingsStore)
+  })
+
+  it('is on screen while the override applies to the environment being changed', () => {
+    useSettingsStore.setState({ allowExternallyManaged: true })
+    preview({ ...ENV, externallyManaged: true })
+    expect(screen.getByText('PEP 668 override')).toBeInTheDocument()
+  })
+
+  it('is absent where the override changes nothing', () => {
+    // A venv is never externally managed, and a chip there would claim the flag is being sent.
+    useSettingsStore.setState({ allowExternallyManaged: true })
+    preview(ENV)
+    expect(screen.queryByText('PEP 668 override')).toBeNull()
+  })
+
+  it('is absent while the override is off, even for a marked environment', () => {
+    preview({ ...ENV, externallyManaged: true })
+    expect(screen.queryByText('PEP 668 override')).toBeNull()
   })
 })

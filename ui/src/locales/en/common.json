@@ -145,7 +145,11 @@
       "downgrade": "Will downgrade ({{count}})",
       "new-install": "Will install ({{count}})",
       "new-dependency": "New dependencies ({{count}})",
-      "needsDecision": "Needs a decision ({{count}})"
+      "needsDecision": "Needs a decision ({{count}})",
+      "forced": "Will break ({{count}})",
+      "forcedOnly": "Forced ({{count}})",
+      "incompatible": "Left out — needs a different Python ({{count}})",
+      "yanked": "Withdrawn releases ({{count}})"
     },
     "decision": {
       "keep-compatible": "Keep compatible",
@@ -185,7 +189,12 @@
     "checkFailed_one": "{{count}} dependency problem remains after this run.",
     "checkFailed_other": "{{count}} dependency problems remain after this run.",
     "checkFinding": "{{pkg}} requires {{requirement}}",
-    "done": "Back to packages"
+    "done": "Back to packages",
+    "incompatibleRow": "{{pkg}} {{version}} requires Python {{range}}; this environment has {{python}}.",
+    "yankedRow": "{{pkg}} {{version}} was withdrawn by its maintainers.",
+    "yankedReason": "{{pkg}} {{version}} was withdrawn by its maintainers: {{reason}}",
+    "confirmForced": "Confirm ({{count}} changes, breaks {{breaks}})",
+    "checkUnavailable": "PipDock could not check the environment afterwards ({{code}}), so nothing here is verified."
   },
   "palette": {
     "title": "Commands",
@@ -204,7 +213,7 @@
     "reasonPlaceholder": "Why is this pinned?",
     "reasonFor": "Reason for pinning {{pkg}}",
     "suggestTitle": "Worth pinning",
-    "suggestIntro": "These are depended on by a lot of what you have installed, so a bulk update is more likely to disturb something. Pinning keeps them out of Select all — you can still update them one at a time.",
+    "suggestIntro": "These are depended on by a lot of what you have installed, so an update is more likely to disturb something. Pinning keeps them out of every update until you unpin them.",
     "suggest_one": "{{pkg}} — {{count}} package depends on it.",
     "suggest_other": "{{pkg}} — {{count}} packages depend on it.",
     "suggestMore_one": "{{count}} more package would qualify. Pin some of these, or raise the count in Settings.",
@@ -431,7 +440,10 @@
     "logsDetail": "PipDock keeps its own log for 14 days in this folder. Nothing in it is sent anywhere; copy it into a bug report if you want someone to read it.",
     "logsCopy": "Copy recent log",
     "logsCopied": "Copied",
-    "logsEmpty": "Nothing has been logged yet."
+    "logsEmpty": "Nothing has been logged yet.",
+    "overrideConfirmTitle": "Allow changes to externally managed Pythons?",
+    "overrideConfirmBody": "PipDock will pass --break-system-packages to pip or uv for every environment marked EXTERNALLY-MANAGED. Installing into such a Python can break tools your operating system relies on, and rolling back to a snapshot may not repair them. A virtual environment is almost always the better answer.",
+    "overrideConfirm": "Allow"
   },
   "legal": {
     "title": "Before you start",
@@ -480,5 +492,9 @@
     "unknown": "An unexpected error occurred.",
     "logPrivacy": "Nothing is sent until you submit the issue yourself.",
     "logCopied": "Copied"
+  },
+  "pep668": {
+    "chip": "PEP 668 override",
+    "chipDetail": "This Python is managed by the operating system and the override is on: changes here pass --break-system-packages."
   }
 }

@@ -63,6 +63,8 @@ export interface IpcMock {
   snapshotDiff: ReturnType<typeof vi.fn>
   indexSearch: ReturnType<typeof vi.fn>
   appInfo: ReturnType<typeof vi.fn>
+  settingsGet: ReturnType<typeof vi.fn>
+  settingsSet: ReturnType<typeof vi.fn>
   isPdError: (value: unknown) => boolean
 }
 
@@ -138,6 +140,14 @@ export function ipcMock(): IpcMock {
     // `vi.fn()`: About renders version and docs hash unconditionally and has no error branch, and
     // a mock resolving `undefined` would invent one.
     appInfo: vi.fn().mockResolvedValue({ version: '0.1.0', docsHash: 'a1b2c3d4e5f60718' }),
+    // The shipped defaults: the override off, as SECURITY §3 requires of a fresh install.
+    settingsGet: vi.fn().mockResolvedValue({
+      engine: 'pip',
+      locale: null,
+      allowExternallyManaged: false,
+      pinSuggestThreshold: 5,
+    }),
+    settingsSet: vi.fn(),
     // Real, not a spy: the stores decide whether a rejection carries a catalog code by asking it,
     // and a stub that always answered one way would make every error test agree with itself.
     isPdError: (value: unknown): boolean =>
