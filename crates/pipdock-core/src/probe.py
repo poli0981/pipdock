@@ -4,7 +4,7 @@ Prints a single JSON document describing the interpreter it runs under and every
 distribution installed in it. Rust cannot cheaply read a foreign environment's
 metadata, so this helper is executed as:
 
-    <env-python> -I <tempfile> --json
+    <env-python> -X utf8 -I <tempfile> --json
 
 Constraints (docs/ARCHITECTURE.md section 4, docs/SECURITY.md section 2):
 
@@ -12,12 +12,15 @@ Constraints (docs/ARCHITECTURE.md section 4, docs/SECURITY.md section 2):
   runs in are the user's, and may contain anything.
 * Python 3.10 floor: `importlib.metadata` only, no `packaging`.
 * Run with -I so PYTHONPATH and user site are ignored and a poisoned environment
-  cannot inject code into the probe.
+  cannot inject code into the probe. -I also ignores PYTHONUTF8, which is why the
+  core passes -X utf8: this prints paths unescaped, and a venv under a folder
+  named in Vietnamese crashed the probe on the ANSI code page.
 * Written to a temp file with a random name per invocation; never installed.
 
 Output shape:
 
-    {"python": "3.12.4", "prefix": "...", "externally_managed": false,
+    {"schema": 3, "python": "3.12.4", "prefix": "...", "externally_managed": false,
+     "markers": {"sys_platform": "win32", "python_version": "3.12", ...},
      "dists": [{"name": "requests", "version": "2.32.3",
                 "requires_dist": ["urllib3<3,>=1.21.1"],
                 "requires_python": ">=3.8", "size_bytes": 131072}]}
@@ -34,7 +37,7 @@ import os
 import sys
 import sysconfig
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3
 
 
 def _normalize(name: str) -> str:
@@ -84,6 +87,55 @@ def _externally_managed() -> bool:
         if path:
             candidates.append(os.path.join(path, "EXTERNALLY-MANAGED"))
     return any(os.path.isfile(p) for p in candidates)
+
+
+def _full_version(info) -> str:
+    """`3.12.4`, or `3.14.0rc1` -- PEP 508's spelling of a version_info."""
+    version = f"{info.major}.{info.minor}.{info.micro}"
+    if info.releaselevel != "final":
+        version += info.releaselevel[0] + str(info.serial)
+    return version
+
+
+def _marker_env() -> dict[str, str]:
+    """The PEP 508 environment this interpreter evaluates requirement markers against.
+
+    The core needs it to tell an in-force requirement from one gated to another platform:
+    without `sys_platform`, ipython's `pexpect; sys_platform != "win32"` read as a missing
+    dependency of every Windows environment that had ipython.
+
+    Built from `sys` and `os`, not `platform`. On Windows `platform.uname()` runs a WMI query
+    -- 55 ms on 3.14, a third of a small environment's whole probe -- for two values,
+    `platform_release` and `platform_version`, that almost no requirement mentions. Those two
+    are therefore omitted on Windows, and the core keeps any requirement whose marker it cannot
+    evaluate. `platform_machine` reads the same PROCESSOR_* variables `platform` itself falls
+    back to there.
+    """
+    env = {
+        "implementation_name": sys.implementation.name,
+        "implementation_version": _full_version(sys.implementation.version),
+        "os_name": os.name,
+        "python_full_version": _full_version(sys.version_info),
+        "python_version": f"{sys.version_info[0]}.{sys.version_info[1]}",
+        "sys_platform": sys.platform,
+    }
+    implementation = {"cpython": "CPython", "pypy": "PyPy"}.get(sys.implementation.name)
+    if implementation:
+        env["platform_python_implementation"] = implementation
+    if os.name == "nt":
+        env["platform_system"] = "Windows"
+        machine = os.environ.get("PROCESSOR_ARCHITEW6432") or os.environ.get(
+            "PROCESSOR_ARCHITECTURE"
+        )
+        if machine:
+            env["platform_machine"] = machine
+    elif hasattr(os, "uname"):
+        uname = os.uname()
+        env["platform_system"] = uname.sysname
+        env["platform_release"] = uname.release
+        env["platform_version"] = uname.version
+        env["platform_machine"] = uname.machine
+    return env
 
 
 def _hidden_user_site() -> str | None:
@@ -204,6 +256,9 @@ def _dists() -> list[dict[str, object]]:
     seen: set[str] = set()
     for dist in distributions():
         try:
+            # **One parse of METADATA per distribution.** `dist.version` and `dist.requires` each
+            # re-read and re-parse it, so asking all three cost three parses per package on the
+            # path every environment open pays.
             meta = dist.metadata
             if meta is None:
                 continue
@@ -218,11 +273,16 @@ def _dists() -> list[dict[str, object]]:
             if name in seen:
                 continue
             seen.add(name)
+            requires = meta.get_all("Requires-Dist")
+            if requires is None and dist.read_text("requires.txt") is not None:
+                # An .egg-info keeps its requirements in requires.txt, in sections
+                # importlib.metadata turns into markers; only then is the second read needed.
+                requires = dist.requires
             out.append(
                 {
                     "name": name,
-                    "version": dist.version or "",
-                    "requires_dist": list(dist.requires or []),
+                    "version": meta.get("Version") or "",
+                    "requires_dist": list(requires or []),
                     "requires_python": meta.get("Requires-Python"),
                     "size_bytes": _size_bytes(dist),
                 }
@@ -253,6 +313,7 @@ def main(argv: list[str] | None = None) -> int:
             "executable": sys.executable,
             "is_venv": sys.prefix != sys.base_prefix,
             "externally_managed": _externally_managed(),
+            "markers": _marker_env(),
             # Non-null means -I is hiding packages that pip would list; the UI shows a note.
             "hidden_user_site": _hidden_user_site(),
             "dists": _dists(),
