@@ -202,6 +202,23 @@ fn both_engines_flag_the_yanked_release_without_failing() {
 }
 
 #[test]
+fn a_yank_reaches_the_report_the_preview_reads() {
+    // Both adapters took `.report` and dropped `.yanked`, so the warning both parsers extract
+    // never reached a user. `into_report` is what the adapters return now.
+    for engine in CORPORA {
+        let cap = load(engine, "yanked").expect("fixture");
+        let parsed = match engine {
+            "pip" => pip_report(&cap.stdout, &cap.stderr, &[]),
+            _ => uv_plan(&cap.stdout, &cap.stderr, &[]),
+        }
+        .unwrap_or_else(|e| panic!("{engine}: {e}"));
+        let report = parsed.into_report();
+        assert_eq!(report.yanked.len(), 1, "{engine}");
+        assert_eq!(report.yanked[0].pkg.as_str(), "urllib3", "{engine}");
+    }
+}
+
+#[test]
 fn the_encoding_crash_fixture_is_reported_as_a_pipdock_bug() {
     // The fixture captured without the UTF-8 mitigation. Reporting it as "upgrade pip" would send
     // the user chasing the wrong thing, so the parser must tell the two apart.

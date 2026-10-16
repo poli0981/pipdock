@@ -63,6 +63,8 @@ struct FakeEngine {
     batch: Batch,
     /// The constraints each install was given, in call order.
     constraints: Arc<Mutex<Vec<Vec<PinnedSpec>>>>,
+    /// `check` cannot run at all — a pip broken by the run it was meant to verify.
+    check_breaks: bool,
 }
 
 impl FakeEngine {
@@ -72,10 +74,12 @@ impl FakeEngine {
             calls: Arc::new(Mutex::new(Vec::new())),
             check: CheckReport {
                 ok: true,
+                error: None,
                 findings: Vec::new(),
             },
             batch: Batch::Runs,
             constraints: Arc::new(Mutex::new(Vec::new())),
+            check_breaks: false,
         }
     }
 
@@ -112,6 +116,9 @@ impl Engine for FakeEngine {
             changes: Vec::new(),
             held_back: Vec::new(),
             impossible: None,
+            incompatible: Vec::new(),
+            forced: Vec::new(),
+            yanked: Vec::new(),
             raw: String::new(),
         })
     }
@@ -218,6 +225,12 @@ impl Engine for FakeEngine {
         })
     }
     async fn check(&self, _env: &PyEnv) -> Result<CheckReport> {
+        if self.check_breaks {
+            return Err(pipdock_core::errors::PdError::new(
+                pipdock_core::errors::Code::EngNotFound,
+                "No module named pip",
+            ));
+        }
         Ok(self.check.clone())
     }
     async fn freeze(&self, _env: &PyEnv) -> Result<String> {
@@ -258,6 +271,9 @@ fn report(packages: &[(&str, &str)]) -> ResolutionReport {
             .collect(),
         held_back: Vec::new(),
         impossible: None,
+        incompatible: Vec::new(),
+        forced: Vec::new(),
+        yanked: Vec::new(),
         raw: String::new(),
     }
 }
@@ -590,6 +606,7 @@ async fn post_check_findings_reach_the_summary() {
             requirement: "apiclient 1.4 requires requests<2.31, but you have requests 2.32.3"
                 .into(),
         }],
+        error: None,
     };
     let summary = run(&engine, &[("requests", "2.32.3")]).await;
 
@@ -790,6 +807,21 @@ async fn an_isolated_step_holds_everything_else_where_the_preview_put_it() {
     assert_eq!(rendered(&constraints[1]), ["badone==1.0", "bystander==1.5"]);
     // Phase B, badone: alpha at its planned version, and the bystander.
     assert_eq!(rendered(&constraints[2]), ["alpha==2.0", "bystander==1.5"]);
+}
+
+#[tokio::test]
+async fn a_check_that_could_not_run_is_not_reported_as_passed() {
+    // `unwrap_or(ok: true)` said "verified" exactly when nothing was — for instance when the run
+    // being checked had broken pip itself.
+    let mut engine = FakeEngine::new(&[]);
+    engine.check_breaks = true;
+    let summary = run(&engine, &[("alpha", "1.0")]).await;
+    assert!(!summary.check.ok, "{:?}", summary.check);
+    assert_eq!(
+        summary.check.error,
+        Some(pipdock_core::errors::Code::EngNotFound)
+    );
+    assert_eq!(summary.counts.ok, 1, "the install itself still succeeded");
 }
 
 #[tokio::test]

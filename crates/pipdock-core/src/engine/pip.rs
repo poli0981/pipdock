@@ -146,7 +146,8 @@ impl Engine for PipEngine {
         if !out.ok() {
             return Err(out.into_error());
         }
-        super::parse::pip_report(&out.stdout, &out.stderr, &installed).map(|p| p.report)
+        super::parse::pip_report(&out.stdout, &out.stderr, &installed)
+            .map(super::parse::ParsedPlan::into_report)
     }
 
     async fn install(

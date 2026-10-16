@@ -150,6 +150,9 @@ fn flow_step() -> crate::flow::FlowStep {
                 explanation: "no version of oldlib is compatible with python 3.12".to_owned(),
                 packages: vec![pkg("oldlib")],
             }),
+            incompatible: Vec::new(),
+            forced: Vec::new(),
+            yanked: Vec::new(),
             raw: String::new(),
         },
         round: 0,
@@ -190,6 +193,7 @@ fn execution_summary() -> crate::plan::ExecutionSummary {
         results,
         check: CheckReport {
             ok: true,
+            error: None,
             findings: Vec::new(),
         },
         counts,

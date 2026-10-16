@@ -118,6 +118,27 @@ pub struct HeldBack {
     pub blockers: Vec<Blocker>,
 }
 
+/// A pin the user asked for that cannot install on this environment's Python (`PD-PKG-001`).
+///
+/// Hard invariant 10 says PipDock enforces `Requires-Python` itself, because the engines disagree:
+/// pip refuses such a pin with the same "No matching distribution" it uses for a typo, and uv
+/// ignores an upper bound and plans it. Structured, not a sentence (invariant 4): the preview shows
+/// the required range against the environment's version, and a catalog cannot un-join a string.
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
+#[serde(rename_all = "camelCase")]
+pub struct PythonMismatch {
+    /// The package.
+    pub pkg: PkgName,
+    /// The version that was asked for or planned.
+    pub version: Version,
+    /// That release's `Requires-Python`, verbatim.
+    pub requires_python: String,
+    /// The environment's Python, e.g. `"3.12.4"`.
+    pub python: String,
+}
+
 /// A `ResolutionImpossible` outcome and whatever detail the engine gave (`PD-RES-001`).
 #[derive(Debug, Clone, serde::Serialize, serde::Deserialize, schemars::JsonSchema)]
 pub struct ImpossibleDetail {
@@ -151,7 +172,24 @@ pub struct ResolutionReport {
     /// Present when the whole resolution failed.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub impossible: Option<ImpossibleDetail>,
-    /// The engine's untouched output, kept for the log and for bug reports.
+    /// Pins left out because their `Requires-Python` excludes this environment (`PD-PKG-001`).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub incompatible: Vec<PythonMismatch>,
+    /// Packages the user chose to **force** past what installed dependents allow, each with what
+    /// it will break — the "Will break" section of the preview (DISCLAIMER §2).
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub forced: Vec<HeldBack>,
+    /// Yanked releases the plan would install. A warning, not a failure (`PD-PKG-003`, SP-2):
+    /// both engines exit 0 and install them. Both adapters parsed these and then dropped them, so
+    /// the preview never showed one.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub yanked: Vec<crate::engine::parse::YankWarning>,
+    /// What the engine wrote while resolving — uv's plan, pip's warnings — for the log ring and
+    /// the debug log. **Never on the wire.** It used to be, as pip's whole `--report` document
+    /// with every package's README inside it, cloned into each `FlowStep` and serialized over IPC
+    /// on every round (33 KB for two packages; megabytes for "update all").
+    #[serde(skip)]
+    #[schemars(skip)]
     pub raw: String,
 }
 
@@ -507,6 +545,7 @@ pub async fn execute(
             results: Vec::new(),
             check: engine.check(env).await.unwrap_or(CheckReport {
                 ok: true,
+                error: None,
                 findings: Vec::new(),
             }),
             counts: Counts::default(),
@@ -746,14 +785,16 @@ async fn summary(
     }
 }
 
-/// Run the post-execution check, treating an unrunnable check as "no findings".
+/// Run the post-execution check, reporting a check that could not run **as not having run**.
 ///
-/// A check that could not run must not turn a successful run into a reported failure; the summary
-/// already carries the per-package truth.
+/// It must not turn a successful run into a failed one — the summary's rows still carry the
+/// per-package truth — but it must not say "verified" either, which `unwrap_or(ok: true)` did:
+/// exactly when pip had been broken by the run it was meant to check.
 async fn post_check(engine: &dyn Engine, env: &PyEnv) -> CheckReport {
-    engine.check(env).await.unwrap_or(CheckReport {
-        ok: true,
+    engine.check(env).await.unwrap_or_else(|e| CheckReport {
+        ok: false,
         findings: Vec::new(),
+        error: Some(e.code),
     })
 }
 
@@ -1048,6 +1089,9 @@ mod tests {
             changes: vec![],
             held_back: vec![held],
             impossible: None,
+            incompatible: Vec::new(),
+            forced: Vec::new(),
+            yanked: Vec::new(),
             raw: String::new(),
         };
         assert!(!report.is_clean());
@@ -1064,6 +1108,9 @@ mod tests {
             }],
             held_back: vec![],
             impossible: None,
+            incompatible: Vec::new(),
+            forced: Vec::new(),
+            yanked: Vec::new(),
             raw: String::new(),
         };
         assert!(report.is_clean());
@@ -1120,6 +1167,24 @@ mod tests {
             offenders.is_empty(),
             "snake_case reached the IPC surface; add #[serde(rename_all = \"camelCase\")]:\n  {}",
             offenders.join("\n  ")
+        );
+    }
+
+    #[test]
+    fn the_engine_output_never_crosses_the_wire() {
+        // pip's whole `--report` — every README in the plan — rode in each FlowStep over IPC and
+        // into `--json`. It stays in Rust, for the log.
+        let report = ResolutionReport {
+            raw: "a very large engine document".into(),
+            ..ResolutionReport::default()
+        };
+        let wire = serde_json::to_value(&report).expect("serializes");
+        assert!(wire.get("raw").is_none(), "{wire}");
+        let schema = serde_json::to_value(schemars::schema_for!(ResolutionReport))
+            .expect("schema serializes");
+        assert!(
+            schema["properties"].get("raw").is_none(),
+            "the schema must not promise it either"
         );
     }
 }

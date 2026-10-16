@@ -151,7 +151,8 @@ impl Engine for UvEngine {
             .await?;
         // uv exits non-zero on an unsatisfiable set, but its message is the most useful thing it
         // produces (SP-1), so the plan is parsed either way and the parser decides.
-        super::parse::uv_plan(&out.stdout, &out.stderr, &installed).map(|p| p.report)
+        super::parse::uv_plan(&out.stdout, &out.stderr, &installed)
+            .map(super::parse::ParsedPlan::into_report)
     }
 
     async fn install(

@@ -88,6 +88,8 @@ pub enum NothingReason {
     NothingToDo,
     /// Every candidate was skipped while resolving conflicts, so no plan remains.
     EverythingSkipped,
+    /// The user stopped the resolve before it finished. Nothing was planned, nothing ran.
+    Cancelled,
 }
 
 /// What the flow needs next.

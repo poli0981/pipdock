@@ -238,6 +238,9 @@ mod tests {
             changes: Vec::new(),
             held_back: Vec::new(),
             impossible: None,
+            incompatible: Vec::new(),
+            forced: Vec::new(),
+            yanked: Vec::new(),
             raw: String::new(),
         }
     }

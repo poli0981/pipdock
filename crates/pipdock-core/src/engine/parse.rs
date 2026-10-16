@@ -22,7 +22,9 @@ use crate::plan::{Change, ChangeKind, ImpossibleDetail, ResolutionReport};
 ///
 /// SP-2: a yank is **not** a failure. Both engines exit 0 and install it, so this is a preview
 /// warning row, not an error path (`docs/ERROR-CATALOG.md` PD-PKG-003).
-#[derive(Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, PartialEq, Eq, serde::Serialize, serde::Deserialize, schemars::JsonSchema,
+)]
 pub struct YankWarning {
     /// The yanked distribution.
     pub pkg: PkgName,
@@ -39,6 +41,20 @@ pub struct ParsedPlan {
     pub report: ResolutionReport,
     /// Yanked releases the plan would install.
     pub yanked: Vec<YankWarning>,
+}
+
+impl ParsedPlan {
+    /// The report with its yank warnings inside it, where the preview can see them.
+    ///
+    /// Both adapters used to take `.report` and drop `.yanked`, so the PD-PKG-003 warning both
+    /// parsers worked to extract never reached a user.
+    #[must_use]
+    pub fn into_report(self) -> crate::plan::ResolutionReport {
+        crate::plan::ResolutionReport {
+            yanked: self.yanked,
+            ..self.report
+        }
+    }
 }
 
 // -- pip ---------------------------------------------------------------------
@@ -148,7 +164,12 @@ pub fn pip_report(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<Pars
             changes,
             held_back: Vec::new(),
             impossible: None,
-            raw: stdout.to_owned(),
+            incompatible: Vec::new(),
+            forced: Vec::new(),
+            yanked: Vec::new(),
+            // pip's stderr — its warnings — not the `--report` document on stdout, which carries
+            // every package's README and is already parsed above.
+            raw: stderr.to_owned(),
         },
         yanked,
     })
@@ -202,6 +223,9 @@ pub fn uv_plan(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedP
                 changes: Vec::new(),
                 held_back: Vec::new(),
                 impossible: Some(detail),
+                incompatible: Vec::new(),
+                forced: Vec::new(),
+                yanked: Vec::new(),
                 raw: text.to_owned(),
             },
             yanked: Vec::new(),
@@ -294,6 +318,9 @@ pub fn uv_plan(stdout: &str, stderr: &str, installed: &[Dist]) -> Result<ParsedP
             changes,
             held_back: Vec::new(),
             impossible: None,
+            incompatible: Vec::new(),
+            forced: Vec::new(),
+            yanked: Vec::new(),
             raw: text.to_owned(),
         },
         yanked: uv_yank_warnings(text),
@@ -445,6 +472,7 @@ pub fn check_text(stdout: &str, ok: bool) -> crate::model::CheckReport {
     crate::model::CheckReport {
         ok: ok && findings.is_empty(),
         findings,
+        error: None,
     }
 }
 
