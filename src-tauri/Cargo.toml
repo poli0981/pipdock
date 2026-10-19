@@ -42,7 +42,7 @@ tauri-plugin-single-instance = "2.5.4"
 tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
 # The one dialog that has to work before Tauri does: the data folder could not be opened, so there
 # is no app to show anything in. Already in the tree through tauri-plugin-dialog, with its features.
-rfd = { version = "0.16", default-features = false, features = ["common-controls-v6"] }
+rfd = { version = "0.17", default-features = false, features = ["common-controls-v6"] }
 
 [dev-dependencies]
 # `Sessions` is the one thing in this crate with a protocol worth testing on its own, and every
