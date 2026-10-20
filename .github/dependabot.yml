@@ -33,6 +33,13 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 14
+    ignore:
+      # src-tauri takes rfd only because tauri-plugin-dialog already compiles it (the comment on
+      # the dependency says so). tauri-plugin-dialog 2.8.3 requires rfd ^0.16, so a 0.17 bump adds
+      # a second rfd to the Windows binary instead of updating the one there. Remove once
+      # tauri-plugin-dialog moves to 0.17, and bump both together.
+      - dependency-name: rfd
+        versions: ['>=0.17.0']
     groups:
       # First, so a Tauri crate never lands in the catch-all group below.
       tauri:

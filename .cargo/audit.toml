@@ -8,8 +8,9 @@
 # individually rather than switched off as a class, so a new one still fails CI and has to be
 # looked at rather than silently absorbed.
 #
-# Review obligation: when Tauri drops GTK3, or a `unic-*` dependent moves on, delete the
-# corresponding lines. A stale ignore is how a real advisory eventually gets waved through.
+# Review obligation: when Tauri drops GTK3, its plugins move to zbus 6, or a `unic-*` dependent
+# moves on, delete the corresponding lines. A stale ignore is how a real advisory eventually gets
+# waved through.
 
 [advisories]
 ignore = [
@@ -32,6 +33,17 @@ ignore = [
     # A proc-macro, reached through glib-macros: the same stack, not a build dependency of
     # PipDock's as this file used to say (`cargo tree -i proc-macro-error --target all`).
     "RUSTSEC-2024-0370", # proc-macro-error — unmaintained
+
+    # --- zbus 5's D-Bus stack (Linux only) -----------------------------------
+    # zbus 6 (2026-10-16) folded these three crates into itself, and the advisories were filed the
+    # same day. zbus reaches the tree only through tauri-plugin-opener and
+    # tauri-plugin-single-instance, which use D-Bus on Linux alone: `cargo tree -i zbus --target
+    # x86_64-pc-windows-msvc` prints nothing. Every release of both plugins — 2.x and the 3.0
+    # alphas alike — still requires zbus ^5.9, so there is no update to take. Delete these lines
+    # when the plugins move to zbus 6, or at P2-1 with the GTK3 block above.
+    "RUSTSEC-2026-0370", # zvariant — unmaintained, merged into zbus 6
+    "RUSTSEC-2026-0371", # zbus_names — unmaintained, merged into zbus 6
+    "RUSTSEC-2026-0372", # zvariant_derive — unmaintained, merged into zbus 6
 
     # --- unic-* Unicode tables ----------------------------------------------
     # Superseded upstream but functionally frozen data tables, reached transitively. Nothing here

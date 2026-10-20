@@ -343,12 +343,17 @@ _ABS_PATH = re.compile(
 
 
 def _is_progress(line: str) -> bool:
-    """A pip progress-bar line: dashes, a space, anything, then `eta <digits and colons>`."""
+    """A pip progress-bar line: dashes, a space, anything, then a time in digits and colons.
+
+    pip 25 ended a finished bar with `eta 0:00:00`; pip 26 ends it with the bare elapsed time
+    (`7.3/7.3 MB 15.1 MB/s  0:00:00`). Keying on `eta ` let pip 26's bars through with their
+    transfer rate, and the next Monday's drift job failed on a faster runner.
+    """
     body = line.strip(" \t")
     if not body.startswith("-") or body.lstrip("-")[:1] not in (" ", "\t"):
         return False
-    _, sep, tail = body.rpartition("eta ")
-    return bool(sep) and tail != "" and all(c in "0123456789:" for c in tail)
+    tail = body.rsplit(None, 1)[-1]
+    return ":" in tail and all(c in "0123456789:" for c in tail)
 
 
 def redact(text: str, work: Path) -> str:
