@@ -20,7 +20,7 @@ deptry==0.25.1
     # via -r tools/tools-requirements.txt
 filelock==4.1.0 ; python_full_version < '3.11'
     # via cachecontrol
-filelock==4.2.0 ; python_full_version >= '3.11'
+filelock==4.2.1 ; python_full_version >= '3.11'
     # via cachecontrol
 idna==3.20
     # via requests
@@ -48,7 +48,7 @@ pip-requirements-parser==32.0.1
     # via pip-audit
 platformdirs==4.12.4 ; python_full_version < '3.11'
     # via pip-audit
-platformdirs==4.13.3 ; python_full_version >= '3.11'
+platformdirs==4.13.4 ; python_full_version >= '3.11'
     # via pip-audit
 py-serializable==2.1.0
     # via cyclonedx-python-lib
