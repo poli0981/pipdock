@@ -67,5 +67,23 @@ export default defineConfig({
     setupFiles: [fileURLToPath(new URL('./ui/src/test/setup.ts', import.meta.url))],
     include: ['ui/src/**/*.test.{ts,tsx}'],
     root: fileURLToPath(new URL('.', import.meta.url)),
+    // Off unless asked for (`npm run test:coverage`): sonar.yml imports the LCOV, and nothing
+    // else reads it, so the plain `npm test` the ops-repo reusable runs stays as fast as it was.
+    coverage: {
+      provider: 'v8',
+      // `lcovonly`: `lcov` adds an HTML report beside the file Sonar reads.
+      reporter: ['text-summary', 'lcovonly'],
+      reportsDirectory: 'coverage',
+      include: ['ui/src/**/*.{ts,tsx}'],
+      // Tests and their harness are not code under test. `generated.ts` is emitted by
+      // `cargo run -p xtask -- bindings` and is types alone; `main.tsx` mounts <App/> into the
+      // real DOM, which is what App.test.tsx renders instead.
+      exclude: [
+        'ui/src/**/*.test.{ts,tsx}',
+        'ui/src/test/**',
+        'ui/src/ipc/generated.ts',
+        'ui/src/main.tsx',
+      ],
+    },
   },
 })

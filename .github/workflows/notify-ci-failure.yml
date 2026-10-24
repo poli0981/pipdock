@@ -17,6 +17,7 @@ on:
       - CI / Node
       - CI / Integration
       - Security scan
+      - SonarCloud
     types: [completed]
 
 permissions:

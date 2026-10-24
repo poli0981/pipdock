@@ -65,6 +65,11 @@ updates:
     groups:
       tauri:
         patterns: ['@tauri-apps/*']
+      # @vitest/coverage-v8 peers `vitest` at its exact version, so the two must move in one PR —
+      # majors included, which is why this group names no update-types: a vitest major bumped
+      # alone fails `npm ci` with ERESOLVE, as the typescript one below would.
+      vitest:
+        patterns: ['vitest', '@vitest/*']
       npm-minor-patch:
         update-types: [minor, patch]
     labels: [dependencies, frontend]

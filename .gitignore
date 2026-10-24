@@ -8,6 +8,8 @@ node_modules/
 dist/
 dist-ssr/
 .vite/
+# `npm run test:coverage` (vitest's LCOV, read by sonar.yml).
+/coverage/
 *.tsbuildinfo
 
 # Tauri build output
