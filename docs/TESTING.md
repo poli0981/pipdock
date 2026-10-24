@@ -72,7 +72,9 @@ The plan was one scripted tauri-driver run on a Windows runner — launch → le
 
 ## 3. Coverage & gates
 
-**No coverage is measured.** This section set targets — core ≥ 85 % line coverage (`cargo llvm-cov`), classifiers and plan module ≥ 95 % — that nothing has ever measured: `cargo llvm-cov` is not wired anywhere, and coverage is in ROADMAP's Audit backlog. Until it is, the guarantee is §1's rule — a test that failed first — rather than a percentage.
+**Coverage is measured since 2026-10-25, and gated only on new code.** `sonar.yml` runs `cargo llvm-cov --workspace` and `npm run test:coverage` (vitest's v8 provider) on Windows and hands both LCOV files to SonarQube Cloud, whose quality gate asks **80 % of new lines** covered — new meaning since the version in `package.json` last changed. The first measurement, of `main` at 1.4.0: **Rust 71.6 %** of 15 364 lines, **TypeScript 68.4 %** of 1 569. The two large holes are honest rather than unmeasured: `pipdock-cli/src/run.rs` (4 %) is the CLI driving a real interpreter, which L2 exercises and L1 cannot, and `src-tauri/src/commands.rs` (0 %) is the IPC surface, reached only by a running app. `sonar-project.properties` excludes from coverage only what no test here can execute (tooling, spikes, `probe.py`, generated bindings, the two entry points) and says why for each.
+
+This section once set targets — core ≥ 85 % line coverage, classifiers and plan module ≥ 95 % — that nothing measured until then. They are not the gate; the gate is new code, and §1's rule — a test that failed first — is still the guarantee a percentage cannot give. By file, `errors/catalog.rs` is at 99.5 % and `plan/` at 85–99 %.
 
 **Required on every PR** (RELEASE-CI §2 has the exact payload): `fmt · clippy · test` — fmt, clippy `-D warnings`, and `cargo test --workspace`, which is L1, L4 and the Tauri crate's tests; `lint · typecheck · test · build / build` — ESLint, `tsc`, L3 and `vite build`; `cargo audit`; `npm audit`; and CodeQL's JavaScript/TypeScript analysis. `cargo deny`, `tauri lockstep` and CodeQL's Rust and Actions analyses run on every PR and are not required.
 
