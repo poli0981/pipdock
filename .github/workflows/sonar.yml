@@ -63,7 +63,13 @@ jobs:
   analyze:
     name: coverage · analysis
     needs: token
-    if: needs.token.outputs.present == 'true'
+    # A dispatch from any branch but `main` would be a *branch* analysis, which this organization's
+    # plan does not offer: the report uploads, and then the gate check fails with "not allowed to
+    # access data from non main branches" (tried 2026-10-25). Pull requests and `main` are the two
+    # analyses there are.
+    if: >-
+      needs.token.outputs.present == 'true' &&
+      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
     runs-on: windows-latest
     timeout-minutes: 60
     steps:

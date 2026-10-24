@@ -1416,8 +1416,51 @@ starting a slice**: several are cheaper inside a slice that touches the same fil
 | — | `plan.confirm` | "Confirm (1 changes)" — the count is not pluralised | Copy, both catalogues |
 | — | cache manager | The log folder is not one of its targets | The log is new; worth a row once someone asks |
 | X12 | `ci-integration.yml` | The `#[ignore]` tests never run in CI | Each needs a fixture the runner can provide — an index, a hang |
-| — | CI | SBOM, an installer smoke test, coverage, `cargo machete`, actionlint/zizmor, dependency review, typos and link checks | Each its own decision; none is free on a Windows runner |
+| — | CI | SBOM, an installer smoke test, `cargo machete`, actionlint/zizmor, dependency review, typos and link checks | Each its own decision; none is free on a Windows runner. Coverage left this row on 2026-10-25 (below) |
+| — | `pipdock-cli/src/run.rs` (4 %), `src-tauri/src/commands.rs` (0 %) | The two large coverage holes `sonar.yml` measured: the CLI driving a real interpreter, and the IPC surface. L2 exercises the first and only a running app the second, so neither is measured | Each needs a seam — an engine `run.rs` can be handed, a `tauri::test` harness — and is its own slice. The gate asks 80 % of *new* lines, so neither blocks anything until it is touched |
 | — | `screenshot/` | The eight screenshots predate About and 1.4.0's window | Retake with a release, by hand |
+
+## After 1.4.0 — SonarQube Cloud from CI — **2026-10-25**
+
+No version. The owner switched automatic analysis off, set `SONAR_TOKEN`, and asked for CI-based
+analysis on the newest scanner, with Dependabot, the audits and the code scanners brought up to
+date on the way.
+
+**Where it started.** Automatic analysis had measured 11 602 lines — CSS, JS, Python, TypeScript,
+YAML — and **not one of Rust**: it cannot build, so two thirds of the code had never been analysed
+and no coverage could be imported. It had also never sent a project version, so the *previous
+version* new-code period was still the first analysis (2026-09-27) and grew with every merge.
+Separately, `Security scan` had been red on `main` every day since 2026-10-21 — rustls-webpki
+(RUSTSEC-2026-0382), webpki-root-certs (-0383), a yanked clipboard-win, and zod
+(GHSA-mrhx-c7xc-m3w5, through eslint-plugin-react-hooks) — and since `cargo audit` and `npm audit`
+are required, every PR would have been red as well. Dependabot opened a PR for none of the four.
+
+| What | Now |
+|---|---|
+| Analysis | `sonar.yml`: one Windows job — vitest and `cargo llvm-cov` LCOV, clippy's JSON, `sonarqube-scan-action` v8.3.0 pinned by commit, `sonar.qualitygate.wait` so a red gate on `main` reaches Discord |
+| Scope | `sonar-project.properties`: everything tracked, tests split out, fixtures and binaries excluded, coverage excluded only where no test here can execute the code, with the reason beside each |
+| New code | `sonar.projectVersion` from `package.json`, so a release bump starts a period |
+| The token | In the scanner step's environment alone; a job with no token (Dependabot, forks) is skipped, not failed |
+| Audits | The four bumps above, and nothing ignored |
+| Dependabot | A `vitest` group, because `@vitest/coverage-v8` peers vitest exactly; the `rfd` and `typescript` ignores re-checked and both still needed |
+
+**What running found that reading did not:**
+
+- **Coverage, measured for the first time:** Rust 71.6 % of 15 364 lines, TypeScript 68.4 % of
+  1 569; SonarQube Cloud's combined figure is **71.3 % of 16 327**. TESTING §3 had promised
+  thresholds since the first draft that nothing had measured. The two big holes are a backlog row.
+- **The plan analyses `main` and pull requests, and nothing else.** A dispatch on the branch, to see
+  every Rust finding before merging, uploaded its report and then failed the gate check with
+  "Organization is not allowed to access data from non main branches". A PR analysis reports only
+  the lines it changes, so the full Rust picture exists only once `main` is analysed; the dispatch
+  is now refused off `main`.
+- **Every tracked image and font was read as UTF-8 text** by the secrets sensor, one warning each,
+  once `sonar.sources=.` replaced automatic analysis's own scoping.
+- **The scanner's signature check works on a Windows runner.** v8 verifies the CLI's OpenPGP
+  signature by default, and Git for Windows' `gpg.exe` does it; no `skipSignatureVerification`.
+- **Cost:** eight to eleven minutes on a Windows runner beside the required checks, three of them restoring
+  ci-rust.yml's cache read-only. Saving a cache of its own was rejected: the repository is at 8.6 of
+  its 10 GB, and a fourth Windows cargo cache would evict the ones the required checks restore.
 
 ## Standing risks
 
