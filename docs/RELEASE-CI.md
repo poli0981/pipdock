@@ -11,15 +11,16 @@
 | `ci-integration.yml` | project-local | PR touching what its end-to-end steps run through (the path list is in the file), nightly, Mondays, dispatch | Windows runner, Python 3.10 and 3.14: the disposable-venv suite (TESTING L2); Mondays and dispatch only, the fixture-drift re-capture against the newest pip and uv |
 | `codeql.yml` | caller → ops `reusable-codeql.yml` | PR, push main, weekly | `languages: '["javascript-typescript", "rust", "actions"]'` |
 | `security-scan.yml` | **project-local** | daily, dispatch | `cargo audit` and `npm audit` against `main` (SECURITY §7) |
+| `sonar.yml` | **project-local** | PR, push main, dispatch (`main` only) | `token present` (`ubuntu-latest`) → `coverage · analysis` (`windows-latest`): vitest and `cargo llvm-cov` LCOV, clippy's JSON, then `sonarqube-scan-action` with `sonar.projectVersion` from `package.json` and `sonar.qualitygate.wait`. Skipped when the run has no `SONAR_TOKEN` (Dependabot and fork PRs), and for a dispatch from any branch but `main` — the plan analyses `main` and PRs only. `sonar-project.properties` holds the scope |
 | `release.yml` | **project-local** | tag `v*`; dispatch (`tag`, `dry_run`) | `Build · checksum` (`windows-latest`, read-only) → `Attest · draft` (`ubuntu-latest`); see §3 |
 | `announce-release.yml` | caller → ops `announce-release.yml` | release published; dispatch (re-runs) | Discord release announcement |
-| `notify-ci-failure.yml` | caller → ops `notify-ci-failure.yml` | `workflow_run` completed for `CI / Rust`, `CI / Node`, `CI / Integration`, `Security scan` — **by name** | Discord CI-failure notification |
+| `notify-ci-failure.yml` | caller → ops `notify-ci-failure.yml` | `workflow_run` completed for `CI / Rust`, `CI / Node`, `CI / Integration`, `Security scan`, `SonarCloud` — **by name** | Discord CI-failure notification |
 
 **`notify-ci-failure.yml` names its workflows, and a new workflow is added to it by its exact `name:`.** `workflows: ['*']` — the ops repo's own caller example — is not a wildcard to `workflow_run`: it matched nothing, so `main` stayed red from 2026-09-23 with every failure unreported. The reusable reports only failures on the default branch, and skips by name any workflow that has a dedicated notifier (CodeQL, Dependabot, deploy, Pages, release), which is why `CodeQL` and `Release` are not listed: listing them would only create skipped runs. A failed `Release` run therefore reaches no Discord channel; whoever pushed the tag has to watch it.
 
 **Ops-repo audit (2026-07-27; CodeQL and the notifier re-read 2026-10-17) — why the table looks like this:**
 
-- The reusable suite covers assembly, c-cpp, chrome-extension, desktop-csharp, go, jvm, macos-swift, php, python, r, ruby and web-react. **There is no Rust reusable and no Tauri reusable**, and only `reusable-desktop-csharp.yml` uses a Windows runner — hence `ci-rust.yml`, `release.yml` and `security-scan.yml` are project-local.
+- The reusable suite covers assembly, c-cpp, chrome-extension, desktop-csharp, go, jvm, macos-swift, php, python, r, ruby and web-react. **There is no Rust reusable and no Tauri reusable**, and only `reusable-desktop-csharp.yml` uses a Windows runner — hence `ci-rust.yml`, `release.yml` and `security-scan.yml` are project-local. There is no SonarQube reusable either (re-checked 2026-10-25), so `sonar.yml` is project-local too.
 - `reusable-web-react.yml` has **no `working-directory` input** (it runs `npm ci` at the repo root — hence `package.json` lives at the root with Vite's `root: './ui'`, see ARCHITECTURE §2) and **no `npm audit` step**, hence the extra local job.
 - `reusable-codeql.yml` *documents* csharp, python, javascript-typescript, ruby, c-cpp, java-kotlin, go and swift, but hands `languages` straight to `codeql-action`, with `build-mode: none` for anything outside its autobuild list — so `rust` and `actions` run through it unchanged. This bullet said **CodeQL has no Rust analyzer**, so Rust's coverage came from clippy and `cargo audit` alone; the premise stopped being true in 2025, and `codeql.yml` now asks for both. Only the JavaScript/TypeScript analysis is a required check (§2).
 - Portfolio notifications are **Discord-only**, driven by the ops repo's `.github/scripts/discord_notify.py`. There is no multi-platform `notify.py`.
@@ -38,7 +39,7 @@ permissions: { contents: read }
 permissions: { contents: read }
 #   build:   { contents: read }
 #   publish: { contents: write, id-token: write, attestations: write }
-# ci-rust.yml / ci-integration.yml / security-scan.yml
+# ci-rust.yml / ci-integration.yml / security-scan.yml / sonar.yml
 permissions: { contents: read }
 ```
 
@@ -62,7 +63,7 @@ permissions: { contents: read }
 
 **`CI / Integration` is deliberately excluded, and this is the trap worth remembering:** its `pull_request` trigger is `paths:`-filtered, so on a docs-only or UI-only PR it never starts — and a required check that never starts stays *pending forever*. Requiring it would deadlock exactly the PRs it has no opinion about. `Re-capture against the latest engines` runs on no PR at all (Mondays and dispatch only) and is excluded for the same reason. The bare `CodeQL` check belongs to the `github-advanced-security` app rather than Actions and is left out too.
 
-**Four more run on every PR and are not in the payload** — `cargo deny`, `tauri lockstep`, and CodeQL's `analyze / Analyze (rust)` and `analyze / Analyze (actions)` — all added in 1.4.0, after the five above were set (re-read 2026-10-17; the payload is unchanged). Until they are added, a red one is advice rather than a gate, which matters most for `tauri lockstep`: its whole purpose is to stop one half of a Tauri bump merging alone. `Security scan` runs on no PR and can never be required.
+**Four more run on every PR and are not in the payload** — `cargo deny`, `tauri lockstep`, and CodeQL's `analyze / Analyze (rust)` and `analyze / Analyze (actions)` — all added in 1.4.0, after the five above were set (re-read 2026-10-17; the payload is unchanged). Until they are added, a red one is advice rather than a gate, which matters most for `tauri lockstep`: its whole purpose is to stop one half of a Tauri bump merging alone. `Security scan` runs on no PR and can never be required. SonarQube Cloud is not required either, in either form: `SonarCloud Code Analysis` is reported by the SonarCloud app, which the payload's `app_id` pin would not accept, and `sonar.yml`'s `coverage · analysis` is *skipped* on every PR without a token — Dependabot's — and a skipped job satisfies a requirement, so requiring it would gate exactly the PRs it never looks at.
 
 **Two required contexts are named by the ops repo, not by this one.** `analyze / Analyze (javascript-typescript)` and `lint · typecheck · test · build / build` come from `poli0981/.github`'s reusables. If either job is renamed upstream, every PipDock PR deadlocks with no obvious cause and no failing check to point at — the fix is to update the protection payload, not the code.
 
@@ -72,7 +73,8 @@ Dependency updates use **Dependabot** (`.github/dependabot.yml`) — the portfol
 
 - **Cooldowns.** A release must be 3 days old before cargo or npm proposes it (14 for a major), and 7 for Actions and the tool pins. Most yanked or compromised releases are pulled inside that window, and nothing here needs a dependency the day it ships.
 - **Tauri moves in lockstep.** The `tauri` crate and `@tauri-apps/api` must share a minor or the app refuses to start, and Dependabot bumps Cargo and npm in separate PRs, each green on its own. So each ecosystem groups its Tauri packages (`tauri`, `tauri-*`; `@tauri-apps/*`) ahead of its catch-all group, and `ci-node.yml`'s `tauri lockstep` job fails either PR until its counterpart lands beside it, comparing the core and each plugin with its npm package on `Cargo.lock` and `package-lock.json` — what is built, not what the manifests ask for. **A multi-ecosystem group was considered and not used:** it would put both halves in one PR, but what it does to the dependencies outside its patterns is undocumented, and a wrong guess would silently stop every other update.
-- **TypeScript is held below 6.1** (`ignore: typescript >=6.1.0`): typescript-eslint 8.71 peers `typescript >=4.8.4 <6.1.0`, so a 6.1 bump fails `npm ci` with ERESOLVE before a single check runs. Remove it once typescript-eslint widens its range.
+- **TypeScript is held below 6.1** (`ignore: typescript >=6.1.0`): typescript-eslint 8.71 peers `typescript >=4.8.4 <6.1.0`, so a 6.1 bump fails `npm ci` with ERESOLVE before a single check runs. Remove it once typescript-eslint widens its range (8.72 still peers `<6.1.0`, re-read 2026-10-25, with TypeScript at 7.0).
+- **Vitest moves as one** (group `vitest`: `vitest`, `@vitest/*`, every update type). `@vitest/coverage-v8`, which `sonar.yml` needs, peers `vitest` at its exact version, so a bump of either alone fails `npm ci` the way the TypeScript one would.
 - **Labels.** PRs are labelled `dependencies` plus `rust`, `frontend`, `ci` or `code-health`, and the labels must exist in the repository or Dependabot opens its PRs without them (§5).
 
 ## 3. Release pipeline (tag `v*`)

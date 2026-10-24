@@ -78,7 +78,7 @@ failed package never aborts a batch (skip-and-continue, then a `"13 successful, 
 reusable Rust or Tauri workflow**, its notifiers are **Discord-only**, dependency bumps are
 **Dependabot** (not Renovate), and its CodeQL reusable *lists* no Rust but passes `languages`
 straight to codeql-action, which analyses Rust and Actions without a build — `codeql.yml` asks for
-both. So `ci-rust.yml`, `release.yml` and `security-scan.yml` are project-local; `ci-node.yml`,
+both. So `ci-rust.yml`, `release.yml`, `security-scan.yml` and `sonar.yml` are project-local; `ci-node.yml`,
 `codeql.yml` and the notifiers are callers. Every caller needs an explicit `permissions:` block —
 callers without one default to `none` — and a write permission belongs on the job that needs it,
 not the workflow.
@@ -88,6 +88,13 @@ not the workflow.
 nothing, and `main` was red from 2026-09-23 for three weeks with no one told. Start any CI
 question with `gh run list --branch main`, and remember that `security-scan.yml` exists for the
 case no PR will catch: an advisory against something already merged.
+
+**SonarQube Cloud is CI-based since 2026-10-25** — `sonar.yml` and `sonar-project.properties`;
+automatic analysis is off in the project's settings and must stay off, or the CI analysis is
+refused. Automatic analysis never analysed a line of Rust and imported no coverage, which is why it
+went. The gate's "new code" is *previous version*, and the version comes from `package.json`, so a
+release bump starts a new period; new code needs 80 % coverage, so a slice whose new lines no
+test reaches turns `main`'s gate red. Dependabot PRs have no `SONAR_TOKEN` and skip the analysis.
 
 ## Current state
 

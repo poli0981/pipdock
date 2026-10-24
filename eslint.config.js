@@ -54,6 +54,8 @@ export default tseslint.config(
     // walks into them and the type-aware rules crash on files outside the tsconfig program.
     ignores: [
       'dist/**',
+      // `npm run test:coverage` output; an HTML reporter there ships its own scripts.
+      'coverage/**',
       'target/**',
       'src-tauri/target/**',
       'src-tauri/gen/**',

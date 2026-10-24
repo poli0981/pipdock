@@ -1,0 +1,148 @@
+# SonarQube Cloud, CI-based. sonar-project.properties says what is analysed, and why this replaced
+# automatic analysis: that could not build, so it saw no Rust and imported no coverage.
+#
+# **One Windows job**, for the reason ci-rust.yml is on Windows: the Rust suite exercises the PEP 514
+# registry and the `py` launcher, so coverage measured on Linux would be coverage of a different
+# program. Scanning on the runner that produced the reports also means both LCOV files name paths
+# the scanner can resolve, with nothing rewritten in between.
+#
+# **The token reaches one step.** Producing the reports runs third-party code — every crate's build
+# script, every npm package's — so SONAR_TOKEN is in no environment but the scanner's, the same
+# reasoning that keeps release.yml's write token away from its build.
+#
+# **No token, no analysis.** Dependabot's pull requests are given Dependabot secrets only, and a
+# fork's none, so on those `secrets.SONAR_TOKEN` is empty and the job is skipped instead of failing
+# on a missing token. Adding SONAR_TOKEN as a Dependabot secret as well brings their PRs back in.
+#
+# Not a required check. The quality gate is still reported as SonarCloud's own check on the PR, and
+# `sonar.qualitygate.wait` makes this job fail with it — which is what lets a red gate on `main`
+# reach Discord through notify-ci-failure.yml, where this workflow is listed by name.
+
+name: SonarCloud
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: sonar-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+  # ci-rust.yml's, so the clippy run below matches the fingerprints in the cache it restores.
+  RUSTFLAGS: -D warnings
+
+jobs:
+  token:
+    name: token present
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      present: ${{ steps.check.outputs.present }}
+    steps:
+      # `secrets` cannot be read in an `if:`, so its presence is turned into an output here. Only
+      # the emptiness test sees the value; nothing is checked out and nothing else runs.
+      - name: Check
+        id: check
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        run: |
+          if [ -n "$SONAR_TOKEN" ]; then
+            echo "present=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "present=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::No SONAR_TOKEN for this run (a Dependabot or fork pull request); the analysis is skipped."
+          fi
+
+  analyze:
+    name: coverage · analysis
+    needs: token
+    # A dispatch from any branch but `main` would be a *branch* analysis, which this organization's
+    # plan does not offer: the report uploads, and then the gate check fails with "not allowed to
+    # access data from non main branches" (tried 2026-10-25). Pull requests and `main` are the two
+    # analyses there are.
+    if: >-
+      needs.token.outputs.present == 'true' &&
+      (github.event_name != 'workflow_dispatch' || github.ref == 'refs/heads/main')
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+        with:
+          # Full history: new code is decided by blame, and a shallow clone has none to give.
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: '24'
+          cache: npm
+
+      - name: Install frontend dependencies
+        run: npm ci
+
+      - name: TypeScript coverage
+        run: npm run test:coverage
+
+      # Restore only, from ci-rust.yml's key. The registry and clippy's build are reused from it;
+      # the instrumented build lands in target/llvm-cov-target and is rebuilt every run, because
+      # saving a fourth multi-GB cargo cache would evict the three the required checks depend on.
+      - name: Restore cargo cache
+        uses: actions/cache/restore@v6
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
+          restore-keys: ${{ runner.os }}-cargo-
+
+      # For the toolchain rust-toolchain.toml pins, which installs itself on the first cargo call;
+      # adding the component there instead would make every contributor download it.
+      - name: Add llvm-tools
+        run: rustup component add llvm-tools-preview
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@1168f6810a3cb30a3514bf5756a3b7f0422c6df8 # v2.87.28
+        with:
+          tool: cargo-llvm-cov
+
+      - name: Rust coverage
+        run: cargo llvm-cov --workspace --locked --lcov --output-path target/lcov-rust.info
+
+      # The same invocation as ci-rust.yml's gate, as JSON. That job is what fails on a finding;
+      # this one only records it, so a red clippy still leaves a report for the scanner to import.
+      - name: Clippy report
+        shell: pwsh
+        run: |
+          cargo clippy --workspace --all-targets --locked --message-format=json -- -D warnings |
+            Out-File -Encoding utf8NoBOM target/clippy.json
+          exit 0
+
+      # package.json is one of the five places the version lives, and a tag cannot be pushed while
+      # they disagree (release.yml), so any of them would do. Checked against a version's shape
+      # because it is spliced into the scanner's argv below, in the step that holds the token.
+      - name: Project version
+        id: version
+        shell: pwsh
+        run: |
+          $v = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          if ($v -notmatch '^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$') { throw "package.json version '$v' is not a version" }
+          "version=$v" >> $env:GITHUB_OUTPUT
+
+      - name: Scan
+        uses: SonarSource/sonarqube-scan-action@d209202bc7d53ff1cc128f7f907dac145c9d6ae9 # v8.3.0
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.projectVersion=${{ steps.version.outputs.version }}
+            -Dsonar.qualitygate.wait=true
