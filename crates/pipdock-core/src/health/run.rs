@@ -222,7 +222,7 @@ async fn run_one(
     if tool == "deptry"
         && let Some(parent) = report_path.parent()
     {
-        std::fs::create_dir_all(parent).map_err(|e| {
+        tokio::fs::create_dir_all(parent).await.map_err(|e| {
             PdError::new(
                 Code::HltToolFailed,
                 format!("could not make room for deptry's report: {e}"),
@@ -241,7 +241,7 @@ async fn run_one(
     let stdout = match out {
         Ok(out) if super::is_findings_exit(tool, out.code) => {
             if tool == "deptry" {
-                std::fs::read_to_string(&report_path).map_err(|e| {
+                tokio::fs::read_to_string(&report_path).await.map_err(|e| {
                     PdError::new(
                         Code::HltToolFailed,
                         format!("deptry exited cleanly but wrote no report: {e}"),
@@ -261,7 +261,7 @@ async fn run_one(
 
     // Cleaned on both paths: `%LOCALAPPDATA%\PipDock\data` is what SECURITY §8 promises a delete
     // resets, and leaving a report per run turns that into a slow leak.
-    let _ = std::fs::remove_file(&report_path);
+    let _ = tokio::fs::remove_file(&report_path).await;
     stdout
 }
 

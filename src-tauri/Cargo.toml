@@ -31,7 +31,8 @@ tauri-plugin-clipboard-manager = "2.5.0"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 jiff = "0.2.38"
-tokio = { version = "1.53.3", features = ["rt-multi-thread", "sync"] }
+# `fs` for the commands that write a file the user chose, which may be on a slow or network drive.
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "sync", "fs"] }
 # `plan_cancel` trips the same `CancellationToken` the core threads through `exec`.
 tokio-util = "0.7.20"
 tracing = "0.1.44"

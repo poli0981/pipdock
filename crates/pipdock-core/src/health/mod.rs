@@ -488,21 +488,25 @@ pub async fn sync_tools_venv(
     let requirements = tools_dir.join(REQUIREMENTS_FILE);
     let manifest_path = tools_dir.join(MANIFEST_FILE);
 
-    std::fs::create_dir_all(tools_dir).map_err(|e| fs_failure("create the tools directory", &e))?;
+    tokio::fs::create_dir_all(tools_dir)
+        .await
+        .map_err(|e| fs_failure("create the tools directory", &e))?;
 
     // Deleted **before** anything is touched, which inverts `snapshot::create`'s data-then-metadata
     // ordering — and for the opposite reason. A snapshot writes a sidecar that did not exist; a
     // re-sync replaces a manifest that already describes the *old* pin set. If the sync then dies
     // half-way, a surviving manifest would claim tools that have just been part-replaced. With it
     // gone, a torn sync reads as `NeverSynced` and the next run redoes the whole thing.
-    let _ = std::fs::remove_file(&manifest_path);
+    let _ = tokio::fs::remove_file(&manifest_path).await;
 
     // A rendering of the ledger, not a copy: this is where the *other* venv's pins, the comments,
     // and whatever line endings the build machine checked out stop.
-    std::fs::write(&requirements, requirements_body(&pins))
+    tokio::fs::write(&requirements, requirements_body(&pins))
+        .await
         .map_err(|e| fs_failure("write the tools requirements", &e))?;
     let constraints = tools_dir.join(CONSTRAINTS_FILE);
-    std::fs::write(&constraints, constraints_body())
+    tokio::fs::write(&constraints, constraints_body())
+        .await
         .map_err(|e| fs_failure("write the tools constraints", &e))?;
 
     // The venv is rebuilt, not repaired. `pip install -r` over an existing venv is a no-op when
@@ -541,8 +545,8 @@ pub async fn sync_tools_venv(
         )
     })?;
     // Written last: until it exists, the venv is not claimed to be anything.
-    if let Err(e) = std::fs::write(&manifest_path, json) {
-        let _ = std::fs::remove_file(&manifest_path);
+    if let Err(e) = tokio::fs::write(&manifest_path, json).await {
+        let _ = tokio::fs::remove_file(&manifest_path).await;
         return Err(fs_failure("write the tools manifest", &e));
     }
     Ok(manifest)
