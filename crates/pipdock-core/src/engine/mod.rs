@@ -380,18 +380,6 @@ pub struct InstallSet {
     pub system: SystemPackages,
 }
 
-impl InstallSet {
-    /// Install `specs`, constraining nothing else.
-    #[must_use]
-    pub const fn only(specs: Vec<PinnedSpec>) -> Self {
-        Self {
-            specs,
-            constraints: Vec::new(),
-            system: SystemPackages::Protected,
-        }
-    }
-}
-
 /// The requirements (and constraints) files one engine invocation reads, deleted when dropped.
 ///
 /// **Files, not argv.** Every plan restates the whole installed set (SP-1), one argv entry per

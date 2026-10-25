@@ -449,7 +449,8 @@ pub async fn env_export(
     };
     let freeze = engine.freeze(&env).await?;
     let target = std::path::PathBuf::from(&path);
-    std::fs::write(&target, freeze)
+    tokio::fs::write(&target, freeze)
+        .await
         .map_err(|e| pipdock_core::exec::user_file_error(&target, &e))?;
     Ok(target.display().to_string())
 }
@@ -469,7 +470,8 @@ pub async fn env_export(
 pub async fn requirements_read(
     path: String,
 ) -> Wire<pipdock_core::requirements::ParsedRequirements> {
-    let text = std::fs::read_to_string(&path)
+    let text = tokio::fs::read_to_string(&path)
+        .await
         .map_err(|e| pipdock_core::exec::user_file_error(std::path::Path::new(&path), &e))?;
     Ok(pipdock_core::requirements::parse(&text))
 }
@@ -1239,7 +1241,8 @@ pub async fn audit_save_report(
     })?;
 
     for (target, contents) in [(&md, body), (&json, document)] {
-        std::fs::write(target, contents)
+        tokio::fs::write(target, contents)
+            .await
             .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;
     }
     Ok(vec![md.display().to_string(), json.display().to_string()])
@@ -1398,7 +1401,8 @@ pub async fn health_save_report(
     })?;
 
     for (target, contents) in [(&md, body), (&json, document)] {
-        std::fs::write(target, contents)
+        tokio::fs::write(target, contents)
+            .await
             .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;
     }
     Ok(vec![md.display().to_string(), json.display().to_string()])

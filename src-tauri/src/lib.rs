@@ -92,7 +92,7 @@ pub fn run() {
     let state = match state::AppState::new() {
         Ok(state) => state,
         Err(e) => {
-            tracing::error!(target: "pipdock::app", code = %e.code, message = %e.message, "could not start");
+            tracing::error!(target: "pipdock::app", code = %e.code, error = %e.message, "could not start");
             startup_failed(&e, &log);
             return;
         }

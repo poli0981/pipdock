@@ -27,7 +27,9 @@ serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
 sha2 = "0.11.1"
 thiserror = "2.0.21"
-tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync"] }
+# `fs`: an async fn that touches a file goes through tokio's pool rather than blocking a runtime
+# worker (SonarQube rust:S7493).
+tokio = { version = "1.53.3", features = ["rt-multi-thread", "macros", "process", "io-util", "time", "sync", "fs"] }
 # First-party tokio, for CancellationToken. The alternative was an AtomicBool plus a Notify,
 # which is what CancellationToken already is, written worse.
 tokio-util = "0.7.20"

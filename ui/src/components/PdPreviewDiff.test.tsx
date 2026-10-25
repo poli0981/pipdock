@@ -176,6 +176,41 @@ describe('what the report says besides the changes', () => {
     expect(within(section('new-install')).getByText('oldlib')).toBeInTheDocument()
   })
 
+  it('shows an unattributed blocker as its bare constraint, and a dependent without a version', () => {
+    // ARCHITECTURE §3: when attribution is ambiguous the constraint is shown without a culprit
+    // rather than guessed (`Blocker.by` absent), and the probe does not always know a dependent's
+    // version. Each still counts once toward what forcing breaks.
+    const numpy = FORCED.forced?.[0]
+    if (numpy === undefined) throw new Error('the forced fixture forces numpy')
+    show({
+      ...FORCED,
+      forced: [
+        {
+          ...numpy,
+          blockers: [{ constraint: 'numpy<2' }, { by: 'pandas', constraint: 'numpy<2,>=1.26.0' }],
+        },
+      ],
+      yanked: [{ pkg: 'oldlib', version: '2.0.0' }],
+    })
+    const forced = section('forced')
+    expect(within(forced).getByText('Will break (2)')).toBeInTheDocument()
+    expect(within(forced).getByText('numpy<2')).toBeInTheDocument()
+    expect(within(forced).getByText('pandas requires numpy<2,>=1.26.0')).toBeInTheDocument()
+    // A withdrawal with no reason given is still said, without a dangling colon.
+    expect(
+      within(section('yanked')).getByText('oldlib 2.0.0 was withdrawn by its maintainers.'),
+    ).toBeInTheDocument()
+  })
+
+  it('heads a force that breaks nothing by what was forced, not by a count of zero', () => {
+    const numpy = FORCED.forced?.[0]
+    if (numpy === undefined) throw new Error('the forced fixture forces numpy')
+    show({ ...FORCED, forced: [{ pkg: numpy.pkg, latest: numpy.latest, resolved: numpy.resolved }] })
+    const forced = section('forced')
+    expect(within(forced).getByText('Forced (1)')).toBeInTheDocument()
+    expect(within(forced).queryByText(/Will break/)).toBeNull()
+  })
+
   it('does not call a plan whose only content is a left-out package "nothing to change"', () => {
     // The user asked for numba and is owed the reason it is not happening.
     show({ changes: [], heldBack: [], incompatible: FORCED.incompatible ?? [] })

@@ -301,39 +301,7 @@ pub async fn refresh(app_data: &std::path::Path, now: jiff::Timestamp) -> Result
         .await
         .map_err(|e| net_err("could not read the package index", &e))?;
     let wire_bytes = body.len();
-
-    // Typed, borrowing the names out of the body: a `serde_json::Value` of 700,000 objects is the
-    // whole document again in allocations, for a parse that only wants one field of each (M36).
-    #[derive(serde::Deserialize)]
-    struct Simple<'a> {
-        #[serde(borrow)]
-        projects: Vec<Project<'a>>,
-    }
-    #[derive(serde::Deserialize)]
-    struct Project<'a> {
-        #[serde(borrow)]
-        name: std::borrow::Cow<'a, str>,
-    }
-    let doc: Simple<'_> = serde_json::from_slice(&body).map_err(|e| {
-        PdError::new(
-            Code::NetIndexRefreshFailed,
-            format!("the package index is not the PEP 691 document: {e}"),
-        )
-    })?;
-    // An empty list is not an index, whatever said it was: a captive portal or a broken mirror.
-    // Ingesting it replaced every name with none, and search found nothing until the next week's
-    // refresh (L55).
-    if doc.projects.is_empty() {
-        return Err(PdError::new(
-            Code::NetIndexRefreshFailed,
-            "the package index listed no projects; the previous index is kept",
-        ));
-    }
-    let rows: Vec<(String, String)> = doc
-        .projects
-        .iter()
-        .map(|p| (crate::model::normalize_name(&p.name), p.name.to_string()))
-        .collect();
+    let rows = parse_simple_index(&body)?;
 
     // Opened only now, after the download, and on a blocking thread: hundreds of thousands of
     // inserts are a second of synchronous work, which on an async worker stalls every other task
@@ -354,6 +322,46 @@ pub async fn refresh(app_data: &std::path::Path, now: jiff::Timestamp) -> Result
         wire_bytes,
         elapsed_ms: u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX),
     })
+}
+
+/// PEP 691's project list as `(normalized, display)` rows — everything `refresh` decides about a
+/// body it was given, apart from the download, so it can be held without a network.
+///
+/// # Errors
+/// `PD-NET-010` for a body that is not the document, or one that lists no projects.
+fn parse_simple_index(body: &[u8]) -> Result<Vec<(String, String)>> {
+    // Typed, borrowing the names out of the body: a `serde_json::Value` of 700,000 objects is the
+    // whole document again in allocations, for a parse that only wants one field of each (M36).
+    #[derive(serde::Deserialize)]
+    struct Simple<'a> {
+        #[serde(borrow)]
+        projects: Vec<Project<'a>>,
+    }
+    #[derive(serde::Deserialize)]
+    struct Project<'a> {
+        #[serde(borrow)]
+        name: std::borrow::Cow<'a, str>,
+    }
+    let doc: Simple<'_> = serde_json::from_slice(body).map_err(|e| {
+        PdError::new(
+            Code::NetIndexRefreshFailed,
+            format!("the package index is not the PEP 691 document: {e}"),
+        )
+    })?;
+    // An empty list is not an index, whatever said it was: a captive portal or a broken mirror.
+    // Ingesting it replaced every name with none, and search found nothing until the next week's
+    // refresh (L55).
+    if doc.projects.is_empty() {
+        return Err(PdError::new(
+            Code::NetIndexRefreshFailed,
+            "the package index listed no projects; the previous index is kept",
+        ));
+    }
+    Ok(doc
+        .projects
+        .iter()
+        .map(|p| (crate::model::normalize_name(&p.name), p.name.to_string()))
+        .collect())
 }
 
 /// Replace the `names` table's contents in one transaction.
@@ -640,6 +648,43 @@ fn net_code(chain: &str) -> Code {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_pep_691_body_becomes_normalized_rows_with_the_display_name_kept() {
+        let rows = parse_simple_index(
+            br#"{"meta": {"api-version": "1.1"},
+                 "projects": [{"name": "Flask"}, {"name": "zope.interface"}, {"name": "ruamel_yaml"}]}"#,
+        )
+        .expect("a real index");
+        assert_eq!(
+            rows,
+            [
+                ("flask".to_owned(), "Flask".to_owned()),
+                ("zope-interface".to_owned(), "zope.interface".to_owned()),
+                ("ruamel-yaml".to_owned(), "ruamel_yaml".to_owned()),
+            ]
+        );
+    }
+
+    #[test]
+    fn an_empty_project_list_is_refused_rather_than_wiping_the_index() {
+        // L55: a captive portal or a broken mirror answering 200 with nothing in it.
+        let err = parse_simple_index(br#"{"meta": {"api-version": "1.1"}, "projects": []}"#)
+            .expect_err("an index with no projects");
+        assert_eq!(err.code, Code::NetIndexRefreshFailed);
+        assert!(err.message.contains("previous index is kept"), "{err}");
+    }
+
+    #[test]
+    fn a_body_that_is_not_the_document_is_an_index_error() {
+        for body in [
+            &b"<html>Sign in to the Wi-Fi</html>"[..],
+            br#"{"projects": "all"}"#,
+        ] {
+            let err = parse_simple_index(body).expect_err("not PEP 691");
+            assert_eq!(err.code, Code::NetIndexRefreshFailed);
+        }
+    }
 
     fn index(names: &[&str]) -> NameIndex {
         NameIndex {

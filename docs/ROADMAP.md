@@ -1439,7 +1439,7 @@ are required, every PR would have been red as well. Dependabot opened a PR for n
 |---|---|
 | Analysis | `sonar.yml`: one Windows job — vitest and `cargo llvm-cov` LCOV, clippy's JSON, `sonarqube-scan-action` v8.3.0 pinned by commit, `sonar.qualitygate.wait` so a red gate on `main` reaches Discord |
 | Scope | `sonar-project.properties`: everything tracked, tests split out, fixtures and binaries excluded, coverage excluded only where no test here can execute the code, with the reason beside each |
-| New code | `sonar.projectVersion` from `package.json`, so a release bump starts a period |
+| New code | `sonar.projectVersion` from `package.json`, which the previous-version period keys on — though sending the first one did not move it (below) |
 | The token | In the scanner step's environment alone; a job with no token (Dependabot, forks) is skipped, not failed |
 | Audits | The four bumps above, and nothing ignored |
 | Dependabot | A `vitest` group, because `@vitest/coverage-v8` peers vitest exactly; the `rfd` and `typescript` ignores re-checked and both still needed |
@@ -1458,6 +1458,24 @@ are required, every PR would have been red as well. Dependabot opened a PR for n
   once `sonar.sources=.` replaced automatic analysis's own scoping.
 - **The scanner's signature check works on a Windows runner.** v8 verifies the CLI's OpenPGP
   signature by default, and Git for Windows' `gpg.exe` does it; no `skipSignatureVerification`.
+- **The first analysis of `main` failed its gate**, on the two things automatic analysis could
+  never have seen. **Sixteen Rust findings**, every one a bug by Sonar's classification: three
+  `rust:S6677` — `message = %e.message` beside a format string records two fields called
+  `message`, and the log line read `failed code=PD-ENV-001 no interpreter at …` with the error's
+  words indistinguishable from the event's (now `error = …`, as every other failure logs it, and
+  `golden.rs` reads the CLI's log to hold it) — and thirteen `rust:S7493`, `std::fs` inside an
+  `async fn`: the tools-venv sync, Code Health's deptry report, and the four commands that write or
+  read a file the user chose, on what may be a network drive. They go through `tokio::fs` now.
+  And **new-code coverage 78.3 %** against 80 %.
+- **Sending a version did not move the baseline.** The analysis that first sent `1.4.0` still
+  measured new code from 2026-09-27, so "new" was all of 1.4.0's audit — 4 037 lines, 849 of them
+  uncovered. The answer was tests rather than a setting: the restore half of `execute_rollback`, a
+  force the environment's Python cannot run, PEP 691 parsing (split out of `index::refresh`, with
+  L55's empty list finally under test), `user_file_error` (U25), a plan verified against another
+  environment, the cached half of `release::PyPiReleases`, and the store paths no test had driven
+  — a resolve that succeeds, a round of decisions, a rollback preview, and late answers on the
+  error paths. `InstallSet::only` had no caller and went. Estimated against Sonar's own per-line
+  data before pushing, by a script that reproduced its 78.28 % exactly: 81.2 %.
 - **Cost:** eight to eleven minutes on a Windows runner beside the required checks, three of them restoring
   ci-rust.yml's cache read-only. Saving a cache of its own was rejected: the repository is at 8.6 of
   its 10 GB, and a fourth Windows cargo cache would evict the ones the required checks restore.

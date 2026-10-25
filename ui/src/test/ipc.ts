@@ -62,7 +62,10 @@ export interface IpcMock {
   healthDirty: ReturnType<typeof vi.fn>
   reportBugUrl: ReturnType<typeof vi.fn>
   logsTail: ReturnType<typeof vi.fn>
+  snapshotList: ReturnType<typeof vi.fn>
   snapshotDiff: ReturnType<typeof vi.fn>
+  snapshotRollbackPreview: ReturnType<typeof vi.fn>
+  snapshotRollback: ReturnType<typeof vi.fn>
   indexSearch: ReturnType<typeof vi.fn>
   appInfo: ReturnType<typeof vi.fn>
   settingsGet: ReturnType<typeof vi.fn>
@@ -127,7 +130,13 @@ export function ipcMock(): IpcMock {
     healthDirty: vi.fn().mockResolvedValue(null),
     // Settings renders the Logs row, so every Settings test needs this to resolve to a real shape.
     logsTail: vi.fn().mockResolvedValue({ dir: 'C:/data/logs', lines: [] }),
+    // An empty timeline. Missing until the timeline's own race tests needed it: every test that
+    // opened an environment reached `loadSnapshots`, threw on the absent export, and rendered
+    // the timeline's error without anyone asking for one.
+    snapshotList: vi.fn().mockResolvedValue([]),
     snapshotDiff: vi.fn(),
+    snapshotRollbackPreview: vi.fn(),
+    snapshotRollback: vi.fn(),
     // Ready and empty by default: a test about warming says so.
     indexSearch: vi.fn().mockResolvedValue({ hits: [], ready: true }),
     // `PdErrorRow` asks for this on mount, so any test that renders a screen containing an error
