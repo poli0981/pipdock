@@ -1108,6 +1108,85 @@ async fn a_requires_python_nobody_knows_never_blocks() {
 }
 
 #[tokio::test]
+async fn forcing_a_latest_this_python_cannot_run_forces_nothing_and_says_why() {
+    // The SP-1 world, except that httpcore's latest needs a newer Python than the environment's
+    // 3.12.4. Forcing it would pin a release that cannot install and release httpx from the
+    // guard set for nothing — so the decision is dropped, httpx is not named as breaking, and the
+    // preview carries the reason as an incompatible row instead.
+    let releases = Arc::new(Releases::default().with("httpcore", "1.0.9", ">=3.13"));
+    let engine = Scripted::default()
+        .with("httpx", "0.23.0", &["httpcore<0.16.0,>=0.15.0"])
+        .with("httpcore", "0.15.0", &["h11<0.13,>=0.11"])
+        .with("h11", "0.12.0", &[])
+        .offering("httpcore", "1.0.9")
+        .offering("h11", "0.16.0")
+        .needing("httpcore", "h11", "0.16");
+    let intent = Intent::Update {
+        all: false,
+        pkgs: vec!["httpcore".to_owned()],
+        except: Vec::new(),
+        force_latest: false,
+    };
+    let (mut flow, step) = UpdateFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &intent,
+        &[],
+        checking(&releases),
+    )
+    .await
+    .expect("start");
+    assert!(
+        matches!(step, FlowStep::NeedsDecisions { .. }),
+        "httpx holds httpcore back: {step:?}"
+    );
+
+    let step = flow
+        .decide(&BTreeMap::from([(pkg("httpcore"), Decision::ForceLatest)]))
+        .await
+        .expect("decide");
+    let report = match step {
+        FlowStep::NeedsDecisions { report, .. } | FlowStep::NeedsConfirm { report } => report,
+        other => panic!("a preview, not {other:?}"),
+    };
+    assert!(report.forced.is_empty(), "nothing was forced: {report:?}");
+    assert!(
+        !report
+            .changes
+            .iter()
+            .any(|c| c.name == pkg("httpcore") && c.to.0 == "1.0.9"),
+        "httpcore did not move to a release this Python cannot run"
+    );
+    let why: Vec<(String, String, String)> = report
+        .incompatible
+        .iter()
+        .map(|m| {
+            (
+                m.pkg.to_string(),
+                m.version.0.clone(),
+                m.requires_python.clone(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        why,
+        [(
+            "httpcore".to_owned(),
+            "1.0.9".to_owned(),
+            ">=3.13".to_owned()
+        )]
+    );
+
+    let world = engine.world();
+    let last = &world.resolves.last().expect("resolved").adjust;
+    assert!(
+        !last.release.contains(&pkg("httpx")),
+        "httpx stayed in the guard set: forcing was dropped before it reached the engine"
+    );
+    assert!(!last.pins.iter().any(|p| p.name == pkg("httpcore")));
+}
+
+#[tokio::test]
 async fn a_rollback_across_engines_never_removes_pip() {
     // C7. uv's freeze has no `--all`, so a uv snapshot never lists pip; compared with pip's
     // freeze, pip looked added since the snapshot, and the restore uninstalled it.
@@ -1149,6 +1228,84 @@ async fn a_rollback_across_engines_never_removes_pip() {
         .map(|s| s.to_requirement())
         .collect();
     assert_eq!(restored, ["idna==3.2"]);
+}
+
+#[tokio::test]
+async fn a_rollback_runs_end_to_end_one_package_at_a_time() {
+    // The restore half of `execute_rollback`, which nothing drove until the analysis measured
+    // it: each package installs alone, constrained by the rest of the target, so a restore that
+    // is 90% restorable restores 90% — and what was added since the snapshot goes first.
+    let engine = Scripted::default()
+        .with("idna", "3.4", &[])
+        .with("urllib3", "2.2.0", &[])
+        .with(
+            "requests",
+            "2.32.3",
+            &["idna<4,>=2.5", "urllib3<3,>=1.21.1"],
+        );
+    let dir = app_data("rollback-e2e");
+    let hash = pipdock_core::envs::env_hash(std::path::Path::new("python.exe"));
+    let target = snapshot::create(
+        &dir,
+        &hash,
+        "idna==3.2\nurllib3==1.26.20\n".to_owned(),
+        Trigger::Manual,
+        EngineId::Pip,
+        jiff::Timestamp::now(),
+    )
+    .expect("snapshot");
+    let (mut flow, preview) = RollbackFlow::start(
+        env(),
+        Box::new(engine.clone()),
+        &dir,
+        &target.meta.id,
+        FlowOptions::default(),
+    )
+    .await
+    .expect("start");
+    assert_eq!(preview.restore.uninstall, [pkg("requests")]);
+
+    let pre = flow
+        .take_snapshot(&dir)
+        .await
+        .expect("the pre-rollback snapshot");
+    assert!(matches!(pre.trigger, Trigger::Rollback { .. }));
+    let (tx, _rx) = tokio::sync::mpsc::unbounded_channel();
+    let summary = flow.execute(tx).await.expect("execute");
+    let _ = std::fs::remove_dir_all(&dir);
+
+    assert_eq!(summary.counts.ok, 3, "{summary:?}");
+    assert_eq!(
+        summary.plan_id, pre.id,
+        "the summary is filed under the snapshot it can undo to"
+    );
+    assert_eq!(engine.version_of("requests"), None);
+    assert_eq!(engine.version_of("idna").as_deref(), Some("3.2"));
+    assert_eq!(engine.version_of("urllib3").as_deref(), Some("1.26.20"));
+
+    let world = engine.world();
+    let alone: Vec<(String, Vec<String>)> = world
+        .installs
+        .iter()
+        .map(|set| {
+            (
+                set.specs
+                    .iter()
+                    .map(|s| s.to_requirement())
+                    .collect::<Vec<_>>()
+                    .join(" "),
+                set.constraints.iter().map(|c| c.to_requirement()).collect(),
+            )
+        })
+        .collect();
+    assert_eq!(
+        alone,
+        [
+            ("idna==3.2".to_owned(), vec!["urllib3==1.26.20".to_owned()]),
+            ("urllib3==1.26.20".to_owned(), vec!["idna==3.2".to_owned()]),
+        ],
+        "one package per step, held to the rest of the target"
+    );
 }
 
 #[tokio::test]

@@ -1039,6 +1039,35 @@ mod tests {
     }
 
     #[test]
+    fn a_file_the_user_chose_is_never_blamed_on_the_environment() {
+        // U25. An export, a saved report or a requirements file is the user's own path, so a
+        // refusal there is about that folder — not PD-PRM-001's "PipDock may not write to this
+        // environment", and not PD-SYS-002's full disk.
+        use std::io::{Error, ErrorKind};
+        let p = Path::new(r"C:\Users\me\Desktop\requirements.txt");
+        assert_eq!(
+            user_file_error(p, &Error::from_raw_os_error(32)).code,
+            Code::PrmFileLocked,
+            "ERROR_SHARING_VIOLATION: another program has it open"
+        );
+        for kind in [ErrorKind::PermissionDenied, ErrorKind::ReadOnlyFilesystem] {
+            assert_eq!(
+                user_file_error(p, &Error::from(kind)).code,
+                Code::PrmSourceReadOnly,
+                "{kind:?}"
+            );
+        }
+        // Everything else is what any file failure is.
+        assert_eq!(
+            user_file_error(p, &Error::from_raw_os_error(112)).code,
+            Code::SysDiskFull
+        );
+        let missing = user_file_error(p, &Error::from(ErrorKind::NotFound));
+        assert_eq!(missing.code, Code::IntUnexpected);
+        assert!(missing.message.contains("requirements.txt"), "{missing}");
+    }
+
+    #[test]
     fn interpreter_identity_is_case_folded_on_windows() {
         // SP-6: the Chocolatey shim and the direct install differ only in casing, and env_hash is
         // built from this string.

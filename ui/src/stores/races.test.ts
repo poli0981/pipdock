@@ -86,6 +86,45 @@ describe('a slow answer for an environment the user has left', () => {
     expect(useEnvStore.getState().outdated).toEqual([])
     expect(useEnvStore.getState().outdatedStatus).toBe('idle')
   })
+
+  it('does not put the left environment’s failure on the new one either', async () => {
+    // The same rule on the error path: an unreachable index for the environment the user left
+    // must not mark the one they are now looking at as unreadable.
+    const list = deferredFailure()
+    const outdated = deferredFailure()
+    vi.mocked(ipc.pkgList).mockReturnValueOnce(list.promise)
+    vi.mocked(ipc.pkgOutdated).mockReturnValueOnce(outdated.promise)
+    const listing = useEnvStore.getState().loadPackages()
+    const badges = useEnvStore.getState().loadOutdated()
+
+    useEnvStore.getState().select(env('b').interpreter)
+    list.fail({ code: 'PD-ENV-003', message: 'probe failed' })
+    outdated.fail({ code: 'PD-NET-001', message: 'offline' })
+    await Promise.all([listing, badges])
+
+    const { listError, outdatedError, listing: state } = useEnvStore.getState()
+    expect(listError).toBeNull()
+    expect(outdatedError).toBeNull()
+    expect(state).not.toBe('error')
+  })
+})
+
+/** A promise the test rejects when it chooses, with a `PdError`-shaped plain object. */
+function deferredFailure() {
+  let fail: (error: { code: string; message: string }) => void = () => undefined
+  const promise = new Promise<never>((_, reject) => {
+    fail = reject
+  })
+  return { promise, fail }
+}
+
+const meta = (id: string) => ({
+  id,
+  createdAt: '2026-10-25T00:00:00Z',
+  trigger: 'manual' as const,
+  engine: 'pip' as const,
+  packageCount: 3,
+  appVersion: '1.4.0',
 })
 
 describe('the timeline', () => {
@@ -107,6 +146,54 @@ describe('the timeline', () => {
 
     expect(useEnvStore.getState().selectedSnapshot).toBe('two')
     expect(useEnvStore.getState().diff).toEqual(second)
+  })
+
+  it('lists the snapshots of the environment that is open, by its hash', async () => {
+    vi.mocked(ipc.snapshotList).mockResolvedValueOnce([meta('one')])
+    await useEnvStore.getState().loadSnapshots()
+
+    // By `envHash`: a snapshot outlives the Python that made it.
+    expect(ipc.snapshotList).toHaveBeenCalledWith('hash-a')
+    const { snapshots, snapshotsFor, snapshotsLoading } = useEnvStore.getState()
+    expect(snapshots).toEqual([meta('one')])
+    expect(snapshotsFor).toBe(env('a').interpreter)
+    expect(snapshotsLoading).toBe('ready')
+  })
+
+  it('drops the timeline of an environment closed before it arrived, and its failure', async () => {
+    useEnvStore.setState({ rows: [row('a'), row('b')] })
+    const slow = held<ReturnType<typeof meta>[]>()
+    const failing = deferredFailure()
+    vi.mocked(ipc.snapshotList).mockReturnValueOnce(slow.promise).mockReturnValueOnce(failing.promise)
+
+    const first = useEnvStore.getState().loadSnapshots()
+    useEnvStore.getState().openEnv(env('b').interpreter)
+    slow.release([meta('of-a')])
+    await first
+    expect(useEnvStore.getState().snapshots).not.toEqual([meta('of-a')])
+
+    const second = useEnvStore.getState().loadSnapshots()
+    useEnvStore.getState().openEnv(env('a').interpreter)
+    failing.fail({ code: 'PD-SNP-003', message: 'unreadable' })
+    await second
+    expect(ipc.snapshotList).toHaveBeenCalledTimes(2)
+    expect(useEnvStore.getState().snapshotsError).toBeNull()
+  })
+
+  it('does not show the failure of a diff the user has clicked away from', async () => {
+    const failing = deferredFailure()
+    const second = { added: [], removed: [], changed: [] }
+    vi.mocked(ipc.snapshotDiff).mockReturnValueOnce(failing.promise).mockResolvedValueOnce(second)
+
+    const first = useEnvStore.getState().selectSnapshot('one')
+    await useEnvStore.getState().selectSnapshot('two')
+    failing.fail({ code: 'PD-SNP-003', message: 'unreadable' })
+    await first
+
+    const { diff, diffLoading, snapshotsError } = useEnvStore.getState()
+    expect(diff).toEqual(second)
+    expect(diffLoading).toBe('ready')
+    expect(snapshotsError).toBeNull()
   })
 })
 

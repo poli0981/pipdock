@@ -118,14 +118,18 @@ async fn fetch(name: &PkgName, version: &Version) -> Option<Option<String>> {
         return None;
     }
     let doc: serde_json::Value = response.json().await.ok()?;
-    Some(
-        doc.get("info")
-            .and_then(|i| i.get("requires_python"))
-            .and_then(serde_json::Value::as_str)
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-            .map(str::to_owned),
-    )
+    Some(declared_in(&doc))
+}
+
+/// `info.requires_python` of a release document, `None` when it is absent, null or blank — all
+/// three of which PyPI serves for a release that declares nothing.
+fn declared_in(doc: &serde_json::Value) -> Option<String> {
+    doc.get("info")
+        .and_then(|i| i.get("requires_python"))
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_owned)
 }
 
 /// Look up many releases at once, at most [`LOOKUP_CONCURRENCY`] in flight. Releases with no
@@ -231,5 +235,49 @@ mod tests {
         meta.remember(&name, &free, None);
         assert_eq!(meta.cached(&name, &free), Some(None));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[tokio::test]
+    async fn a_remembered_release_is_answered_without_asking_pypi() {
+        // Both answers come from the store: a constraint, and "declares nothing". Neither
+        // reaches the network, which this test has no way to offer.
+        let dir = std::env::temp_dir().join(format!("pd-release-cached-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let meta = PyPiReleases::new(&dir);
+        let name = pkg("scipy");
+        meta.remember(&name, &Version("1.7.3".into()), Some(">=3.7,<3.10"));
+        meta.remember(&name, &Version("1.16.0".into()), None);
+
+        let capped = meta.requires_python(&name, &Version("1.7.3".into())).await;
+        let free = meta.requires_python(&name, &Version("1.16.0".into())).await;
+        let _ = std::fs::remove_dir_all(&dir);
+        assert_eq!(capped.as_deref(), Some(">=3.7,<3.10"));
+        assert_eq!(free, None);
+    }
+
+    #[tokio::test]
+    async fn a_version_that_is_not_pep_440_never_reaches_a_url() {
+        // `fetch` puts the version into a URL path; anything else is unknown, which never blocks,
+        // and is not remembered as if it were an answer.
+        let dir = std::env::temp_dir().join(format!("pd-release-url-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let meta = PyPiReleases::new(&dir);
+        let (name, odd) = (pkg("scipy"), Version("1.0/../../evil".into()));
+        assert_eq!(meta.requires_python(&name, &odd).await, None);
+        assert_eq!(meta.cached(&name, &odd), None, "a failure is not an answer");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_release_document_s_constraint_is_read_trimmed_and_blank_is_none() {
+        let doc = |v: serde_json::Value| serde_json::json!({ "info": { "requires_python": v } });
+        assert_eq!(
+            declared_in(&doc(" >=3.9 ".into())).as_deref(),
+            Some(">=3.9")
+        );
+        assert_eq!(declared_in(&doc("".into())), None);
+        assert_eq!(declared_in(&doc(serde_json::Value::Null)), None);
+        assert_eq!(declared_in(&serde_json::json!({ "info": {} })), None);
+        assert_eq!(declared_in(&serde_json::json!({ "urls": [] })), None);
     }
 }

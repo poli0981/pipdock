@@ -1239,4 +1239,26 @@ mod tests {
             "the schema must not promise it either"
         );
     }
+
+    #[test]
+    fn a_plan_confirmed_for_one_environment_is_refused_in_another() {
+        // DATA-FLOW §9.3 has two halves the flow tests drive end to end — age and drift. The
+        // third refusal sits in front of both: a plan accepted for one interpreter, executed
+        // against another, would install a preview nobody was shown for that environment.
+        let now = jiff::Timestamp::now();
+        let plan = AcceptedPlan::accept(
+            "plan-1".to_owned(),
+            ResolutionReport::default(),
+            "hash-of-a".to_owned(),
+            &[],
+            now,
+        );
+        let err = plan
+            .verify("hash-of-b", &[], now)
+            .expect_err("another environment");
+        assert_eq!(err.code, Code::ResPlanStale);
+        assert!(err.message.contains("different environment"), "{err}");
+        plan.verify("hash-of-a", &[], now)
+            .expect("the environment it was made for, unchanged, a moment later");
+    }
 }
