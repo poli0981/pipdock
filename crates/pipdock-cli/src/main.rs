@@ -428,7 +428,7 @@ async fn main() -> ExitCode {
     match result {
         Ok(exit) => exit.into(),
         Err(e) => {
-            tracing::error!(target: "pipdock::cli", code = %e.code, message = %e.message, "failed");
+            tracing::error!(target: "pipdock::cli", code = %e.code, error = %e.message, "failed");
             let exit = run::exit_for(e.code);
             // ERROR-CATALOG §3: `error[PD-XXX-NNN]: <one-liner>` on stderr, or the JSON envelope.
             if cli.global.json {

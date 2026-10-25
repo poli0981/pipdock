@@ -741,7 +741,7 @@ fn log_summary(flow: &str, summary: &Result<crate::plan::ExecutionSummary>) {
             "executed"
         ),
         Err(e) => {
-            tracing::warn!(target: "pipdock::flow", flow, code = %e.code, message = %e.message, "refused")
+            tracing::warn!(target: "pipdock::flow", flow, code = %e.code, error = %e.message, "refused")
         }
     }
 }

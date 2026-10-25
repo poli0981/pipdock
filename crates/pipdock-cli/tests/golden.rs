@@ -245,6 +245,35 @@ fn the_human_error_line_carries_its_code() {
 }
 
 #[test]
+fn a_logged_failure_names_its_message() {
+    // `message = %e.message` beside a format string records two fields called `message`, and the
+    // text formatter prints that field without its name — so the line read `failed
+    // code=PD-ENV-001 no interpreter at …`, the error's own words indistinguishable from the
+    // event's (SonarQube rust:S6677). `error=`, as every other failure in the codebase logs it.
+    let copy = std::env::temp_dir().join(format!("pd-golden-log-{}.log", std::process::id()));
+    let _ = std::fs::remove_file(&copy);
+    let copy_arg = copy.to_string_lossy().into_owned();
+    code_of(&[
+        "--log-file",
+        &copy_arg,
+        "list",
+        "--env",
+        "C:/definitely/not/here",
+    ]);
+    let log = std::fs::read_to_string(&copy).expect("--log-file wrote its copy");
+    let _ = std::fs::remove_file(&copy);
+
+    let line = log
+        .lines()
+        .find(|l| l.contains("PD-ENV-001"))
+        .unwrap_or_else(|| panic!("the failure was not logged:\n{log}"));
+    assert!(
+        line.contains("failed") && line.contains("error=no interpreter at"),
+        "the error's message must be a field of its own: {line}"
+    );
+}
+
+#[test]
 fn an_unknown_schema_type_lists_the_known_ones() {
     insta::assert_snapshot!("schema-unknown-type", stderr_of(&["schema", "NoSuchType"]));
 }
