@@ -92,9 +92,12 @@ case no PR will catch: an advisory against something already merged.
 **SonarQube Cloud is CI-based since 2026-10-25** — `sonar.yml` and `sonar-project.properties`;
 automatic analysis is off in the project's settings and must stay off, or the CI analysis is
 refused. Automatic analysis never analysed a line of Rust and imported no coverage, which is why it
-went. The gate's "new code" is *previous version*, and the version comes from `package.json`, so a
-release bump starts a new period; new code needs 80 % coverage, so a slice whose new lines no
-test reaches turns `main`'s gate red. Dependabot PRs have no `SONAR_TOKEN` and skip the analysis.
+went. The gate's "new code" is *previous version*, with the version from `package.json` — but the
+first analysis to send one (`1.4.0`) kept the 2026-09-27 baseline, so read `periods` from
+`api/qualitygates/project_status` after the next bump instead of assuming it moved. New code needs
+80 % coverage and no new issue, so a slice whose new lines no test reaches turns `main`'s gate red,
+and so does a `std::fs` call inside an `async fn` (`rust:S7493`) or a tracing field named
+`message` (`rust:S6677`). Dependabot PRs have no `SONAR_TOKEN` and skip the analysis.
 
 ## Current state
 
