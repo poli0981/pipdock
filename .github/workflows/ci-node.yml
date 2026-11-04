@@ -34,7 +34,7 @@ jobs:
       id-token: write
     uses: poli0981/.github/.github/workflows/reusable-web-react.yml@main
     with:
-      node-version: '24'
+      node-version: '26'
       package-manager: npm
       build-command: npm run build
       dist-dir: dist
@@ -53,7 +53,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v7
         with:
-          node-version: '24'
+          node-version: '26'
           cache: npm
 
       # The audit reads the lockfile; nothing is built, so no install script has a reason to run.

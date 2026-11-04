@@ -161,7 +161,8 @@ rule below backed by a test where a test can hold it:
 - **Data drift and format drift look identical in a red drift job.** Seven weeks of red were two
   causes: PyPI data (idna's newest release, scipy's version list) and uv 0.13 rewriting its error
   rendering. Data is redacted in `capture.py`; a format change gets a frozen corpus of its own
-  (`tests/fixtures/uv-0.11/`, the last miette-style uv) beside the live one (`uv/`).
+  (`tests/fixtures/uv-0.11/`, the last miette-style uv) beside the live one (`uv/`) — or, when
+  only some scenarios moved, a partial one: `pip-26.2/` holds the one capture pip 26.3 re-rendered.
 - **Normalise everything you hash, not most of it.** The legal-docs hash normalised CRLF in the
   content and hashed the raw length, so a Windows checkout re-showed the gate for nothing.
 - **`--json` is one document.** Scripts parse stdout with one `ConvertFrom-Json`; prose, prompts

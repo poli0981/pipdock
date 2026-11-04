@@ -7,7 +7,7 @@
 | Workflow | Kind | Triggers | Jobs |
 |---|---|---|---|
 | `ci-rust.yml` | **project-local** | PR, push main | `fmt · clippy · test` (`windows-latest`): `cargo fmt --check`, clippy `-D warnings`, `cargo test --workspace --locked`. `cargo audit` (`ubuntu-latest`): a prebuilt `cargo-audit`, `--deny warnings`. `cargo deny` (`ubuntu-latest`): licences, sources, bans (`deny.toml`) |
-| `ci-node.yml` | caller → ops `reusable-web-react.yml` + two local jobs | PR, push main | Node 24, `npm ci`, lint / typecheck / Vitest (each runs only if the npm script exists), `vite build`; local jobs `npm audit --audit-level=high` (after `npm ci --ignore-scripts`) and `tauri lockstep` (`scripts/check-tauri-lockstep.mjs`) |
+| `ci-node.yml` | caller → ops `reusable-web-react.yml` + two local jobs | PR, push main | Node 26, `npm ci`, lint / typecheck / Vitest (each runs only if the npm script exists), `vite build`; local jobs `npm audit --audit-level=high` (after `npm ci --ignore-scripts`) and `tauri lockstep` (`scripts/check-tauri-lockstep.mjs`) |
 | `ci-integration.yml` | project-local | PR touching what its end-to-end steps run through (the path list is in the file), nightly, Mondays, dispatch | Windows runner, Python 3.10 and 3.14: the disposable-venv suite (TESTING L2); Mondays and dispatch only, the fixture-drift re-capture against the newest pip and uv |
 | `codeql.yml` | caller → ops `reusable-codeql.yml` | PR, push main, weekly | `languages: '["javascript-typescript", "rust", "actions"]'` |
 | `security-scan.yml` | **project-local** | daily, dispatch | `cargo audit` and `npm audit` against `main` (SECURITY §7) |
