@@ -1,6 +1,6 @@
 {
   "scenario": "held-back-constrained",
-  "engine_version": "uv 0.13.1 (62faed335 2026-10-13 x86_64-pc-windows-msvc)",
+  "engine_version": "uv 0.13.7 (316c827e0 2026-11-03 x86_64-pc-windows-msvc)",
   "python": "Python 3.12.10",
   "argv": [
     ".uvtools\\Scripts\\uv.exe",

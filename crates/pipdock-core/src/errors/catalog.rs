@@ -421,6 +421,13 @@ static CLASSIFIERS: &[Classifier] = &[
         code: Code::BldBackendFailed,
         all_of: &["backendunavailable"],
     },
+    // pip 26.3's rendering of the same failure: the `BackendUnavailable` traceback became the
+    // `backend-unavailable` diagnostic, and its last line, "Failed to build '<name>' when calling
+    // build backend hook …", is what the generic wheel rule below would otherwise claim.
+    Classifier {
+        code: Code::BldBackendFailed,
+        all_of: &["error: backend-unavailable"],
+    },
     Classifier {
         code: Code::BldBackendFailed,
         all_of: &["the build backend returned an error"],

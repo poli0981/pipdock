@@ -33,7 +33,9 @@ fn load_all() -> Vec<Fixture> {
     let mut out = Vec::new();
     let root = fixtures_root();
     // `uv-0.11/` is the frozen pre-0.13 rendering; see `both_uv_renderings_classify_identically`.
-    for engine in ["pip", "uv", "uv-0.11", "synthetic"] {
+    // `pip-26.2/` is the frozen pre-26.3 rendering of the one scenario pip 26.3 changed; see
+    // `both_pip_renderings_classify_identically`.
+    for engine in ["pip", "pip-26.2", "uv", "uv-0.11", "synthetic"] {
         let dir = root.join(engine);
         let Ok(entries) = fs::read_dir(&dir) else {
             continue;
@@ -294,6 +296,36 @@ fn both_uv_renderings_classify_identically() {
         compared += 1;
     }
     assert!(compared >= 9, "compared only {compared} scenarios");
+}
+
+#[test]
+fn both_pip_renderings_classify_identically() {
+    // pip 26.3 turned an unloadable build backend from a `BackendUnavailable` traceback (exit 2)
+    // into its `error: backend-unavailable` diagnostic (exit 1), and the traceback's needle was
+    // the only one that fired: under 26.3 the failure fell through to "failed to build" and read
+    // as PD-BLD-003. Older pips are supported (≥ 24.0), so both renderings must reach one code.
+    // Only that scenario changed — the drift job showed every other capture byte-identical — so
+    // `pip-26.2/` freezes just it.
+    let fixtures = load_all();
+    let mut compared = 0;
+    for f in fixtures.iter().filter(|f| f.label.starts_with("pip-26.2/")) {
+        let scenario = f.label.trim_start_matches("pip-26.2/");
+        let current = fixtures
+            .iter()
+            .find(|c| c.label == format!("pip/{scenario}"))
+            .unwrap_or_else(|| panic!("pip-26.2/{scenario} has no live pip/ counterpart"));
+        assert_ne!(
+            f.stderr, current.stderr,
+            "pip-26.2/{scenario} is identical to pip/{scenario}, so freezing it proves nothing"
+        );
+        assert_eq!(
+            classify_stderr(&f.stderr),
+            classify_stderr(&current.stderr),
+            "pip/{scenario} classifies differently under pip 26.2 and the current pip"
+        );
+        compared += 1;
+    }
+    assert!(compared >= 1, "no frozen pip scenario was compared");
 }
 
 #[test]

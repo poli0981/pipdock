@@ -31,6 +31,11 @@ fn fixtures_root() -> PathBuf {
 /// job re-captures `pip/` and `uv/` only.
 const CORPORA: [&str; 3] = ["pip", "uv", "uv-0.11"];
 
+/// Frozen corpora that hold only the scenarios an engine release re-rendered, so the sweeps below
+/// read them while the per-scenario tests, which expect a full corpus, do not. `pip-26.2/` is
+/// pip's unloadable-build-backend failure before 26.3 made it a diagnostic.
+const PARTIAL_CORPORA: [&str; 1] = ["pip-26.2"];
+
 /// The uv corpora alone, for assertions about uv's channel and wording.
 const UV_CORPORA: [&str; 2] = ["uv", "uv-0.11"];
 
@@ -55,7 +60,7 @@ fn resolution(
     installed: &[Dist],
 ) -> pipdock_core::errors::Result<ParsedPlan> {
     match engine {
-        "pip" => pip_resolution(cap.exit(), &cap.stdout, &cap.stderr, installed),
+        "pip" | "pip-26.2" => pip_resolution(cap.exit(), &cap.stdout, &cap.stderr, installed),
         _ => uv_resolution(cap.exit(), &cap.stdout, &cap.stderr, installed),
     }
 }
@@ -274,7 +279,7 @@ fn every_successful_capture_parses() {
         "yanked",
         "requires-python",
     ];
-    for engine in CORPORA {
+    for engine in CORPORA.into_iter().chain(PARTIAL_CORPORA) {
         for scenario in scenarios {
             let Some(cap) = load(engine, scenario) else {
                 continue;
@@ -295,7 +300,7 @@ fn every_failed_capture_reaches_the_user_as_the_code_it_was_captured_for() {
     // build previewed as "no changes", a refused connection read as a uv newer than PipDock, and an
     // unknown name as a version conflict. This asks the function the adapter returns through.
     let mut checked = 0;
-    for engine in CORPORA {
+    for engine in CORPORA.into_iter().chain(PARTIAL_CORPORA) {
         let dir = fixtures_root().join(engine);
         for entry in fs::read_dir(&dir).expect("corpus") {
             let scenario = entry
@@ -332,7 +337,7 @@ fn every_failed_capture_reaches_the_user_as_the_code_it_was_captured_for() {
             }
         }
     }
-    assert!(checked >= 13, "only {checked} failed captures were checked");
+    assert!(checked >= 14, "only {checked} failed captures were checked");
 }
 
 #[test]
