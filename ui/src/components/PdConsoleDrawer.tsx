@@ -51,6 +51,22 @@ export function PdConsoleDrawer({ lines, open, onClose, done, total }: PdConsole
     bottom.current?.scrollIntoView({ block: 'end' })
   }, [lines.length])
 
+  // UI-SPEC §8: "Esc closes drawers" — and then focus has to be somewhere. The drawer unmounts
+  // with the focused control inside it, so focus fell to `<body>` and the next Tab started from
+  // the top of the window. `PdDialog` returns focus to its opener for the same reason.
+  //
+  // Only when closing is what lost it. Toggled shut from the button that opened it, focus never
+  // left that button and nothing here should move it.
+  useEffect(() => {
+    if (!open) return undefined
+    const opener = document.activeElement instanceof HTMLElement ? document.activeElement : null
+    return () => {
+      const active = document.activeElement
+      if (active !== null && active !== document.body && active.isConnected) return
+      if (opener !== null && opener !== document.body && opener.isConnected) opener.focus()
+    }
+  }, [open])
+
   if (!open) return null
 
   return (
@@ -74,7 +90,8 @@ export function PdConsoleDrawer({ lines, open, onClose, done, total }: PdConsole
         <button
           type="button"
           onClick={onClose}
-          aria-label={t('actions.cancel')}
+          // Named for what it closes. It was "Cancel", beside a *Stop* that cancels the run.
+          aria-label={t('plan.closeConsole')}
           className="rounded-pd border border-border px-2 py-0.5 text-data"
         >
           {'✕'}
