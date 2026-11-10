@@ -83,23 +83,27 @@ export function PdRequirements({ env }: { env?: PyEnv | undefined }) {
       <div className="mt-2 flex flex-wrap gap-2">
         <button
           type="button"
-          disabled={!usable || busy}
+          disabled={!usable}
+          // Unavailable is `disabled`; busy is `aria-disabled`, so the pressed button keeps focus
+          // while the picker is open (UI-SPEC §8).
+          aria-disabled={busy}
           onClick={() => {
-            void doExport()
+            if (!busy) void doExport()
           }}
           data-action="export-requirements"
-          className="rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40"
+          className="rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40 aria-disabled:opacity-40"
         >
           {t('requirements.export')}
         </button>
         <button
           type="button"
-          disabled={!usable || busy}
+          disabled={!usable}
+          aria-disabled={busy}
           onClick={() => {
-            void doRead()
+            if (!busy) void doRead()
           }}
           data-action="import-requirements"
-          className="rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40"
+          className="rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40 aria-disabled:opacity-40"
         >
           {t('requirements.import')}
         </button>

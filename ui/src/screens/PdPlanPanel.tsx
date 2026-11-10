@@ -229,11 +229,14 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
             <button
               type="button"
               onClick={() => {
-                void cancel()
+                if (!cancelling) void cancel()
               }}
-              disabled={cancelling}
+              // Busy is `aria-disabled`, not `disabled`: a browser takes focus from a control that
+              // becomes disabled, so one that disables itself when pressed drops focus to <body>
+              // (UI-SPEC §8).
+              aria-disabled={cancelling}
               data-destructive
-              className="rounded-pd border border-danger px-3 py-1 text-data text-danger disabled:opacity-40"
+              className="rounded-pd border border-danger px-3 py-1 text-data text-danger aria-disabled:opacity-40"
             >
               {cancelling ? t('plan.stopping') : t('plan.stop')}
             </button>

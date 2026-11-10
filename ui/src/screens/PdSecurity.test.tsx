@@ -75,7 +75,11 @@ describe('PdSecurity', () => {
 
     expect(screen.queryByText(/No audit has run/)).toBeNull()
     expect(screen.getByRole('button', { name: 'Cancel' })).toBeInTheDocument()
-    expect(screen.getByRole('button', { name: 'Run audit' })).toBeDisabled()
+    // Busy, and still focusable: a control that goes `disabled` under the user's finger drops
+    // focus to <body> in a real browser (see PdSearch.test.tsx).
+    const run = screen.getByRole('button', { name: 'Run audit' })
+    expect(run).toHaveAttribute('aria-disabled', 'true')
+    expect(run).not.toBeDisabled()
   })
 
   it('shows the report only for the environment it belongs to', () => {

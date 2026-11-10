@@ -81,9 +81,14 @@ export function PdDialog({
   return (
     <dialog
       ref={ref}
-      // Named by its visible heading and described by its body, so opening it says what is being
-      // asked and what it will do — not only which button has focus.
-      aria-labelledby={titleId}
+      // Named by its visible heading — then what it is about — and described by its body, so
+      // opening it says what is being asked and what it will do, not only which button has focus.
+      // The second half is an `aria-label` rather than hidden text inside the heading, because a
+      // browser puts a space before visually-hidden text and the name read "Remove packages :
+      // numpy" in the installed build.
+      {...(label === title
+        ? { 'aria-labelledby': titleId }
+        : { 'aria-label': `${title}: ${label}` })}
       aria-describedby={bodyId}
       // Esc reaches this rather than closing the element behind our back, so cancelling always
       // goes through the same path as the button.
@@ -98,7 +103,6 @@ export function PdDialog({
     >
       <h2 id={titleId} className="text-accent">
         {title}
-        {label === title ? null : <span className="sr-only">{`: ${label}`}</span>}
       </h2>
       <div id={bodyId} className="mt-3 text-data">
         {children}

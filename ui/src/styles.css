@@ -167,14 +167,28 @@
       outline: 1px solid Highlight;
     }
 
-    /* Destructive controls, which are otherwise indistinguishable once their tint is dropped.
-     *
-     * One attribute, not a list of `data-action` values. The list was five names long and missed
-     * Remove, Allow, Clear, the Force-latest confirm and a forced plan's Confirm for as long as it
-     * existed (U45) — a list of names beside a list of buttons is two lists. `destructive.test.ts`
-     * holds the other half: every button drawn in the danger colour carries the attribute. */
-    button[data-destructive] {
-      border: 2px solid CanvasText;
-    }
+  }
+}
+
+/* Destructive controls, which are otherwise indistinguishable once their tint is dropped.
+ *
+ * **Outside every `@layer`, and that is the whole fix.** This rule lived in the base layer above
+ * for as long as it existed, and drew nothing: every button also carries Tailwind's `border`
+ * utility, the utilities layer comes later, and a later layer wins whatever the selectors say — so
+ * `border: 2px` lost to `border-width: 1px`, and in high contrast *Remove anyway* was drawn exactly
+ * like the Cancel beside it. Found by emulating forced-colors in the installed build and looking.
+ * An unlayered rule beats every layered one.
+ *
+ * **A double line, not a thicker one.** Told apart from 1px, 2px is a difference nobody sees at a
+ * glance; a double border is a different shape, and it is not the focus ring, which is an outline
+ * in `Highlight`.
+ *
+ * One attribute, not a list of `data-action` values. The list was five names long and missed
+ * Remove, Allow, Clear, the Force-latest confirm and a forced plan's Confirm (U45) — a list of
+ * names beside a list of buttons is two lists. `destructive.test.ts` holds the other half: every
+ * button drawn in the danger colour carries the attribute, and this rule is in no layer. */
+@media (forced-colors: active) {
+  button[data-destructive] {
+    border: 3px double CanvasText;
   }
 }

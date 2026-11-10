@@ -82,6 +82,23 @@ describe('destructive controls', () => {
     expect(forced).not.toMatch(/button\[data-action=/)
   })
 
+  it('is drawn outside every cascade layer, where a utility cannot undo it', () => {
+    // **The rule existed for a year and drew nothing.** It sat inside `@layer base`, and every
+    // button also carries Tailwind's `border` utility, which lives in a later layer — and a later
+    // layer wins whatever the selectors say. So `border: 2px` lost to `border-width: 1px`, and in
+    // high contrast a destructive button was drawn exactly like the Cancel beside it: for the five
+    // actions the old list named, as well as the five it had missed. Seen by emulating
+    // forced-colors in the installed build and looking; nothing here renders a stylesheet.
+    //
+    // An unlayered rule beats every layered one. Depth 1 is "inside the media query and nothing
+    // else".
+    const at = styles.lastIndexOf('button[data-destructive]')
+    const before = styles.slice(0, at).replace(/\/\*[\s\S]*?\*\//g, '')
+    const depth = before.split('{').length - before.split('}').length
+    expect(depth).toBe(1)
+    expect(styles.slice(styles.lastIndexOf('@media', at), at)).toContain('forced-colors: active')
+  })
+
   it('outlines the sidebar tab that is showing', () => {
     // The tab carries `aria-current="page"`; the rule matched `'true'`, so in high contrast the
     // active tab looked like every other.
