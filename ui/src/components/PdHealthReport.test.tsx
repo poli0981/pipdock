@@ -49,13 +49,46 @@ function setup(
 describe('tabs', () => {
   it('labels each tab with the tool that produced it and its count', () => {
     setup()
-    // The visible label is the tool's own name — data, never translated (I18N §2).
     const tabs = screen.getAllByRole('tab')
+    // Visible text first, so the accessible name *contains* what is on screen (WCAG 2.5.3). The
+    // old name was "Dependencies, 2 findings" over a tab reading "deptry 2", and "click deptry"
+    // found nothing.
     expect(tabs.map((t) => t.textContent)).toEqual([
-      `deptry${REPORT.deptry.length}`,
-      `vulture${REPORT.vulture.length}`,
-      `ruff${REPORT.ruff.findings.length}`,
+      `deptry ${String(REPORT.deptry.length)}, Dependencies`,
+      `vulture ${String(REPORT.vulture.length)}, Dead code`,
+      `ruff ${String(REPORT.ruff.findings.length)}, Lint`,
     ])
+    for (const tab of tabs) expect(tab).not.toHaveAttribute('aria-label')
+  })
+
+  it('ties the tabs to one panel, named by the tab that is showing', () => {
+    setup(REPORT, 'vulture')
+    const panel = screen.getByRole('tabpanel')
+    const selected = screen.getByRole('tab', { selected: true })
+
+    expect(selected).toHaveAttribute('aria-controls', panel.id)
+    expect(panel).toHaveAttribute('aria-labelledby', selected.id)
+  })
+
+  it('makes the selected tab the only tab stop', () => {
+    setup(REPORT, 'vulture')
+    const stops = screen.getAllByRole('tab').map((t) => t.getAttribute('tabindex'))
+    expect(stops).toEqual(['-1', '0', '-1'])
+  })
+
+  it('moves between tabs with the arrow keys, Home and End, wrapping at both ends', () => {
+    const { onTab } = setup(REPORT, 'deptry')
+    const [deptry, , ruff] = screen.getAllByRole('tab')
+    if (deptry === undefined || ruff === undefined) throw new Error('three tabs expected')
+
+    fireEvent.keyDown(deptry, { key: 'ArrowRight' })
+    expect(onTab).toHaveBeenLastCalledWith('vulture')
+    fireEvent.keyDown(deptry, { key: 'ArrowLeft' })
+    expect(onTab).toHaveBeenLastCalledWith('ruff')
+    fireEvent.keyDown(deptry, { key: 'End' })
+    expect(onTab).toHaveBeenLastCalledWith('ruff')
+    fireEvent.keyDown(ruff, { key: 'Home' })
+    expect(onTab).toHaveBeenLastCalledWith('deptry')
   })
 
   it('takes its counts from the report rather than recomputing them', () => {
@@ -192,5 +225,16 @@ describe('the footer', () => {
   it('names where the project declares its dependencies', () => {
     setup()
     expect(screen.getByText(/requirements-dev\.txt, requirements\.txt/)).toBeInTheDocument()
+  })
+})
+
+describe('the vulture whitelist link', () => {
+  it('is underlined at rest, not only on hover', () => {
+    // WCAG 1.4.1: a link inside a paragraph told from the words around it by colour alone. The
+    // two colours are 1.4:1 apart, and the underline appeared only under a pointer.
+    setup(REPORT, 'vulture')
+    const link = screen.getByRole('button', { name: /whitelist/ })
+    expect(link).toHaveClass('underline')
+    expect(link.className).not.toContain('hover:underline')
   })
 })

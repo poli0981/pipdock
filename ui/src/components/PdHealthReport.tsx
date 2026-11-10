@@ -34,6 +34,9 @@ export const RUFF_ROWS_SHOWN = 500
 /** vulture's own guidance on suppressing a false positive (CODE-HEALTH-SPEC §6). */
 const VULTURE_WHITELIST = 'https://github.com/jendrikseipp/vulture#handling-false-positives'
 
+/** The one panel the three tabs control. One id, because only one report is ever on screen. */
+const PANEL_ID = 'health-panel'
+
 interface PdHealthReportProps {
   report: HealthReport
   /** ruff grouped by file, from the store. Never regrouped here — see `groupRuff`. */
@@ -154,7 +157,7 @@ function RuffRow({ finding }: { finding: RuffFinding }) {
       ) : (
         <button
           type="button"
-          className="font-mono text-data text-accent-dim underline-offset-2 hover:underline"
+          className="font-mono text-data text-accent-dim underline underline-offset-2"
           onClick={() => {
             // The URL is ruff's own — constructed ones 404, because the rule page is keyed by name
             // and not by code. It is also the **only** URL in the application that comes out of a
@@ -217,16 +220,46 @@ export function PdHealthReport({
     <div className="flex min-h-0 flex-1 flex-col">
       <p className="shrink-0 text-data text-text-dim">{declared}</p>
 
-      <div role="tablist" className="mt-3 flex shrink-0 gap-1 border-b border-border">
-        {HEALTH_TABS.map((key) => (
+      <div
+        role="tablist"
+        aria-label={t('health.tabs')}
+        className="mt-3 flex shrink-0 gap-1 border-b border-border"
+      >
+        {HEALTH_TABS.map((key, index) => (
           <button
             key={key}
+            id={`health-tab-${key}`}
             role="tab"
             type="button"
             aria-selected={tab === key}
-            // The visible label is the tool's own name — data, never translated (I18N §2). The
-            // accessible name is what says which question the tab answers, and the count with it.
-            aria-label={t(`health.tabLabel.${key}`, { count: found[key] })}
+            aria-controls={PANEL_ID}
+            // The tabs pattern: one tab stop, the selected one, and the arrows move between them
+            // (U47). Three buttons with `role="tab"` were three tab stops and no arrow keys.
+            tabIndex={tab === key ? 0 : -1}
+            onKeyDown={(e) => {
+              const last = HEALTH_TABS.length - 1
+              const to =
+                e.key === 'ArrowRight'
+                  ? index === last
+                    ? 0
+                    : index + 1
+                  : e.key === 'ArrowLeft'
+                    ? index === 0
+                      ? last
+                      : index - 1
+                    : e.key === 'Home'
+                      ? 0
+                      : e.key === 'End'
+                        ? last
+                        : undefined
+              const next = to === undefined ? undefined : HEALTH_TABS[to]
+              if (next === undefined) return
+              e.preventDefault()
+              onTab(next)
+              // The buttons are keyed by tool and outlive the change, so the one that is about to
+              // be selected is already in the document to take focus.
+              document.getElementById(`health-tab-${next}`)?.focus()
+            }}
             className={`rounded-t-pd px-3 py-1.5 font-mono text-data ${
               tab === key
                 ? 'border-b-2 border-accent text-text'
@@ -236,15 +269,30 @@ export function PdHealthReport({
               onTab(key)
             }}
           >
-            {key}
+            {/* **The accessible name is this content, in this order** — the tool's own name
+                (data, never translated: I18N §2), its count, then which question the tab answers.
+                It was an `aria-label` reading "Dependencies, 3 findings" over a tab that says
+                "deptry 3": a name that does not contain what is on screen fails WCAG 2.5.3, and
+                "click deptry" found nothing. The spaces are literal because inline spans are
+                joined without any. */}
+            {key}{' '}
             {/* The count comes off the report. A tab that recomputed it could disagree with the
                 CLI over the same run, which is the one difference nobody would think to check. */}
-            <span className="ml-2 text-text-dim">{found[key]}</span>
+            <span className="ml-1 text-text-dim">{found[key]}</span>
+            <span className="sr-only">{`, ${t(`health.tabTopic.${key}`)}`}</span>
           </button>
         ))}
       </div>
 
-      <div className="mt-3 min-h-0 flex-1 overflow-auto">
+      <div
+        id={PANEL_ID}
+        role="tabpanel"
+        aria-labelledby={`health-tab-${tab}`}
+        // A stop of its own: a panel whose findings hold no control would otherwise be skipped by
+        // Tab, and it scrolls.
+        tabIndex={0}
+        className="mt-3 min-h-0 flex-1 overflow-auto"
+      >
         {state === 'notRun' ? (
           <PdEmptyState message={t('health.notRun')} hint={t('health.notRunHint')} />
         ) : null}
@@ -280,7 +328,9 @@ export function PdHealthReport({
               {t('health.vultureHint')}{' '}
               <button
                 type="button"
-                className="text-accent-dim underline-offset-2 hover:underline"
+                // Underlined at rest. Inside a sentence, colour was the only thing telling this
+                // from the words around it, and the two colours are 1.4:1 apart (WCAG 1.4.1).
+                className="text-accent-dim underline underline-offset-2"
                 onClick={() => {
                   open(VULTURE_WHITELIST)
                 }}
@@ -309,6 +359,7 @@ export function PdHealthReport({
               <button
                 type="button"
                 data-action="fix"
+                data-destructive
                 className="mb-3 rounded-pd bg-danger px-3 py-1 text-data text-bg"
                 onClick={onFix}
               >

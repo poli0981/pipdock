@@ -62,6 +62,20 @@ describe('PdPalette', () => {
     expect(options()[0]).toHaveAttribute('aria-selected', 'true')
   })
 
+  it('scrolls the highlighted action into view as the arrows move it', () => {
+    // U48: the list is `max-h-80 overflow-auto`, and nothing scrolled it — so past the ninth
+    // action the highlight left the visible window and Enter ran something off screen.
+    const scrolled = vi.fn()
+    Element.prototype.scrollIntoView = scrolled
+    const { input } = open()
+    scrolled.mockClear()
+
+    fireEvent.keyDown(input, { key: 'ArrowDown' })
+
+    expect(scrolled).toHaveBeenCalledWith({ block: 'nearest' })
+    expect(scrolled.mock.contexts.at(-1)).toBe(options()[1])
+  })
+
   it('will not run off either end of the list', () => {
     const { input } = open()
     fireEvent.keyDown(input, { key: 'ArrowUp' })
