@@ -44,6 +44,17 @@ describe('PdUninstallDialog', () => {
     expect(screen.getByText('scipy 1.11.4 requires numpy<1.28.0,>=1.21.6')).toBeInTheDocument()
   })
 
+  it('is named by its heading and by what it is about, and described by its body', () => {
+    // The name was the package alone — a reader heard "numpy, dialog" and then "Cancel", with the
+    // question the dialog asks never spoken. A dialog is named by its visible heading; what it is
+    // about follows, and the body is its description.
+    setup(BREAKING)
+
+    expect(dialog()).toHaveAccessibleName(/^This removal breaks other packages.*numpy/)
+    expect(dialog()).toHaveAccessibleDescription(/pandas 2\.1\.4 requires numpy/)
+    expect(dialog()).not.toHaveAttribute('aria-label')
+  })
+
   it('focuses Cancel, and renders it first', () => {
     // UI-SPEC §7: destructive confirms "require the dialog's default focus to be Cancel".
     setup(BREAKING)

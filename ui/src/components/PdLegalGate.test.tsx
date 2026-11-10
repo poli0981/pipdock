@@ -33,6 +33,14 @@ describe('PdLegalGate', () => {
     vi.mocked(openUrl).mockResolvedValue(undefined)
   })
 
+  it('puts focus on its heading when it takes the screen', () => {
+    // The gate replaces the whole shell and says it is modal, and nothing inside it had focus:
+    // the first thing a keyboard or screen-reader user met on first run was silence, then the
+    // first link. The shell focuses a screen's heading on arrival; this is the same move.
+    render(<PdLegalGate />)
+    expect(screen.getByRole('heading', { level: 1 })).toHaveFocus()
+  })
+
   describe('first run', () => {
     it('lists all five documents and opens each on GitHub', () => {
       render(<PdLegalGate />)

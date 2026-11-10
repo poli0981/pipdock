@@ -17,7 +17,7 @@
  */
 
 import { getCurrentWindow } from '@tauri-apps/api/window'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { LEGAL_DOCUMENTS } from '@/components/legal'
@@ -39,6 +39,11 @@ export function PdLegalGate({
   const error = useLegalStore((s) => s.error)
   const [checked, setChecked] = useState(false)
   const { open, failed: openFailed } = useOpenExternal()
+  const heading = useRef<HTMLHeadingElement>(null)
+
+  useEffect(() => {
+    heading.current?.focus()
+  }, [])
 
   return (
     <div
@@ -48,7 +53,11 @@ export function PdLegalGate({
       className="fixed inset-0 z-50 flex items-center justify-center bg-bg/95 p-6"
     >
       <div className="max-h-full w-full max-w-2xl overflow-auto rounded-pd border border-border bg-surface p-6">
-        <h1 id="legal-title" className="font-mono text-accent">
+        {/* Focused on arrival. The gate replaces the whole shell and declares itself modal, and
+            nothing inside it had focus — on first run a keyboard or screen-reader user met
+            silence, then the first link. The shell focuses a screen's heading when it changes
+            (`App.tsx`); the gate is rendered instead of the shell, so it does the same itself. */}
+        <h1 id="legal-title" ref={heading} tabIndex={-1} className="font-mono text-accent">
           {t('legal.title')}
         </h1>
 
