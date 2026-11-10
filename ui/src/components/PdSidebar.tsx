@@ -45,6 +45,9 @@ export function PdSidebar() {
               <button
                 type="button"
                 aria-current={active ? 'page' : undefined}
+                // The hint below is `aria-hidden`, so without this the shortcut was on screen and
+                // nowhere else. By position, like the shortcut itself.
+                aria-keyshortcuts={`Control+${String(index + 1)}`}
                 disabled={planBusy}
                 onClick={() => {
                   setNav(key)
@@ -63,7 +66,9 @@ export function PdSidebar() {
                     </span>
                   ) : null}
                 </span>
-                <span aria-hidden="true" className="font-mono text-data opacity-50">
+                {/* A token, not `opacity-50`: half of `text-text-dim` measured about 2.6:1 here, and
+                    text hidden from a screen reader is still text someone has to read. */}
+                <span aria-hidden="true" className="font-mono text-data text-text-dim">
                   {`^${index + 1}`}
                 </span>
               </button>
