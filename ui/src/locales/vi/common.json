@@ -419,7 +419,7 @@
     "docsHash": "Tài liệu pháp lý",
     "docsHashDetail": "Việc bạn chấp nhận được ghi lại kèm giá trị này. Sửa bất kỳ tài liệu nào cũng làm nó đổi, và màn hình chấp nhận sẽ hiện lại một lần ở lần mở tiếp theo.",
     "aiTitle": "Ứng dụng này được làm ra thế nào",
-    "aiBody": "PipDock được viết với sự hỗ trợ đáng kể của một trợ lý lập trình AI — Claude Opus 5, và từ 1.4.0 là Claude Opus 5.5, do Anthropic phát triển — dưới sự rà soát của con người. Nó viết mã nguồn, kiểm thử và bản dịch. Người bảo trì quyết định những gì được phát hành: tới 1.3.0, họ tự đọc và hợp nhất mọi thay đổi; bản 1.4.0 do trợ lý phát hành theo chỉ thị bằng văn bản của họ, sau khi các bước kiểm tra đã đạt. Bản quyền và giấy phép GPL-3.0-only không thay đổi.",
+    "aiBody": "PipDock được viết với sự hỗ trợ đáng kể của một trợ lý lập trình AI — Claude Opus 5, ở 1.4.0 là Claude Opus 5.5 và ở 1.5.0 là Claude Fable 5.2, do Anthropic phát triển — dưới sự rà soát của con người. Nó viết mã nguồn, kiểm thử và bản dịch. Người bảo trì quyết định những gì được phát hành: tới 1.3.0, họ tự đọc và hợp nhất mọi thay đổi; bản 1.4.0 và 1.5.0 do trợ lý phát hành theo chỉ thị bằng văn bản của họ, sau khi các bước kiểm tra đã đạt. Bản quyền và giấy phép GPL-3.0-only không thay đổi.",
     "aiRead": "Đọc bản công bố đầy đủ",
     "openRepo": "Mở kho mã nguồn",
     "reopen": "Xem lại các tài liệu",

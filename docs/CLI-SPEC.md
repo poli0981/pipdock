@@ -8,6 +8,7 @@
 2. **Safe by default, scriptable on request.** Interactive prompts appear on a TTY; in scripts (`--yes` / no TTY), a held-back package keeps its compatible version and an impossible one is **skipped** — never forced, unless `--strategy latest` asked for exactly that (§4). Off a TTY, a command that would ask first refuses instead unless `--yes` is given; `uninstall` and `pip-upgrade` ask nothing (§3).
 3. **Machine-readable everywhere.** `--json` makes every command print one JSON document on stdout — the structs the GUI receives, wherever one exists (§6).
 4. English-only in v1 (GUI carries EN/VI); messages reuse catalog codes so they stay greppable.
+5. **Plain text, and nothing that moves.** No colour, no spinner, no progress bar, no line that rewrites itself with a carriage return: progress is whole lines on stderr, and `--quiet` drops them. This was true of the code since the first command and written nowhere, which is how a contract gets broken by someone adding a nicety. It is what makes the output readable by a screen reader, greppable in a log and the same in a pipe as on a terminal — so there is no `NO_COLOR` to honour, because there is no colour, and status is always a word (`ACCESSIBILITY.md`).
 
 ## 2. Global options
 

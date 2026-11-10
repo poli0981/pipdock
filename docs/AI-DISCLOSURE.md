@@ -13,10 +13,10 @@ commit trailers. Nothing here changes the licence or the warranty position — s
 
 | | |
 |---|---|
-| Model | **Claude Opus 5** — first commit through 1.3.0 · **Claude Opus 5.5** — from 1.4.0 |
+| Model | **Claude Opus 5** — first commit through 1.3.0 · **Claude Opus 5.5** — 1.4.0 and the maintenance after it, through 2026-11-04 · **Claude Fable 5.2** — from 2026-11-10, which is 1.5.0 |
 | Vendor | **Anthropic** ([anthropic.com](https://www.anthropic.com)) |
 | Interface | [Claude Code](https://claude.com/claude-code), Anthropic's CLI/desktop coding agent |
-| Period | 2026-07-27 → 2026-08-21 (first commit to 1.3.0) · 2026-10-16 → 2026-10-17 (1.4.0) |
+| Period | 2026-07-27 → 2026-08-21 (first commit to 1.3.0) · 2026-10-16 → 2026-10-17 (1.4.0) · 2026-10-20 → 2026-11-04 (CI and dependency maintenance) · 2026-11-10 (1.5.0) |
 
 The trailer on each commit records which model produced it, and `git log` is the authoritative
 history — the table above is a summary of it, not a substitute.
@@ -68,7 +68,13 @@ load-bearing, and all four caught real defects the review-by-reading did not:
 - **The decision to release.** Through 1.3.0 every merge, tag and publish was the owner's own
   action. For 1.4.0 the owner delegated the mechanics, in writing, with the conditions attached —
   CI green, and the installers matching `SHA256SUMS.txt` before the draft was published — and the
-  decision that 1.4.0 should ship remained theirs.
+  decision that 1.4.0 should ship remained theirs. 1.5.0 was released the same way: the owner
+  chose its scope from three options, approved a written plan that named every outward step — the
+  two pull requests, the tag, the published release, the repository description and label — and
+  the assistant carried it out under the same two conditions. The owner's own keyboard and
+  Narrator testing of 1.4.0 is theirs and is recorded as theirs in `ACCESSIBILITY.md`; the
+  assistant cannot run a screen reader, and that file says which checks were a person's and which
+  were a machine's.
 - **Anything requiring a legal or security judgment** was raised for a decision rather than taken —
   for example the PEP 668 override's default, and whether a `mailto:` scheme belonged in the
   browser-launch allowlist.
@@ -78,7 +84,8 @@ load-bearing, and all four caught real defects the review-by-reading did not:
 Copyright in PipDock is held by **Kokone (poli0981)**, and the work is licensed **GPL-3.0-only**.
 Using an AI assistant does not change either. Commits carry a
 `Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>` trailer through 1.3.0 and
-`Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` from 1.4.0, as an accurate record of how
+`Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>` from 1.4.0, and
+`Co-Authored-By: Claude Fable 5.2 <noreply@anthropic.com>` from 2026-11-10, as an accurate record of how
 the work was produced — it is attribution, not an assignment of rights, and Anthropic claims no
 ownership of output produced with its models.
 
