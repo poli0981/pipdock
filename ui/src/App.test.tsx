@@ -14,16 +14,28 @@
  * user can get there at all, and in how many clicks.
  */
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react'
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import { App } from '@/App'
 import { NAV_KEYS } from '@/components/nav'
-import type { DepsGraph, Dist, EnvRow } from '@/ipc'
+import type {
+  DepsGraph,
+  Dist,
+  EnvRow,
+  ExecutionOutcome,
+  ExecutionSummary,
+  FlowStep,
+  SnapshotMeta,
+} from '@/ipc'
 import { joinRows } from '@/screens/rows'
-import { useDepsStore, useEnvStore, useLegalStore, useUiStore } from '@/stores'
+import { useDepsStore, useEnvStore, useLegalStore, usePlanStore, useUiStore } from '@/stores'
 import graphFixture from '@/test/fixtures/deps_graph.json'
+import summaryFixture from '@/test/fixtures/execution_summary.json'
+import flowStepForced from '@/test/fixtures/flow_step_forced.json'
 import listFixture from '@/test/fixtures/pkg_list.json'
+import snapshotFixture from '@/test/fixtures/snapshot_list.json'
+import { resetStore } from '@/test/stores'
 
 /** Every command that crossed the bridge, in order — the whole point of this file. */
 const crossed: string[] = []
@@ -56,6 +68,11 @@ vi.mock('@/ipc', async () => {
 
 const GRAPH = graphFixture as DepsGraph
 const DISTS = listFixture as Dist[]
+const FORCED_STEP = flowStepForced as FlowStep
+const OUTCOME: ExecutionOutcome = {
+  summary: summaryFixture as ExecutionSummary,
+  snapshot: (snapshotFixture as SnapshotMeta[])[0]!,
+}
 const ENV_HASH = 'abc123'
 const INTERPRETER = String.raw`C:\proj\.venv\Scripts\python.exe`
 
@@ -77,6 +94,8 @@ const ROW: EnvRow = {
 
 beforeEach(() => {
   crossed.length = 0
+  // A plan left parked by one test owns the screen in the next, and refuses its shortcuts.
+  resetStore(usePlanStore)
   // Each mock records its own name on the way in. A generic wrapper reads better and does
   // not typecheck: `ReturnType<typeof vi.fn>` is `Mock<Procedure | Constructable>`, which is
   // not directly callable.
@@ -179,6 +198,87 @@ describe('the dependency view, reached the way a user reaches it', () => {
     for (const button of row.getAllByRole('button')) {
       expect(button).toHaveAttribute('tabindex', '-1')
     }
+  })
+})
+
+describe('where focus goes when the screen is replaced', () => {
+  // The shell moved focus on a tab change and on nothing else. But four things replace what
+  // `<main>` shows without changing the tab — the dependency view, an opened environment, the plan
+  // panel, and each of the panel's phases — and every one of them unmounts the control that was
+  // just pressed. Focus fell to `<body>`: the next Tab started from the top of the window, and a
+  // screen reader announced nothing at all about a screen that had entirely changed.
+  const heading = () => screen.getByRole('heading', { level: 1 })
+
+  it('lands on the dependency view when a row opens it', async () => {
+    render(<App />)
+    const details = within(rowFor('numpy')).getByLabelText('Show dependencies')
+    details.focus()
+    fireEvent.click(details)
+    await screen.findByText('pandas')
+
+    expect(heading()).toHaveTextContent('Dependencies')
+    expect(heading()).toHaveFocus()
+  })
+
+  it('lands on the table again on the way back', async () => {
+    render(<App />)
+    fireEvent.click(within(rowFor('numpy')).getByLabelText('Show dependencies'))
+    await screen.findByText('pandas')
+
+    const back = screen.getByText('Back to packages')
+    back.focus()
+    fireEvent.click(back)
+
+    expect(heading()).toHaveTextContent('Installed')
+    expect(heading()).toHaveFocus()
+  })
+
+  it('lands on the plan panel when a plan takes the screen', async () => {
+    render(<App />)
+    rowFor('numpy').focus()
+
+    act(() => {
+      usePlanStore.setState({ phase: 'preview', kind: 'update', step: FORCED_STEP, env: ROW.env ?? null })
+    })
+
+    await waitFor(() => {
+      expect(heading()).toHaveFocus()
+    })
+    expect(heading()).toHaveTextContent('Preview')
+  })
+
+  it('lands on the summary when the run ends', async () => {
+    render(<App />)
+    act(() => {
+      usePlanStore.setState({ phase: 'executing', kind: 'update', step: FORCED_STEP, env: ROW.env ?? null })
+    })
+    const stop = await screen.findByText('Stop')
+    stop.focus()
+
+    act(() => {
+      usePlanStore.setState({ phase: 'summary', outcome: OUTCOME })
+    })
+
+    await waitFor(() => {
+      expect(heading()).toHaveFocus()
+    })
+  })
+
+  it('does not take focus from a control that is still there', async () => {
+    // The rule is "focus was lost", not "the phase changed": moving it on every phase would pull
+    // a keyboard user off *Console* each time a run advanced.
+    render(<App />)
+    act(() => {
+      usePlanStore.setState({ phase: 'resolving', kind: 'update', env: ROW.env ?? null })
+    })
+    const back = await screen.findByText('Back')
+    back.focus()
+
+    act(() => {
+      usePlanStore.setState({ phase: 'preview', step: FORCED_STEP })
+    })
+
+    expect(back).toHaveFocus()
   })
 })
 

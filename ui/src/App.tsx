@@ -76,6 +76,12 @@ export function App() {
   const resetPlan = usePlanStore((s) => s.reset)
   const resetDeps = useDepsStore((s) => s.reset)
   const guardOpen = planPhase === 'guard' && guard !== null
+  // What `<main>` is showing besides the tab — see the second focus effect below. Booleans and a
+  // phase, not the focused package or the opened interpreter: re-centring the dependency view on
+  // another package is not a new screen, and must not take focus from the link that did it.
+  const panelPhase = PANEL_PHASES.has(planPhase) ? planPhase : null
+  const depsOpen = useDepsStore((s) => s.focus !== null)
+  const envOpen = useEnvStore((s) => s.openFor !== null)
   const mainRef = useRef<HTMLElement>(null)
   // Shell state, like `nav` — but local, because nothing outside this component reads it.
   const [paletteOpen, setPaletteOpen] = useState(false)
@@ -127,6 +133,28 @@ export function App() {
     heading.setAttribute('tabindex', '-1')
     heading.focus()
   }, [nav])
+
+  // **The same move for the four things that replace the screen without changing the tab**: the
+  // plan panel and each of its phases, the dependency view, and an opened environment. Each one
+  // unmounts the control that was just pressed, so focus fell to `<body>` — the next Tab started
+  // from the top of the window and a screen reader said nothing about a screen that had entirely
+  // changed. `nav` was the only thing the effect above watched, and none of these change it.
+  //
+  // **Only when focus was actually lost.** The effect above moves it unconditionally, because a
+  // tab change is the user asking to go somewhere. A phase change is not: a run advancing from
+  // `resolving` to `preview` must not pull a keyboard user off *Back*, and a modal that is open
+  // over the panel owns focus until it closes. So: wherever focus is, if it is still on something
+  // in the document, it stays there.
+  useEffect(() => {
+    const active = document.activeElement
+    if (active !== null && active !== document.body && active.isConnected) return
+    const main = mainRef.current
+    const target =
+      main?.querySelector<HTMLElement>('[data-autofocus]') ?? main?.querySelector<HTMLElement>('h1')
+    if (target === null || target === undefined) return
+    if (target.tagName === 'H1') target.setAttribute('tabindex', '-1')
+    target.focus()
+  }, [panelPhase, depsOpen, envOpen])
 
   // UI-SPEC §8: Ctrl+1..9 select tabs, positionally over NAV_KEYS.
   useEffect(() => {
