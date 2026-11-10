@@ -77,7 +77,9 @@
       "version": "Version",
       "latest": "Latest",
       "size": "Size",
-      "status": "Status"
+      "status": "Status",
+      "select": "Select",
+      "actions": "Actions"
     },
     "badge": {
       "update": "UPDATE",
@@ -168,6 +170,7 @@
     "confirm": "Confirm ({{count}} changes)",
     "applyDecisions": "Apply choices",
     "console": "Console",
+    "closeConsole": "Close console",
     "progress": "{{done}} of {{total}} complete",
     "executing": "Applying changes…",
     "stop": "Stop",
@@ -307,13 +310,11 @@
     "notRunYet": "not checked yet",
     "notRunYetHint": "Press Run to check this folder.",
     "notebooks": "Jupyter notebooks (.ipynb) are excluded from every report.",
-    "tabLabel": {
-      "deptry_one": "Dependencies, {{count}} finding",
-      "deptry_other": "Dependencies, {{count}} findings",
-      "vulture_one": "Dead code, {{count}} finding",
-      "vulture_other": "Dead code, {{count}} findings",
-      "ruff_one": "Lint, {{count}} finding",
-      "ruff_other": "Lint, {{count}} findings"
+    "tabs": "Code Health tools",
+    "tabTopic": {
+      "deptry": "Dependencies",
+      "vulture": "Dead code",
+      "ruff": "Lint"
     },
     "declared": {
       "pyproject": "Dependencies declared in pyproject.toml",
@@ -388,6 +389,8 @@
     "placeholder": "Search PyPI…",
     "warming": "Preparing the package index…",
     "searching": "Searching…",
+    "resultCount_one": "{{count}} result",
+    "resultCount_other": "{{count}} results",
     "indexMissing": "The package index has not been downloaded yet.",
     "refreshIndex": "Download the index",
     "refreshing": "Downloading…",

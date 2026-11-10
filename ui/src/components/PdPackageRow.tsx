@@ -113,20 +113,25 @@ function Row({
         state === 'current' ? 'text-text-dim' : 'text-text'
       } ${selected ? 'bg-surface-2' : 'bg-surface'}`}
     >
-      <input
-        type="checkbox"
-        checked={selected}
-        // A pinned row is visible but not selectable: DATA-FLOW §9.5 keeps it out of bulk
-        // updates, and showing it greyed says so more honestly than hiding it.
-        disabled={pinned}
-        onChange={() => {
-          onToggle(row.name)
-        }}
-        aria-label={row.name}
-        // Not a tab stop: the row is (see onKeyDown above). Still clickable and still announced.
-        tabIndex={-1}
-        className={`${COLUMNS.checkbox} accent-accent disabled:opacity-40`}
-      />
+      {/* In a cell of its own: a `role="row"` may own cells and nothing else, and the checkbox was
+          a direct child of the row. `flex`, so the cell is exactly the checkbox's box and the
+          column stays the width the header reserves for it. */}
+      <span role="gridcell" className={`${COLUMNS.checkbox} flex items-center`}>
+        <input
+          type="checkbox"
+          checked={selected}
+          // A pinned row is visible but not selectable: DATA-FLOW §9.5 keeps it out of bulk
+          // updates, and showing it greyed says so more honestly than hiding it.
+          disabled={pinned}
+          onChange={() => {
+            onToggle(row.name)
+          }}
+          aria-label={row.name}
+          // Not a tab stop: the row is (see onKeyDown above). Still clickable and still announced.
+          tabIndex={-1}
+          className="w-full accent-accent disabled:opacity-40"
+        />
+      </span>
 
       <code role="gridcell" className={`${COLUMNS.name} font-mono text-data`}>
         {row.name}
@@ -193,6 +198,7 @@ function Row({
             onUninstall(row.name)
           }}
           data-action="uninstall"
+          data-destructive
           aria-label={t('packages.actions.uninstall')}
           title={t('packages.actions.uninstall')}
           className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data text-text-dim"

@@ -76,7 +76,9 @@
       "version": "Phiên bản",
       "latest": "Mới nhất",
       "size": "Dung lượng",
-      "status": "Trạng thái"
+      "status": "Trạng thái",
+      "select": "Chọn",
+      "actions": "Thao tác"
     },
     "badge": {
       "update": "UPDATE",
@@ -156,6 +158,7 @@
     "confirm": "Xác nhận ({{count}} thay đổi)",
     "applyDecisions": "Áp dụng lựa chọn",
     "console": "Bảng điều khiển",
+    "closeConsole": "Đóng bảng điều khiển",
     "progress": "Hoàn tất {{done}}/{{total}}",
     "executing": "Đang áp dụng thay đổi…",
     "stop": "Dừng",
@@ -280,10 +283,11 @@
     "notRunYet": "chưa kiểm tra",
     "notRunYetHint": "Nhấn Chạy để kiểm tra thư mục này.",
     "notebooks": "Jupyter notebook (.ipynb) được loại khỏi mọi báo cáo.",
-    "tabLabel": {
-      "deptry_other": "Phụ thuộc, {{count}} phát hiện",
-      "vulture_other": "Mã chết, {{count}} phát hiện",
-      "ruff_other": "Lint, {{count}} phát hiện"
+    "tabs": "Công cụ Code Health",
+    "tabTopic": {
+      "deptry": "Phụ thuộc",
+      "vulture": "Mã chết",
+      "ruff": "Lint"
     },
     "declared": {
       "pyproject": "Phụ thuộc được khai báo trong pyproject.toml",
@@ -345,6 +349,7 @@
     "placeholder": "Tìm trên PyPI…",
     "warming": "Đang chuẩn bị danh mục gói…",
     "searching": "Đang tìm…",
+    "resultCount_other": "{{count}} kết quả",
     "indexMissing": "Danh mục gói chưa được tải về.",
     "refreshIndex": "Tải danh mục",
     "refreshing": "Đang tải…",

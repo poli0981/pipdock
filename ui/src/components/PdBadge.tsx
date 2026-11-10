@@ -22,18 +22,29 @@ interface PdBadgeProps {
    * as a colour emoji from Segoe UI Emoji, which sits badly next to monospace data.
    */
   glyph?: string
-  /** Overrides the accessible name when the visible label is a bare glyph or a version. */
+  /**
+   * What the chip means, when the visible label is a bare glyph or a version.
+   *
+   * **Rendered as text, not only as a tooltip.** This was a `title` attribute and nothing else,
+   * and the comment here called it "the accessible name" — which a `title` on a `<span>` that
+   * cannot take focus is not: a pointer could hover it, and a keyboard or a screen reader could
+   * not reach it at all. So a held pin read as a bare version number. The sentence is in the
+   * document now, visually hidden, and the visible label is hidden from assistive technology in
+   * its favour — the sentence already contains the version, and both would say it twice.
+   */
   title?: string
 }
 
 export function PdBadge({ tone, label, glyph, title }: PdBadgeProps) {
+  const explained = title !== undefined && title !== label
   return (
     <span
       className={`inline-flex shrink-0 items-center gap-1 rounded-pd px-1.5 py-0.5 text-data ${TONES[tone]}`}
       title={title ?? label}
     >
       {glyph === undefined ? null : <span aria-hidden="true">{glyph}</span>}
-      <span>{label}</span>
+      <span aria-hidden={explained ? 'true' : undefined}>{label}</span>
+      {explained ? <span className="sr-only">{title}</span> : null}
     </span>
   )
 }

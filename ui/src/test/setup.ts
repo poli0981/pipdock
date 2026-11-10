@@ -97,4 +97,13 @@ if (typeof HTMLDialogElement !== 'undefined') {
   }
 }
 
+/**
+ * jsdom has no layout, so it has no `scrollIntoView` either — the method is simply absent, and a
+ * component that calls it throws. A no-op unless a test replaces it to watch what was scrolled.
+ */
+const element = Element.prototype as unknown as Record<string, unknown>
+element['scrollIntoView'] ??= function scrollIntoView() {
+  /* nothing to scroll */
+}
+
 export { VIEWPORT }
