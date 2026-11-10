@@ -29,11 +29,21 @@ import { useLegalStore } from '@/stores'
 /** SPDX identifier from `Cargo.toml` and `package.json`. An identifier, never translated. */
 const LICENSE = 'GPL-3.0-only'
 
-/** Where to write. Both are read. */
+/** Where to write. All three are read. */
 const CONTACT = {
   general: 'contact@poli0981.dev',
   code: 'code@poli0981.dev',
+  accessibility: 'accessibility@poli0981.dev',
 } as const
+
+/**
+ * The accessibility statement, in the app and not only in the repository.
+ *
+ * Someone who cannot use part of PipDock is the person least able to go looking for a file about
+ * it. The statement says what is supported, what is known not to work, and how to report a
+ * barrier without a GitHub account — which is what the address below is for.
+ */
+const ACCESSIBILITY = `${REPO}/blob/main/ACCESSIBILITY.md`
 
 /** The one page listing every other channel. Scoped in `capabilities/external-links.json`. */
 const LINKS = 'https://poli0981.dev/links/'
@@ -150,6 +160,21 @@ export function PdAbout() {
       <p className="mt-1 max-w-2xl text-data text-text-dim">{t('about.contactIntro')}</p>
       <CopyableAddress address={CONTACT.general} label={t('about.contactGeneral')} />
       <CopyableAddress address={CONTACT.code} label={t('about.contactCode')} />
+
+      <h2 className="mt-8 text-text-dim">{t('about.a11yTitle')}</h2>
+      <p className="mt-1 max-w-2xl text-data text-text-dim">{t('about.a11yBody')}</p>
+      <p className="mt-2">
+        <button
+          type="button"
+          onClick={() => {
+            open(ACCESSIBILITY)
+          }}
+          className="rounded-pd border border-border px-3 py-1 text-data text-text-dim hover:bg-surface-2"
+        >
+          {t('about.a11yRead')}
+        </button>
+      </p>
+      <CopyableAddress address={CONTACT.accessibility} label={t('about.a11yContact')} />
 
       <h2 className="mt-8 text-text-dim">{t('about.linksTitle')}</h2>
       <p className="mt-1 max-w-2xl text-data text-text-dim">{t('about.linksIntro')}</p>

@@ -81,6 +81,24 @@ describe('PdAbout', () => {
     expect(writeText).toHaveBeenCalledTimes(2)
   })
 
+  it('says where to report a barrier, and opens the accessibility statement', async () => {
+    // Someone who cannot use part of the app is the person least able to go and find a
+    // repository file about it. The address and the statement are on the screen every other
+    // contact is on.
+    render(<PdAbout />)
+    expect(screen.getByRole('heading', { level: 2, name: 'Accessibility' })).toBeInTheDocument()
+
+    const address = 'accessibility@poli0981.dev'
+    expect(screen.getByText(address)).toBeInTheDocument()
+    fireEvent.click(screen.getByLabelText(`Copy ${address}`))
+    await waitFor(() => {
+      expect(writeText).toHaveBeenCalledWith(address)
+    })
+
+    fireEvent.click(screen.getByRole('button', { name: 'Read the accessibility statement' }))
+    expect(openUrl).toHaveBeenCalledWith(`${REPO}/blob/main/ACCESSIBILITY.md`)
+  })
+
   it('opens the links page inside the capability scope', () => {
     render(<PdAbout />)
     fireEvent.click(screen.getByRole('button', { name: 'Open the links page' }))
