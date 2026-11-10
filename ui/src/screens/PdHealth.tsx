@@ -253,6 +253,7 @@ export function PdHealth() {
             <button
               type="button"
               data-action="fix"
+              data-destructive
               className="rounded-pd bg-danger px-3 py-1 text-data text-bg disabled:opacity-50"
               disabled={fixBusy}
               onClick={() => {

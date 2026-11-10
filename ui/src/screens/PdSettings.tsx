@@ -194,6 +194,7 @@ export function PdSettings() {
                 void save({ allowExternallyManaged: true })
               }}
               data-action="allow-override"
+              data-destructive
               className="rounded-pd border border-danger px-3 py-1 text-data text-danger"
             >
               {t('settings.overrideConfirm')}

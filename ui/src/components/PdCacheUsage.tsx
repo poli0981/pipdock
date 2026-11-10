@@ -160,6 +160,7 @@ export function PdCacheUsage() {
                 void doClear(confirming)
               }}
               data-action="confirm-clear-cache"
+              data-destructive
               className="rounded-pd border border-danger px-3 py-1 text-data text-danger disabled:opacity-40"
             >
               {t('cache.clear')}

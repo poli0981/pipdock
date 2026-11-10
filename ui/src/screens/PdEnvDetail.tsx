@@ -127,6 +127,7 @@ export function PdEnvDetail() {
                   void rollback(env, selectedSnapshot)
                 }}
                 data-action="rollback"
+                data-destructive
                 className="mt-4 rounded-pd border border-danger px-3 py-1 text-data text-danger"
               >
                 {t('snapshots.rollback')}

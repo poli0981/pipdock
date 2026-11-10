@@ -151,17 +151,21 @@
       outline-offset: -2px;
     }
 
+    /* `page` is the sidebar's active tab. The rule matched `'true'` alone, so the one thing that
+     * said which screen is showing was drawn like every other tab. */
     [aria-selected='true'],
-    [aria-current='true'] {
+    [aria-current='true'],
+    [aria-current='page'] {
       outline: 1px solid Highlight;
     }
 
-    /* Destructive controls, which are otherwise indistinguishable once their tint is dropped. */
-    button[data-action='force'],
-    button[data-action='uninstall'],
-    button[data-action='rollback'],
-    button[data-action='upgrade-pip'],
-    button[data-action='fix'] {
+    /* Destructive controls, which are otherwise indistinguishable once their tint is dropped.
+     *
+     * One attribute, not a list of `data-action` values. The list was five names long and missed
+     * Remove, Allow, Clear, the Force-latest confirm and a forced plan's Confirm for as long as it
+     * existed (U45) — a list of names beside a list of buttons is two lists. `destructive.test.ts`
+     * holds the other half: every button drawn in the danger colour carries the attribute. */
+    button[data-destructive] {
       border: 2px solid CanvasText;
     }
   }

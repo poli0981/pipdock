@@ -125,6 +125,7 @@ function Row({ row }: { row: EnvRow }) {
               }}
               disabled={upgrading}
               data-action="upgrade-pip"
+              data-destructive
               className="rounded-pd border border-warn px-3 py-1 text-data text-warn disabled:opacity-40"
             >
               {upgrading ? t('env.pipUpgrading') : t('env.pipUpgrade')}
@@ -150,6 +151,7 @@ function Row({ row }: { row: EnvRow }) {
                 void upgradePip(row.interpreter)
               }}
               data-action="upgrade-pip"
+              data-destructive
               className="rounded-pd border border-warn px-3 py-1 text-data text-warn"
             >
               {t('env.pipUpgradeConfirm')}
