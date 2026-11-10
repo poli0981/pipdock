@@ -58,7 +58,9 @@ export function PdDockBay({
                   onRemove(item.name)
                 }}
                 aria-label={t('search.remove', { pkg: item.name })}
-                className="shrink-0 text-data text-text-dim"
+                // 24 px each way: with no padding this was a bare glyph about 8 px wide, under
+                // WCAG 2.5.8's minimum target and the smallest thing in the app to hit.
+                className="min-h-6 min-w-6 shrink-0 rounded-pd text-data text-text-dim hover:bg-surface"
               >
                 {'✕'}
               </button>

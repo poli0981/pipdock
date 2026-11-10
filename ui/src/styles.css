@@ -91,6 +91,14 @@
     outline-offset: 2px;
   }
 
+  /* A package row's ring sits inside it. Rows are absolutely positioned inside a scroller and
+   * stacked edge to edge, so a ring drawn 2px outside one is clipped by the scroller at both
+   * ends and painted over by the row below — three sides of the ring a keyboard user steers by.
+   * This was in the forced-colors block alone, where the same clipping had been noticed. */
+  [role='row']:focus-visible {
+    outline-offset: -2px;
+  }
+
   /* UI-SPEC §2: prefers-reduced-motion is respected. */
   @media (prefers-reduced-motion: reduce) {
     *,

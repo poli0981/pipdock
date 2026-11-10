@@ -26,10 +26,17 @@
  *   double-submitted and the user keeps reading what they were reading.
  */
 
-import { useEffect, useRef } from 'react'
+import { useEffect, useId, useRef } from 'react'
 
 interface PdDialogProps {
-  /** Accessible name — the package or operation the dialog is about. */
+  /**
+   * What the dialog is about — the package, the interpreter, the cache.
+   *
+   * Spoken after the heading, as part of the dialog's name. It used to *be* the name, as an
+   * `aria-label`, so a screen reader announced "numpy, dialog" and then "Cancel": the question
+   * being asked was on screen and never said. A caller whose heading already says it passes the
+   * same string for both, and it is said once.
+   */
   label: string
   /** Heading text, already localized. */
   title: string
@@ -55,6 +62,8 @@ export function PdDialog({
 }: PdDialogProps) {
   const ref = useRef<HTMLDialogElement>(null)
   const cancelRef = useRef<HTMLButtonElement>(null)
+  const titleId = useId()
+  const bodyId = useId()
 
   useEffect(() => {
     const el = ref.current
@@ -72,7 +81,10 @@ export function PdDialog({
   return (
     <dialog
       ref={ref}
-      aria-label={label}
+      // Named by its visible heading and described by its body, so opening it says what is being
+      // asked and what it will do — not only which button has focus.
+      aria-labelledby={titleId}
+      aria-describedby={bodyId}
       // Esc reaches this rather than closing the element behind our back, so cancelling always
       // goes through the same path as the button.
       onCancel={(e) => {
@@ -84,8 +96,13 @@ export function PdDialog({
       // top-left corner. Seen in the installed build; jsdom computes no layout to show it.
       className="m-auto max-w-lg rounded-pd border border-border bg-surface p-6 text-text backdrop:bg-bg/80"
     >
-      <h2 className="text-accent">{title}</h2>
-      <div className="mt-3 text-data">{children}</div>
+      <h2 id={titleId} className="text-accent">
+        {title}
+        {label === title ? null : <span className="sr-only">{`: ${label}`}</span>}
+      </h2>
+      <div id={bodyId} className="mt-3 text-data">
+        {children}
+      </div>
       <div className="mt-4 flex flex-wrap gap-2">
         {/* First, and focused: UI-SPEC §7. The safe answer must be the one a reflex reaches. */}
         <button
