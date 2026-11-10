@@ -137,11 +137,24 @@ just stating them. Everything below is for reading the code.
 | [docs/RELEASE-CI.md](docs/RELEASE-CI.md) | CI callers into `poli0981/.github`, release pipeline |
 | [docs/I18N.md](docs/I18N.md) | EN/VI localization rules |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Spike week, milestones, exit criteria |
+| [ACCESSIBILITY.md](ACCESSIBILITY.md) | What is supported, what has been tested, what is known not to work, and how to report a barrier |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Setting up, the checks CI runs, and what a pull request needs |
+| [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md) | Contributor Covenant 2.1 |
 | [legal/](legal/) | EULA, Disclaimer, Privacy Policy, Third-Party Notices (linked by the in-app legal gate) |
+
+## Accessibility
+
+PipDock is built to work with a keyboard alone, with a screen reader and under a Windows contrast theme, and `pipdock` on the command line is plain text with no colour and nothing that animates. The target is WCAG 2.2 AA; it is a target and not a conformance claim, and [ACCESSIBILITY.md](ACCESSIBILITY.md) says exactly what has been tested, by whom, and what is known to fall short.
+
+If something gets in your way, [open an accessibility issue](https://github.com/poli0981/pipdock/issues/new?template=accessibility.yml) or write to [accessibility@poli0981.dev](mailto:accessibility@poli0981.dev) — in English or Vietnamese, with no GitHub account needed and no diagnosis expected.
+
+## Contributing
+
+Bug reports, accessibility reports and pull requests are welcome. [CONTRIBUTING.md](CONTRIBUTING.md) covers setup, the checks, and the handful of rules that are not negotiable; everyone taking part is expected to follow the [Code of Conduct](CODE_OF_CONDUCT.md). Security problems go through the [security policy](.github/SECURITY.md), not a public issue.
 
 ## How this was built
 
-PipDock was written with substantial help from an AI coding assistant — **Claude Opus 5** through 1.3.0 and **Claude Opus 5.5** from 1.4.0, made by [Anthropic](https://www.anthropic.com), through [Claude Code](https://claude.com/claude-code) — under human review. It wrote source code, tests, debugging work and the Vietnamese translation. Every change reached `main` through a pull request, and `main` is protected and cannot be bypassed. Through 1.3.0 the maintainer read and merged each one, and drove the built application by hand on three machines before 1.0.0 shipped; 1.4.0 was released by the assistant on the maintainer's written instruction, once its checks had passed.
+PipDock was written with substantial help from an AI coding assistant — **Claude Opus 5** through 1.3.0, **Claude Opus 5.5** for 1.4.0 and **Claude Fable 5.2** for 1.5.0, made by [Anthropic](https://www.anthropic.com), through [Claude Code](https://claude.com/claude-code) — under human review. It wrote source code, tests, debugging work and the Vietnamese translation. Every change reached `main` through a pull request, and `main` is protected and cannot be bypassed. Through 1.3.0 the maintainer read and merged each one, and drove the built application by hand on three machines before 1.0.0 shipped; 1.4.0 and 1.5.0 were released by the assistant on the maintainer's written instruction — a plan the maintainer approved — once the checks had passed.
 
 That review mattered: **thirty-five defects** reached or nearly reached `main`, and not one was caught by the test suite that was green at the time. They were found by running the thing.
 
@@ -158,3 +171,5 @@ PipDock is an independent project. It is not affiliated with or endorsed by the 
 ## Tiếng Việt (tóm tắt)
 
 PipDock là ứng dụng Windows (GUI + CLI) giúp kiểm tra, cài đặt, cập nhật và gỡ **hàng loạt** gói thư viện Python một cách an toàn: luôn chạy dry-run xem trước thay đổi, xử lý xung đột phiên bản với 3 lựa chọn rõ ràng, tự chụp snapshot trước mỗi lần chạy để rollback một chạm, cảnh báo khi gỡ gói mà gói khác đang phụ thuộc, và tổng kết "13 thành công, 2 thất bại" kèm lý do từng gói. Hỗ trợ engine pip hoặc uv (chọn trong Settings), tìm gói tức thì nhờ cache chỉ mục PyPI, kèm module Code Health (deptry/vulture/ruff) để dọn dependency thừa và dead code. Không thu thập dữ liệu. Giấy phép GPL-3.0.
+
+**Khả năng tiếp cận:** PipDock dùng được chỉ với bàn phím, với trình đọc màn hình (đã thử với Narrator) và ở chế độ tương phản cao của Windows. Chi tiết, kể cả những gì chưa được kiểm thử, nằm trong [ACCESSIBILITY.md](ACCESSIBILITY.md). Nếu gặp rào cản, hãy [mở issue](https://github.com/poli0981/pipdock/issues/new?template=accessibility.yml) hoặc viết tới [accessibility@poli0981.dev](mailto:accessibility@poli0981.dev) — tiếng Việt cũng được.

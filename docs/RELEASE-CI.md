@@ -59,6 +59,7 @@ permissions: { contents: read }
 | Required approvals | **0** | a solo owner cannot approve their own PR, so 1 would deadlock. A PR is still required |
 | `strict` | `false` | up-to-date-before-merge is friction on a repo that rebase-merges |
 | Linear history | `true` | matches rebase-merge |
+| Conversation resolution | `true` | a review thread left open blocks the merge — read from the API on 2026-11-10; this table did not list it |
 | Force pushes / deletions | `false` | |
 
 **`CI / Integration` is deliberately excluded, and this is the trap worth remembering:** its `pull_request` trigger is `paths:`-filtered, so on a docs-only or UI-only PR it never starts — and a required check that never starts stays *pending forever*. Requiring it would deadlock exactly the PRs it has no opinion about. `Re-capture against the latest engines` runs on no PR at all (Mondays and dispatch only) and is excluded for the same reason. The bare `CodeQL` check belongs to the `github-advanced-security` app rather than Actions and is left out too.
@@ -110,12 +111,13 @@ Two active lines at most: latest release gets features; previous minor gets secu
 - [x] GPL-3.0 `LICENSE` at root; `legal/` committed **publicly** (the in-app legal gate links to these GitHub URLs — CommandForge lesson: don't leave them gitignored).
 - [x] `.github/ISSUE_TEMPLATE/bug_report.yml` (shipped in this suite) + `config.yml` disabling blank issues.
 - [x] `.github/dependabot.yml` covering cargo, npm, github-actions and the Code Health pins — and the Rust toolchain since 1.4.0.
-- [x] `rust-toolchain.toml`, `.nvmrc` (24), `Cargo.lock`/`package-lock.json` committed.
+- [x] `rust-toolchain.toml`, `.nvmrc` (26 — it said 24 until 1.5.0, a month after every workflow had moved to 26), `Cargo.lock`/`package-lock.json` committed.
 - [x] **Repo settings (owner, via the GitHub UI or `gh` — not committable):** branch protection on `main`; disable Advanced Security → CodeQL *Default setup* (the reusable is advanced-setup and is rejected at upload time otherwise); enable Discussions for the issue-template contact links.
 - [x] **Secrets via `gh secret set`:** the Discord webhooks (`DISCORD_RELEASES_WEBHOOK`, `DISCORD_REPO_WEBHOOK`, `DISCORD_CI_WEBHOOK`). No signing key — see §3.
 - [x] App icon settled (`src-tauri/icons/`). It was called a placeholder because nobody had chosen it; the owner chose it in Phase 4, which is what "a brand decision" needed.
 - [x] README badges: CI, CodeQL, release, license.
-- [ ] **Labels (owner, repo settings — opened by 1.4.0):** `dependencies`, `rust`, `frontend`, `ci` and `code-health` for Dependabot (§2), and `triage` for `bug_report.yml`. None existed on 2026-10-17, so Dependabot's PRs arrive unlabelled and a bug report gets `bug` alone.
+- [x] **Labels (owner, repo settings — opened by 1.4.0):** `dependencies`, `rust`, `frontend`, `ci` and `code-health` for Dependabot (§2), and `triage` for `bug_report.yml`. None existed on 2026-10-17; all six did by 2026-11-10, when `accessibility` joined them for `accessibility.yml`.
+- [x] **Community health files (1.5.0):** `ACCESSIBILITY.md`, `CONTRIBUTING.md` and `CODE_OF_CONDUCT.md` (Contributor Covenant 2.1) at the root; `.github/PULL_REQUEST_TEMPLATE.md` and `.github/ISSUE_TEMPLATE/accessibility.yml`; and a repository description. The ops repo's description says it carries community health files and it carries none, so nothing was inherited. `bug_report.yml` keeps its name: `crates/pipdock-core/src/report.rs` builds the in-app *Report bug* link from it.
 
 **Closed 2026-08-14, and three of the last four were already true.** CodeQL *Default setup* read
 `not-configured` and Discussions were already on — both had been done and never ticked, which is

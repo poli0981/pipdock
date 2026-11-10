@@ -408,11 +408,11 @@ either number. Screens (`ui/src/screens/`, `PdPlanPanel` among them) are not cou
 - Empty states: one mono glyph + one sentence + one action (e.g. Updates empty: `▸ all packages up to date`).
 - Offline: banner chip in top bar; search works (local index), metadata panel shows cached-at timestamp.
 - Errors: inline with catalog code, human message (localized), and *Details* expanding stderr tail. Toasts only for background completions. *Report bug* opens a prefilled GitHub issue that nothing sends until the user submits it; since 1.4.0 the link is rebuilt at the click with the selected environment, so the issue carries its Python version and the configured engine's version — one subprocess per report, rather than one per error row mounted, which a summary of many failures would multiply.
-- Destructive confirms (`Force latest`, uninstall with breakage, PEP 668 override, and — since P5 — `Fix with ruff`, the only one that writes outside an environment) use `--color-danger` primary buttons and require the dialog's default focus to be **Cancel**. The PEP 668 override was on this list while it was a bare checkbox with no confirm at all; it has been a `PdDialog` since 1.4.0. A `data-action` in `styles.css`'s forced-colors list gives a destructive control a 2 px border, because high contrast drops every tint and a destructive primary that looks like Cancel is worse than no colour at all. **The list is `force` (the guard's *Remove anyway*), `uninstall`, `rollback`, `upgrade-pip` and `fix`, and it is not complete:** the uninstall dialog's plain *Remove* (`remove`), the *Force latest* inline confirm's button, the override's *Allow* (`allow-override`), Disk usage's *Clear* confirm (`confirm-clear-cache`) and the plan panel's danger-treated Confirm (a rollback, or since 1.4.0 a forced plan) are not in it, so in high contrast each is told from the control beside it by its label alone. The active sidebar tab has the same problem by another route: it carries `aria-current="page"`, and the outline rule matches `'true'`. All of it is audit backlog U45, deferred to a High Contrast pass done by hand.
+- Destructive confirms (`Force latest`, uninstall with breakage, PEP 668 override, and — since P5 — `Fix with ruff`, the only one that writes outside an environment) use `--color-danger` primary buttons and require the dialog's default focus to be **Cancel**. The PEP 668 override was on this list while it was a bare checkbox with no confirm at all; it has been a `PdDialog` since 1.4.0. **A destructive control carries `data-destructive`**, and under forced-colors `styles.css` gives every button with it a 2 px border, because high contrast drops every tint and a destructive primary that looks like Cancel is worse than no colour at all. Until 1.5.0 the stylesheet kept its own list of five `data-action` values instead, and the list was never complete: the uninstall dialog's plain *Remove*, the *Force latest* inline confirm, the override's *Allow*, Disk usage's *Clear* confirm and the plan panel's danger-treated Confirm (a rollback, or a forced plan) were not on it, so in high contrast each was told from the control beside it by its label alone (audit backlog U45). A list of names beside a list of buttons is two lists; `ui/src/destructive.test.ts` reads the source instead and fails on a button drawn in the danger colour without the attribute. The same pass fixed the active sidebar tab, which carries `aria-current="page"` under an outline rule that matched `'true'` alone. *Stop* carries the attribute too: it interrupts a run part-way, and is drawn in the danger colour for that reason.
 
 ## 8. Keyboard & accessibility
 
-Full keyboard traversal: `Ctrl+1..9` sidebar tabs (by physical key), **`Ctrl+K` opens the command palette**, `/` focuses the Search field, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6).
+Full keyboard traversal: `Ctrl+1..9` sidebar tabs (by physical key), **`Ctrl+K` opens the command palette**, `/` focuses the Search field, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6). Since 1.5.0: `←`/`→`/`Home`/`End` move between Code Health's tabs, the arrow keys move between a conflict's three choices, and `Ctrl` `+`/`-`/`0` zoom. [`ACCESSIBILITY.md`](../ACCESSIBILITY.md) is the user-facing statement of this section, with what has and has not been tested; About links to it.
 
 **Four rules from 1.4.0:**
 
@@ -441,8 +441,38 @@ A dialog — `PdDialog`, and the palette — returns focus to whatever opened it
 to fall to `<body>`, and a keyboard user lost their place in a 200-row table. The package grid itself
 is focusable but not a tab stop: the row is.
 
+**Five rules from 1.5.0**, the accessibility pass:
+
+- **Focus moves whenever the screen is replaced, not only when the tab changes.** The shell focused
+  the new screen's heading on a `nav` change and on nothing else — but the plan panel and each of
+  its phases, the dependency view and an opened environment all replace what `<main>` shows without
+  changing `nav`, and each unmounts the control that was just pressed. Focus fell to `<body>`. A
+  second effect in `App.tsx` covers them, and **acts only when focus was actually lost**: a run
+  advancing from `resolving` to `preview` must not pull a keyboard user off *Back*, and an open
+  modal owns focus until it closes. The console drawer returns focus to its opener the same way,
+  and the legal gate — rendered instead of the shell — focuses its own heading.
+- **An accessible name contains what is on screen** (WCAG 2.5.3). Health's tabs were named by an
+  `aria-label` reading "Dependencies, 3 findings" over a tab that says `deptry 3`. The name is the
+  content now: the tool, its count, then what the tab is about, visually hidden. A `PdDialog` is
+  named by its heading, followed by what it is about, and described by its body — it was named by
+  the package alone, so a reader heard "numpy, dialog" and never the question.
+- **A composite widget is one tab stop.** Health's tabs follow the tabs pattern (one stop, arrows,
+  a `tabpanel`), and a conflict's three choices follow the radio group's — with one deliberate
+  difference: **the arrows move focus and choose nothing.** Checking whatever focus lands on would
+  open *Force latest*'s destructive confirm from an arrow key.
+- **What a chip means is text, not a tooltip.** A `title` on a `<span>` that cannot take focus is
+  reachable by a pointer and by nothing else; a held pin read as a bare version number.
+- **A status region exists before its first message.** Search's is mounted from the first render
+  and carries "preparing", "searching", the result count and "nothing matches". A live region
+  announces changes to itself, so one that arrives together with its text has nothing to differ
+  from. Several older regions still mount with their text; whether a reader says them is in the
+  Audit backlog, because only a reader can answer it.
+
+**Zoom is on since 1.5.0** (`zoomHotkeysEnabled`, which on Windows is WebView2's own zoom control,
+so it needs no permission and no code). The zoom level is the webview's and is not persisted.
+
 **The arrow keys are not decoration, and the gap they close was real.** Making the row the only tab stop is what keeps 200 rows from becoming 600 — but every control inside one is `tabIndex={-1}`, and that left *Pin* and *Remove* reachable by mouse only: a WCAG 2.1.1 failure, found by tabbing to a row in the running app and discovering there was nowhere further to go. `←`/`→` are the ARIA grid pattern's roving tabindex, `Esc` returns focus to the row, and no tab stops are added.
 
 **`Enter` on a row is the *non-destructive* primary.** On a package row that is pin, never uninstall: a row has one reversible annotation and one irreversible removal, and a destructive operation one keypress from a focused row is an accident waiting rather than a primary action. Everywhere else in the app `Enter` needs no binding at all, because every other primary action is a real `<button>`.
 
-**"Select-all-visible" means the current filtered set, not the rendered window.** Resolved in S2: the package table is virtualized, so only ~25 of a 200-package environment are in the DOM at any moment and "visible" would otherwise mean whatever the scroll position happens to be. `Ctrl+A` selects every *selectable* row in the set the screen is showing — so on Updates that is the outdated rows, and pinned rows are excluded there as they are from the *Select all* button. The row, not its checkbox, is the tab stop and the target of `Space`; tabbing through two controls per row is not traversal at 200 rows. Contrast: all text tokens meet WCAG AA on their surfaces, and since 1.4.0 so does every badge's text on its own tint over every surface (§2; both verified in the design-token test); focus ring 2 px accent, never removed. Screen-reader labels on all icon buttons; live region announces execution progress summaries ("13 of 15 complete"). Windows high-contrast mode: tokens fall back to system colors.
+**"Select-all-visible" means the current filtered set, not the rendered window.** Resolved in S2: the package table is virtualized, so only ~25 of a 200-package environment are in the DOM at any moment and "visible" would otherwise mean whatever the scroll position happens to be. `Ctrl+A` selects every *selectable* row in the set the screen is showing — so on Updates that is the outdated rows, and pinned rows are excluded there as they are from the *Select all* button. The row, not its checkbox, is the tab stop and the target of `Space`; tabbing through two controls per row is not traversal at 200 rows. Contrast: all text tokens meet WCAG AA on their surfaces, and since 1.4.0 so does every badge's text on its own tint over every surface (§2; both verified in the design-token test); focus ring 2 px accent, never removed — and since 1.5.0 a package row's ring is drawn *inside* the row in every mode, because a ring 2 px outside a row that is absolutely positioned in a scroller and stacked against its neighbours was clipped on three sides. Screen-reader labels on all icon buttons; live region announces execution progress summaries ("13 of 15 complete"). Windows high-contrast mode: tokens fall back to system colors. **Structure is held by axe-core** over every screen (`ui/src/a11y.test.tsx`, TESTING L3) — which checks roles, names and required parts, and cannot check speech, forced-colors or focus order.
