@@ -113,6 +113,7 @@ export function PdSummarySheet({ outcome, onDone, onRollback }: PdSummarySheetPr
                 onRollback(snapshot.id)
               }}
               data-action="rollback"
+              data-destructive
               className="rounded-pd border border-danger px-2 py-0.5 text-data text-danger"
             >
               {t('snapshots.rollbackThis')}

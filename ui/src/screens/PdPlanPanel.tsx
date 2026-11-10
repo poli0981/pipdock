@@ -232,6 +232,7 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
                 void cancel()
               }}
               disabled={cancelling}
+              data-destructive
               className="rounded-pd border border-danger px-3 py-1 text-data text-danger disabled:opacity-40"
             >
               {cancelling ? t('plan.stopping') : t('plan.stop')}
@@ -278,6 +279,9 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
                 void execute()
               }}
               disabled={phase === 'resolving' || !confirmable}
+              // Under the same condition as the danger treatment below, so high contrast — which
+              // drops the colour — still tells this Confirm from an ordinary one (U45).
+              data-destructive={isRollback || forced.length > 0 ? true : undefined}
               className={`rounded-pd border px-3 py-1 text-data disabled:border-border disabled:text-text-dim disabled:opacity-40 ${
                 // A restore removes things and a forced plan breaks them. Both get the danger
                 // treatment an ordinary update does not.
