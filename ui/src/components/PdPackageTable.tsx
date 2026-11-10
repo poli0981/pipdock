@@ -108,7 +108,7 @@ export function PdPackageTable({
         {/* The checkbox and action columns have no visible heading, and are still columns: the
             header had five headings over six cells, so moving by column read "Status" above the
             action buttons. Named for whoever cannot see which column they are in. */}
-        <span role="columnheader" className={COLUMNS.checkbox}>
+        <span role="columnheader" className={`relative ${COLUMNS.checkbox}`}>
           <span className="sr-only">{t('packages.column.select')}</span>
         </span>
         <span role="columnheader" className={COLUMNS.name}>
@@ -126,7 +126,7 @@ export function PdPackageTable({
         <span role="columnheader" className={COLUMNS.status}>
           {t('packages.column.status')}
         </span>
-        <span role="columnheader" className={COLUMNS.actions}>
+        <span role="columnheader" className={`relative ${COLUMNS.actions}`}>
           <span className="sr-only">{t('packages.column.actions')}</span>
         </span>
       </div>

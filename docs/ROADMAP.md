@@ -1588,6 +1588,22 @@ was clipped, and it was — on three sides, in normal mode, fixed here. The forc
 carried that exact fix since M2, with a comment saying why: the knowledge was in the stylesheet,
 scoped to the one mode someone had looked at.
 
+**And what a second reader found**, in the diff, after the smoke had passed — an independent review
+run while CI was going:
+
+- **`sr-only` text needs a positioned parent.** It is `position: absolute`; with no positioned
+  ancestor it is laid out against the viewport and escapes every scroller above it. A pin chip's
+  new hidden sentence did exactly that on Pins, where nothing between the chip and `<html>` is
+  positioned: a long list made the whole window scroll and took the header with it. Package rows
+  hid it, because a row is `absolute`. Every parent of hidden text is `relative` now.
+- **An error-only summary had no `<h1>`**, so the new focus rule had nothing to land on — on the
+  one screen where a run had just failed.
+- **A drawer that mounts already open has no opener.** `consoleOpen` outlives a run; closing the
+  drawer in the next one dropped focus as it had before the fix. It falls back to the *Console*
+  button.
+- Under forced-colors, the selection outline followed the focus ring at equal specificity, so a
+  focused current tab got a 1 px line in place of its 2 px ring.
+
 **What it did not establish.** The assistant cannot run a screen reader. Everything above about
 what assistive technology receives is the accessibility tree, which is what is *exposed*, not what
 is *said*. Narrator on 1.5.0, NVDA, JAWS and each contrast theme by hand are backlog A7 and are

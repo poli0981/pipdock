@@ -39,7 +39,10 @@ export function PdBadge({ tone, label, glyph, title }: PdBadgeProps) {
   const explained = title !== undefined && title !== label
   return (
     <span
-      className={`inline-flex shrink-0 items-center gap-1 rounded-pd px-1.5 py-0.5 text-data ${TONES[tone]}`}
+      // `relative`: the hidden sentence below is `position: absolute`, and with no positioned
+      // ancestor it is laid out against the viewport — outside every scroller above it. On Pins a
+      // long list of chips made the whole window scroll. The chip is its containing block.
+      className={`relative inline-flex shrink-0 items-center gap-1 rounded-pd px-1.5 py-0.5 text-data ${TONES[tone]}`}
       title={title ?? label}
     >
       {glyph === undefined ? null : <span aria-hidden="true">{glyph}</span>}

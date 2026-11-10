@@ -63,7 +63,14 @@ export function PdConsoleDrawer({ lines, open, onClose, done, total }: PdConsole
     return () => {
       const active = document.activeElement
       if (active !== null && active !== document.body && active.isConnected) return
-      if (opener !== null && opener !== document.body && opener.isConnected) opener.focus()
+      if (opener !== null && opener !== document.body && opener.isConnected) {
+        opener.focus()
+        return
+      }
+      // **Nothing opened it.** `consoleOpen` outlives a run, so the next run mounts the drawer
+      // already open, with focus on nothing to remember. The button that toggles it is the
+      // nearest thing to an opener there is.
+      document.querySelector<HTMLElement>('[data-console-toggle]')?.focus()
     }
   }, [open])
 
