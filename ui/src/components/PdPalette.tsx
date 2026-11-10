@@ -170,6 +170,16 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
     }
   }, [])
 
+  // U48: keep the highlight on screen. The list is `max-h-80 overflow-auto` and the selection is
+  // an `aria-activedescendant`, not focus — so nothing scrolled, and past the ninth action the
+  // highlight left the visible window while Enter still ran it. `nearest`, so a selection that is
+  // already visible does not move the list at all.
+  const activeId = shown[active]?.id
+  useEffect(() => {
+    if (activeId === undefined) return
+    document.getElementById(`palette-${activeId}`)?.scrollIntoView({ block: 'nearest' })
+  }, [activeId])
+
   const dispatch = (action: Action | undefined) => {
     if (action === undefined) return
     // Closed *before* running, so an action that changes `nav` does not fight the dialog for

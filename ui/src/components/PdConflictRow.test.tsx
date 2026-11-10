@@ -13,7 +13,7 @@
  * `PdUninstallDialog.test.tsx` gives about `GuardReport`.
  */
 
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { describe, expect, it, vi } from 'vitest'
 
 import { PdConflictRow } from '@/components/PdConflictRow'
@@ -69,6 +69,47 @@ describe('PdConflictRow', () => {
     expect(
       screen.getByText('no version of oldlib is compatible with python 3.12'),
     ).toBeInTheDocument()
+  })
+
+  it('is one tab stop, with the arrows moving between its choices', () => {
+    // U47: three buttons with `role="radio"` and none of a radio group's keyboard — every choice
+    // of every conflict was its own tab stop, and the arrow keys did nothing.
+    const { onChoose } = setup(BLOCKERS)
+    const radios = within(screen.getByRole('radiogroup', { name: 'numpy' })).getAllByRole('radio')
+    const [keep, skip, force] = radios
+    if (keep === undefined || skip === undefined || force === undefined) {
+      throw new Error('three choices expected')
+    }
+
+    // The checked one is the stop: keep-compatible is the default.
+    expect(radios.map((r) => r.getAttribute('tabindex'))).toEqual(['0', '-1', '-1'])
+
+    keep.focus()
+    fireEvent.keyDown(keep, { key: 'ArrowRight' })
+    expect(skip).toHaveFocus()
+    fireEvent.keyDown(skip, { key: 'ArrowDown' })
+    expect(force).toHaveFocus()
+    fireEvent.keyDown(force, { key: 'ArrowRight' })
+    expect(keep).toHaveFocus()
+    fireEvent.keyDown(keep, { key: 'ArrowLeft' })
+    expect(force).toHaveFocus()
+
+    // **Focus moves; nothing is chosen.** A radio group normally checks what the arrows land on,
+    // and here that would open *Force latest*'s destructive confirm from an arrow key.
+    expect(onChoose).not.toHaveBeenCalled()
+    expect(screen.queryByRole('alertdialog')).toBeNull()
+  })
+
+  it('skips a choice that cannot be made', () => {
+    setup(BLOCKERS, true)
+    const [, skip, force] = within(screen.getByRole('radiogroup', { name: 'numpy' })).getAllByRole(
+      'radio',
+    )
+    if (skip === undefined || force === undefined) throw new Error('three choices expected')
+
+    force.focus()
+    fireEvent.keyDown(force, { key: 'ArrowRight' })
+    expect(skip).toHaveFocus()
   })
 
   it('refuses Keep compatible on an impossible row', () => {

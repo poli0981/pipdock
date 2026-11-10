@@ -100,6 +100,32 @@ export function PdConflictRow({
               role="radio"
               aria-checked={selected}
               disabled={disabled}
+              data-option={option}
+              // A radio group is one tab stop — the checked choice — with the arrows moving
+              // inside it (U47). These were three stops per conflict and no arrow keys.
+              //
+              // **The arrows move focus and choose nothing**, which is not what a radio group
+              // usually does. Checking whatever focus lands on would open *Force latest*'s
+              // destructive confirm from an arrow key; Space or Enter on the focused choice is
+              // the same click it always was.
+              tabIndex={selected ? 0 : -1}
+              onKeyDown={(e) => {
+                const step =
+                  e.key === 'ArrowRight' || e.key === 'ArrowDown'
+                    ? 1
+                    : e.key === 'ArrowLeft' || e.key === 'ArrowUp'
+                      ? -1
+                      : 0
+                if (step === 0) return
+                e.preventDefault()
+                const choices = OPTIONS.filter((o) => !(impossible && o === 'keep-compatible'))
+                const at = choices.indexOf(option)
+                const next = choices[(at + step + choices.length) % choices.length]
+                if (next === undefined) return
+                e.currentTarget.parentElement
+                  ?.querySelector<HTMLElement>(`[data-option="${next}"]`)
+                  ?.focus()
+              }}
               title={disabled ? t('plan.keepCompatibleImpossible') : undefined}
               onClick={() => {
                 if (option === 'force-latest') {
@@ -146,6 +172,7 @@ export function PdConflictRow({
                 setConfirmingForce(false)
                 onChoose('force-latest')
               }}
+              data-destructive
               // Outlined, not filled: a fill inside the confirm's own danger tint read at 4.03:1.
               className="rounded-pd border border-danger px-2 py-0.5 text-data text-danger"
             >
