@@ -154,7 +154,10 @@ export function App() {
     if (target === null || target === undefined) return
     if (target.tagName === 'H1') target.setAttribute('tabindex', '-1')
     target.focus()
-  }, [panelPhase, depsOpen, envOpen])
+    // `accepted` and `review`: the legal gate is rendered *instead of* the shell, so accepting it
+    // or closing a review is a fifth way the screen is replaced with `nav` unchanged — and the
+    // first screen of a first run had focus on nothing. Found in the installed build.
+  }, [panelPhase, depsOpen, envOpen, accepted, review])
 
   // UI-SPEC §8: Ctrl+1..9 select tabs, positionally over NAV_KEYS.
   useEffect(() => {

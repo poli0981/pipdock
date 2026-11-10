@@ -134,10 +134,13 @@ export function PdHealth() {
             <button
               type="button"
               data-action="run-health"
-              className="rounded-pd bg-accent px-3 py-1 text-data text-bg disabled:opacity-50"
-              disabled={running || folder === null || env === undefined}
+              className="rounded-pd bg-accent px-3 py-1 text-data text-bg disabled:opacity-50 aria-disabled:opacity-50"
+              disabled={folder === null || env === undefined}
+              // Unavailable is `disabled`; busy is `aria-disabled`, so the button that was just
+              // pressed keeps focus while its run goes (UI-SPEC §8).
+              aria-disabled={running}
               onClick={() => {
-                if (env !== undefined) void run(env, row.envHash)
+                if (env !== undefined && !running) void run(env, row.envHash)
               }}
             >
               {running ? t('health.running') : t('health.run')}

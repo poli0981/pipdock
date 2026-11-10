@@ -264,6 +264,26 @@ describe('where focus goes when the screen is replaced', () => {
     })
   })
 
+  it('lands on the first screen when the legal gate is accepted', async () => {
+    // Found in the installed build: *Continue* is unmounted with the gate, the shell appears
+    // behind it, and the tab has not changed — so the very first screen of a first run had focus
+    // on nothing.
+    legalConsentGet.mockResolvedValue({ current: false, docsHash: 'a1b2c3d4e5f60718' })
+    useLegalStore.setState({ accepted: false, review: false })
+    render(<App />)
+    const accept = await screen.findByRole('button', { name: 'Continue' })
+    accept.focus()
+
+    act(() => {
+      useLegalStore.setState({ accepted: true })
+    })
+
+    await waitFor(() => {
+      expect(heading()).toHaveFocus()
+    })
+    expect(heading()).toHaveTextContent('Installed')
+  })
+
   it('does not take focus from a control that is still there', async () => {
     // The rule is "focus was lost", not "the phase changed": moving it on every phase would pull
     // a keyboard user off *Console* each time a run advanced.

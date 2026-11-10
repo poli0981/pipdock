@@ -95,10 +95,13 @@ function Row({ row }: { row: EnvRow }) {
           <button
             type="button"
             onClick={() => {
-              select(row.interpreter)
+              if (!isSelected) select(row.interpreter)
             }}
-            disabled={isSelected}
-            className="rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40"
+            // Busy is `aria-disabled`, not `disabled`: a browser takes focus from a control that
+            // becomes disabled, so one that disables itself when pressed drops focus to <body>
+            // (UI-SPEC §8).
+            aria-disabled={isSelected}
+            className="rounded-pd border border-border px-3 py-1 text-data aria-disabled:opacity-40"
           >
             {t('actions.use')}
           </button>
@@ -212,10 +215,10 @@ export function PdEnvironments() {
         <button
           type="button"
           onClick={() => {
-            void scan()
+            if (!scanning) void scan()
           }}
-          disabled={scanning}
-          className="rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40"
+          aria-disabled={scanning}
+          className="rounded-pd border border-border px-3 py-1 text-data aria-disabled:opacity-40"
         >
           {t('actions.rescan')}
         </button>

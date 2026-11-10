@@ -1,4 +1,4 @@
-import { render, screen, within } from '@testing-library/react'
+import { fireEvent, render, screen, within } from '@testing-library/react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import type { Hit } from '@/ipc'
@@ -57,6 +57,51 @@ describe('what Search says without being looked at', () => {
     useIndexStore.setState({ query: 'zzzz', hits: [] })
     render(<PdSearch />)
     expect(within(screen.getByRole('status')).getByText(/nothing matches/)).toHaveClass('sr-only')
+  })
+
+  it('keeps a button focusable after it has been pressed', () => {
+    // **Found in the installed build, not here.** *Add* and *Download the index* disabled
+    // themselves the moment they were pressed, and a browser takes focus away from a control that
+    // becomes `disabled` — so pressing either dropped focus to <body>. jsdom does not do that,
+    // which is why no test could see it; what a test can hold is the contract that avoids it:
+    // busy is `aria-disabled`, which greys the button and keeps it where focus is.
+    useIndexStore.setState({
+      query: 'num',
+      hits: HITS,
+      queue: [{ name: 'numpy', version: '' }],
+      unavailable: 'missing',
+      refreshing: true,
+    })
+    render(<PdSearch />)
+
+    const queued = screen.getByRole('button', { name: 'Queued' })
+    expect(queued).toHaveAttribute('aria-disabled', 'true')
+    expect(queued).not.toBeDisabled()
+
+    const refresh = screen.getByRole('button', { name: 'Downloading…' })
+    expect(refresh).toHaveAttribute('aria-disabled', 'true')
+    expect(refresh).not.toBeDisabled()
+  })
+
+  it('does nothing when a busy button is pressed again', () => {
+    const refreshIndex = vi.fn()
+    const enqueue = vi.fn()
+    useIndexStore.setState({
+      query: 'num',
+      hits: HITS,
+      queue: [{ name: 'numpy', version: '' }],
+      unavailable: 'missing',
+      refreshing: true,
+      refreshIndex,
+      enqueue,
+    })
+    render(<PdSearch />)
+
+    fireEvent.click(screen.getByRole('button', { name: 'Queued' }))
+    fireEvent.click(screen.getByRole('button', { name: 'Downloading…' }))
+
+    expect(enqueue).not.toHaveBeenCalled()
+    expect(refreshIndex).not.toHaveBeenCalled()
   })
 
   it('marks the result whose details are showing', () => {

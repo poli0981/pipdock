@@ -50,9 +50,8 @@ describe('PdUninstallDialog', () => {
     // about follows, and the body is its description.
     setup(BREAKING)
 
-    expect(dialog()).toHaveAccessibleName(/^This removal breaks other packages.*numpy/)
+    expect(dialog()).toHaveAccessibleName('This removal breaks other packages: numpy')
     expect(dialog()).toHaveAccessibleDescription(/pandas 2\.1\.4 requires numpy/)
-    expect(dialog()).not.toHaveAttribute('aria-label')
   })
 
   it('focuses Cancel, and renders it first', () => {

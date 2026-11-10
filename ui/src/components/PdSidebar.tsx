@@ -60,8 +60,11 @@ export function PdSidebar() {
               >
                 <span>
                   {t(`nav.${key}`)}
+                  {/* A real space, not only a margin: inline spans are joined without one, and
+                      the tab's accessible name read "Updates(5)". */}
+                  {key === 'updates' && updatesCount > 0 ? ' ' : null}
                   {key === 'updates' && updatesCount > 0 ? (
-                    <span className="ml-1 font-mono text-data text-warn">
+                    <span className="font-mono text-data text-warn">
                       {`(${String(updatesCount)})`}
                     </span>
                   ) : null}

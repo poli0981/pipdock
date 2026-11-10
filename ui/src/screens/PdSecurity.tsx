@@ -74,11 +74,14 @@ export function PdSecurity() {
           <button
             type="button"
             data-action="run-audit"
-            disabled={running || env === undefined}
+            disabled={env === undefined}
+            // Unavailable is `disabled`; busy is `aria-disabled`, so the button that was just
+            // pressed keeps focus while the audit runs (UI-SPEC §8).
+            aria-disabled={running}
             onClick={() => {
-              if (env !== undefined && row !== undefined) void run(env, row.envHash)
+              if (env !== undefined && row !== undefined && !running) void run(env, row.envHash)
             }}
-            className="rounded-pd bg-surface-2 px-3 py-1.5 text-accent disabled:opacity-40"
+            className="rounded-pd bg-surface-2 px-3 py-1.5 text-accent disabled:opacity-40 aria-disabled:opacity-40"
           >
             {t('security.run')}
           </button>

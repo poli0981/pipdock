@@ -129,10 +129,13 @@ export function PdSearch() {
             <button
               type="button"
               onClick={() => {
-                void refreshIndex()
+                if (!refreshing) void refreshIndex()
               }}
-              disabled={refreshing}
-              className="mt-2 rounded-pd border border-border px-3 py-1 text-data disabled:opacity-40"
+              // Busy is `aria-disabled`, not `disabled`: a browser takes focus from a control that
+              // becomes disabled, so one that disables itself when pressed drops focus to <body>
+              // (UI-SPEC §8).
+              aria-disabled={refreshing}
+              className="mt-2 rounded-pd border border-border px-3 py-1 text-data aria-disabled:opacity-40"
             >
               {refreshing ? t('search.refreshing') : t('search.refreshIndex')}
             </button>
@@ -200,10 +203,10 @@ export function PdSearch() {
                   <button
                     type="button"
                     onClick={() => {
-                      enqueue(hit.name)
+                      if (!queued) enqueue(hit.name)
                     }}
-                    disabled={queued}
-                    className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data disabled:opacity-40"
+                    aria-disabled={queued}
+                    className="shrink-0 rounded-pd border border-border px-2 py-0.5 text-data aria-disabled:opacity-40"
                   >
                     {queued ? t('search.queued') : t('search.add')}
                   </button>
