@@ -52,6 +52,8 @@ export function PdSearch() {
   const planResolve = usePlanStore((s) => s.resolve)
 
   const envRow = rows.find((r) => r.interpreter === envSelected)
+  /** A query has been asked and answered: the list on screen is the answer to what is typed. */
+  const settled = query.trim() !== '' && ready && !searching
 
   // UI-SPEC §5: the Search flow's first click is spent arriving here, so the field must already
   // have focus — "Search (autofocus) → result [Add] → Install → Confirm" is 4, not 5. In the app
@@ -98,11 +100,27 @@ export function PdSearch() {
           className="mt-3 shrink-0 rounded-pd border border-border bg-surface px-3 py-1.5 font-mono text-data"
         />
 
-        <div className="mt-1 flex shrink-0 items-center gap-2 text-data text-text-dim">
+        {/* **One status region, mounted from the first render and never removed.** These were
+            plain spans, so a screen reader heard nothing between a keystroke and its answer — not
+            that the index was loading, not that a search was running, not that it had come back
+            or how much it found. A live region announces changes to itself, which is why it has
+            to exist before the first message: one that arrives together with its text has no
+            earlier state to differ from. */}
+        <div
+          role="status"
+          className="mt-1 flex min-h-5 shrink-0 items-center gap-2 text-data text-text-dim"
+        >
           {/* Warming is a state, not a failure: the index is 864k names and takes ~140 ms to
               load, and saying so beats a field that silently returns nothing. */}
           {!ready && unavailable === null ? <span>{t('search.warming')}</span> : null}
           {searching ? <span>{t('search.searching')}</span> : null}
+          {settled && hits.length > 0 ? (
+            <span>{t('search.resultCount', { count: hits.length })}</span>
+          ) : null}
+          {/* The empty state below says this to the eye; said once more here for the region. */}
+          {settled && hits.length === 0 ? (
+            <span className="sr-only">{t('search.noResults', { query })}</span>
+          ) : null}
         </div>
 
         {unavailable !== null ? (
@@ -127,7 +145,7 @@ export function PdSearch() {
           </div>
         ) : null}
 
-        {query.trim() !== '' && hits.length === 0 && ready && !searching ? (
+        {settled && hits.length === 0 ? (
           <PdEmptyState message={t('search.noResults', { query })} hint={t('search.noResultsHint')} />
         ) : null}
 
@@ -156,6 +174,10 @@ export function PdSearch() {
                   onClick={() => {
                     void select(hit.name)
                   }}
+                  // Which result the panel beside the list is about. It was a background colour
+                  // and nothing else — unannounced, and erased by forced-colors, where
+                  // `styles.css` outlines `aria-current` instead.
+                  aria-current={selected === hit.name ? 'true' : undefined}
                   className="min-w-0 flex-1 text-left"
                 >
                   {/* The display name as PyPI spells it — data, never localized (I18N §2). */}
