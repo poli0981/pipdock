@@ -161,7 +161,7 @@ Write in English or Vietnamese — tiếng Việt cũng được. It helps to in
 - what you were trying to do, and what happened instead;
 - the PipDock version (**About → This build**) and your Windows version;
 - the assistive technology you use and its version, if any — Narrator, NVDA, a contrast theme,
-  zoom level, keyboard only;
+  display scale, keyboard only;
 - whether it stops you completely or slows you down.
 
 You do not have to work out the cause, name a WCAG criterion or propose a fix. "I could not get
