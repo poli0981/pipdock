@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.4.0. M1, M2, Phase 3, Phase 4, the P1 wave, the Security tab and the dependency view are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette; 1.2.0 added the Security tab (PRD P1-1); 1.3.0 added the dependency view (P1-6), which is a *mode of the package screen* rather than a tab and adds no runtime dependency — read its ROADMAP record before touching `graph/`, because the shape of the screen is a consequence of measurements rather than of taste. 1.4.0 added no feature: it is the audit release — about 170 findings, every Critical and High fixed with a test that failed first, and the rest in ROADMAP's **Audit backlog**, with file:line and a reason each. Read that table before starting a slice; most of what is wrong with the codebase is already written down there. **What is left of Post-1.0 is one thing** — the scheduled check (P1-7) — and `docs/ROADMAP.md` now carries the survey of what blocks it, which for two versions it was cited for and did not contain: no toast component, no notification/autostart/tray plugin, nothing on a timer, and no surface that can report a background failure.
+Repo `poli0981/pipdock` · GPL-3.0-only · **Status: 1.5.0. M1, M2, Phase 3, Phase 4, the P1 wave, the Security tab and the dependency view are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette; 1.2.0 added the Security tab (PRD P1-1); 1.3.0 added the dependency view (P1-6), which is a *mode of the package screen* rather than a tab and adds no runtime dependency — read its ROADMAP record before touching `graph/`, because the shape of the screen is a consequence of measurements rather than of taste. 1.4.0 added no feature: it is the audit release — about 170 findings, every Critical and High fixed with a test that failed first, and the rest in ROADMAP's **Audit backlog**, with file:line and a reason each. Read that table before starting a slice; most of what is wrong with the codebase is already written down there. 1.5.0 added no feature either: it is the accessibility pass (backlog U45, U47, U48) — focus, names, keyboard patterns and high contrast, axe-core in the suite, and `ACCESSIBILITY.md`, which is a *record of what was tested* and has to be kept true like one. **What is left of Post-1.0 is one thing** — the scheduled check (P1-7) — and `docs/ROADMAP.md` now carries the survey of what blocks it, which for two versions it was cited for and did not contain: no toast component, no notification/autostart/tray plugin, nothing on a timer, and no surface that can report a background failure.
 
 ## Read the docs before changing anything
 
@@ -171,6 +171,41 @@ rule below backed by a test where a test can hold it:
   to `\`, which turned `b"\r\n"` test strings into real line breaks and a CRLF test into one that
   could not fail. Write such files with the Write/Edit tools, then check the failing-first run
   actually failed.
+
+**1.5.0, the accessibility pass, left these behind** — the first found by reading, the rest by
+driving the installed build:
+
+- **jsdom is wrong about focus and blind to the cascade, and both cost a shipped defect.** A
+  browser takes focus from a control that becomes `disabled`; jsdom does not. So nine buttons that
+  disabled themselves when pressed dropped focus to `<body>` with every test green. **Busy is
+  `aria-disabled` plus a click guard; `disabled` is for unavailable.** And jsdom applies no
+  stylesheet: the forced-colors border on destructive buttons sat in `@layer base`, lost to
+  Tailwind's `border` utility in a later layer, and had never been drawn. **A rule that must beat
+  a utility goes outside every `@layer`**, and `destructive.test.ts` counts the braces.
+- **The recipe that found them.** Install the bundle, launch with
+  `WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=<n>` and a scratch
+  `LOCALAPPDATA` (a release build honours it), and speak CDP to `http://127.0.0.1:<n>/json`:
+  `Input.dispatchKeyEvent` for real key presses (`Enter` needs a `char` event with `\r`),
+  `Runtime.evaluate` for `document.activeElement`, `Accessibility.getFullAXTree` for names, and
+  `Emulation.setEmulatedMedia` with `forced-colors: active`. No system setting changes. It cannot
+  hear a screen reader — say so wherever the result is written down. **A scratch profile still
+  discovers the owner's real interpreters**: select the scratch venv before starting any plan.
+- **Anything that replaces what `<main>` shows without changing `nav` belongs in `App.tsx`'s
+  second focus effect.** There were four; the legal gate was a fifth, found after the first four
+  were fixed and tested. The effect acts only when focus was lost, so adding a dependency is safe.
+- **A destructive button carries `data-destructive`**, whatever colour it is drawn in, and a test
+  reads the source for it. Do not add a `data-action` to a stylesheet list; there is no list.
+- **An accessible name is assembled without spaces.** Inline spans join as `Updates(5)`; put a
+  literal `{' '}`. A browser *adds* one before visually-hidden text, so `: numpy` in an `sr-only`
+  span read "Remove packages : numpy" — use `aria-label` for a name with punctuation in it.
+- **`ACCESSIBILITY.md` is hand-kept and says who tested what.** A change to keyboard, focus,
+  names or contrast is a change to it, the way a behaviour change is a change to `legal/`. It
+  currently says Narrator was not re-run on 1.5.0, and only a person can change that sentence.
+- **`eslint-plugin-jsx-a11y` peers ESLint 9 at most**, like `react/jsx-no-literals`. axe-core is
+  called directly from `ui/src/test/axe.ts`; `color-contrast` is off there, and is
+  `tokens.test.ts`'s job.
+- **Zoom is off on a measurement** (`zoomHotkeysEnabled`): at 200 % in the default window the
+  table's name column collapses to zero. Backlog A5 says what has to change first.
 
 Three rules P1 left behind, all found by running rather than reading:
 

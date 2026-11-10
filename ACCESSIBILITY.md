@@ -44,12 +44,11 @@ never removed.
 | `←` `→` `Home` `End` | In Code Health: move between the tool tabs |
 | `←` `→` `↑` `↓` | In a version conflict: move between *Keep compatible*, *Skip* and *Force latest*. Nothing is chosen until you press `Space` or `Enter` |
 | `Esc` | Close a dialog, the palette or the console drawer; inside a package row, return to the row |
-| `Ctrl` `+` / `Ctrl` `-` / `Ctrl+0` | Zoom in, zoom out, reset |
 
 When the screen changes — a new tab, a plan's preview, its summary, the dependency view — focus
 moves to the new screen's heading. When a dialog, the palette or the console drawer closes, focus
-returns to what opened it. Every confirmation that removes, forces or rewrites something opens with
-focus on **Cancel**.
+returns to what opened it. A button that is busy after you press it stays where focus is. Every
+confirmation that removes, forces or rewrites something opens with focus on **Cancel**.
 
 The full map and the reasoning behind it are in [`docs/UI-SPEC.md`](docs/UI-SPEC.md) §8.
 
@@ -68,8 +67,11 @@ The full map and the reasoning behind it are in [`docs/UI-SPEC.md`](docs/UI-SPEC
 
 Under a Windows contrast theme (forced colours), every colour in the interface is replaced by the
 system's own. Because that removes every tint, the things a tint used to say are drawn another way:
-destructive buttons get a heavier border, and the selected row, the selected search result and the
+destructive buttons get a double border, and the selected row, the selected search result and the
 current sidebar tab get an outline.
+
+PipDock follows the Windows display scale (Settings → Display → Scale), which enlarges the whole
+window. It has no zoom of its own yet — see the limitations below.
 
 ### Colour, contrast and motion
 
@@ -97,7 +99,7 @@ Honesty about this matters more than a long list.
 | Structure: roles, names, required parts | [axe-core](https://github.com/dequelabs/axe-core) over every screen, on every change | Automated, from 1.5.0 |
 | Keyboard behaviour and where focus goes | Unit tests, on every change | Automated |
 | Text contrast | Computed from the design tokens, on every change | Automated |
-| High contrast, zoom, the accessibility tree | In the running application, with forced colours emulated | During the 1.5.0 release |
+| Where focus goes, what the accessibility tree exposes, forced colours | In the installed build, driven by real key presses over the webview's debugging port, with forced colours emulated | During the 1.5.0 release. It found defects no test had; all are fixed |
 
 **Not tested, and said so rather than implied:**
 
@@ -135,8 +137,12 @@ where there is a workaround it is given.
   picker fails, the screen does not change. Nothing is lost, but nothing tells you either.
 - **Why a control is disabled is sometimes only in a tooltip**, which a keyboard cannot reach
   because a disabled control cannot be focused.
-- **Long paths and package names are cut off** rather than wrapped in a few places, which gets
-  worse with zoom.
+- **No zoom inside the application.** It was built for 1.5.0 and held back: at 200 % in the
+  default window the package-name column collapsed to nothing and the last sidebar tabs were cut
+  off, which is worse than no zoom. *Workaround:* the Windows display scale enlarges everything
+  correctly.
+- **Long paths and package names are cut off** rather than wrapped in a few places, most of all
+  in a narrow window.
 - **Dates and sizes are not formatted for the interface language.**
 - **`Ctrl+K` is matched by the letter the layout types**, unlike the digit shortcuts, so it moves
   on a layout where K is elsewhere.
