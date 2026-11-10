@@ -223,8 +223,12 @@ describe('grid structure', () => {
       .getAllByRole('row')
       .find((row) => row.getAttribute('data-pinned') === 'true')
     if (pinned === undefined) throw new Error('the fixture has no pinned row')
-    expect(within(pinned).getByText(/kept at this version|left out of every update/)).toHaveClass(
-      'sr-only',
-    )
+    const explained = within(pinned).getByText(/kept at this version|left out of every update/)
+    expect(explained).toHaveClass('sr-only')
+    // `sr-only` is `position: absolute`. Without a positioned ancestor it is laid out against the
+    // viewport and escapes every scroller above it — on Pins, where nothing between the chip and
+    // <html> is positioned, a long list of these made the whole window scroll and took the header
+    // with it. The chip is the containing block.
+    expect(explained.parentElement).toHaveClass('relative')
   })
 })

@@ -260,7 +260,7 @@ export function PdHealthReport({
               // be selected is already in the document to take focus.
               document.getElementById(`health-tab-${next}`)?.focus()
             }}
-            className={`rounded-t-pd px-3 py-1.5 font-mono text-data ${
+            className={`relative rounded-t-pd px-3 py-1.5 font-mono text-data ${
               tab === key
                 ? 'border-b-2 border-accent text-text'
                 : 'text-text-dim hover:bg-surface-2'

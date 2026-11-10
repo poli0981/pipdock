@@ -61,6 +61,27 @@ describe('the summary phase', () => {
 
     expect(screen.getAllByText('Back to packages')).toHaveLength(1)
   })
+
+  it('has a heading even when there is no summary to show', () => {
+    // The shell puts focus on a screen's <h1> when the screen is replaced. This branch had none —
+    // the sheet owns the heading and there is no sheet — so a run that failed before producing a
+    // summary left focus on <body>, on exactly the screen where something had gone wrong.
+    usePlanStore.setState({
+      phase: 'summary',
+      outcome: null,
+      error: { code: 'PD-SNP-001', message: 'snapshot failed' },
+    })
+    render(<PdPlanPanel onFinished={vi.fn()} />)
+
+    expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Something went wrong')
+  })
+
+  it('has exactly one heading when the sheet is showing', () => {
+    usePlanStore.setState({ phase: 'summary', outcome: OUTCOME, kind: 'update' })
+    render(<PdPlanPanel onFinished={vi.fn()} />)
+
+    expect(screen.getAllByRole('heading', { level: 1 })).toHaveLength(1)
+  })
 })
 
 const FORCED_STEP = flowStepForced as FlowStep

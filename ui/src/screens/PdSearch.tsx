@@ -108,7 +108,7 @@ export function PdSearch() {
             earlier state to differ from. */}
         <div
           role="status"
-          className="mt-1 flex min-h-5 shrink-0 items-center gap-2 text-data text-text-dim"
+          className="relative mt-1 flex min-h-5 shrink-0 items-center gap-2 text-data text-text-dim"
         >
           {/* Warming is a state, not a failure: the index is 864k names and takes ~140 ms to
               load, and saying so beats a field that silently returns nothing. */}

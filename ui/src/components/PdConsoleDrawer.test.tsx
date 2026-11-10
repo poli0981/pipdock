@@ -69,6 +69,35 @@ describe('PdConsoleDrawer', () => {
     expect(toggle).toHaveFocus()
   })
 
+  it('finds the console button when nothing opened it', () => {
+    function AlreadyOpen() {
+      const [open, setOpen] = useState(true)
+      return (
+        <>
+          <PdConsoleDrawer
+            lines={[]}
+            open={open}
+            done={0}
+            total={0}
+            onClose={() => {
+              setOpen(false)
+            }}
+          />
+          <button type="button" data-console-toggle>
+            Console
+          </button>
+        </>
+      )
+    }
+    render(<AlreadyOpen />)
+    const close = screen.getByRole('button', { name: 'Close console' })
+    close.focus()
+
+    fireEvent.keyDown(close, { key: 'Escape' })
+
+    expect(screen.getByRole('button', { name: 'Console' })).toHaveFocus()
+  })
+
   it('leaves focus alone when it was never inside', () => {
     // Toggled shut from the button that opened it: focus is already where it should be.
     const toggle = openDrawer()

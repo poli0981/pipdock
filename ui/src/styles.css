@@ -161,9 +161,12 @@
 
     /* `page` is the sidebar's active tab. The rule matched `'true'` alone, so the one thing that
      * said which screen is showing was drawn like every other tab. */
-    [aria-selected='true'],
-    [aria-current='true'],
-    [aria-current='page'] {
+    /* `:not(:focus-visible)`: this rule follows the focus ring's at equal specificity, so a
+     * focused selection — the current tab, the selected hit — got this 1px line in place of its
+     * 2px ring. */
+    [aria-selected='true']:not(:focus-visible),
+    [aria-current='true']:not(:focus-visible),
+    [aria-current='page']:not(:focus-visible) {
       outline: 1px solid Highlight;
     }
 

@@ -198,6 +198,9 @@ driving the installed build:
 - **An accessible name is assembled without spaces.** Inline spans join as `Updates(5)`; put a
   literal `{' '}`. A browser *adds* one before visually-hidden text, so `: numpy` in an `sr-only`
   span read "Remove packages : numpy" — use `aria-label` for a name with punctuation in it.
+- **`sr-only` text needs a positioned parent.** It is `position: absolute`, so with no positioned
+  ancestor it is laid out against the viewport, outside every scroller: a list of pin chips on
+  Pins made the whole window scroll. Put `relative` on whatever holds the hidden text.
 - **`ACCESSIBILITY.md` is hand-kept and says who tested what.** A change to keyboard, focus,
   names or contrast is a change to it, the way a behaviour change is a change to `legal/`. It
   currently says Narrator was not re-run on 1.5.0, and only a person can change that sentence.

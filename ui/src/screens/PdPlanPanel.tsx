@@ -83,6 +83,10 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
   if (phase === 'summary') {
     return (
       <section className="h-full overflow-auto p-6">
+        {/* The sheet owns this screen's heading, and a run that failed before producing a summary
+            has no sheet — so this branch had no <h1>, the shell had nothing to focus, and focus
+            stayed on <body> on the one screen where something had gone wrong. */}
+        {outcome === null ? <h1 className="mb-4 text-accent">{t('errors.title')}</h1> : null}
         {error === null ? null : (
           <div className="mb-4">
             <PdErrorRow error={error} />
@@ -245,6 +249,8 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
               onClick={() => {
                 setConsoleOpen(!consoleOpen)
               }}
+              // Where the drawer sends focus when it closes and nothing opened it.
+              data-console-toggle
               className="rounded-pd border border-border px-3 py-1 text-data"
             >
               {t('plan.console')}
