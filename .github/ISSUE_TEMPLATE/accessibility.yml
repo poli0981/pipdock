@@ -1,0 +1,66 @@
+name: Accessibility barrier
+description: Something in PipDock is hard or impossible to use with a keyboard, a screen reader, high contrast or zoom
+title: "[A11y]: "
+labels: ["accessibility", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for telling us. You do not need to know the cause, name a WCAG criterion or
+        suggest a fix — what you were trying to do and what happened is a complete report.
+
+        If filling in a form is itself the barrier, write to **accessibility@poli0981.dev**
+        instead. Vui lòng viết bằng English hoặc Tiếng Việt đều được.
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What were you trying to do, and what happened instead?
+      placeholder: "I tabbed to a package row and could not reach the Remove button."
+    validations:
+      required: true
+  - type: dropdown
+    id: impact
+    attributes:
+      label: How much does it get in your way?
+      description: This decides how soon it is fixed. A barrier that stops you goes into the next release.
+      options:
+        - "It stops me — I cannot do this at all"
+        - "I can do it, but only with real difficulty or a workaround"
+        - "It slows me down or is confusing"
+        - "It is a small annoyance"
+    validations:
+      required: true
+  - type: input
+    id: assistive-tech
+    attributes:
+      label: Assistive technology and version, if any
+      placeholder: "Narrator (Windows 11 24H2) · NVDA 2026.3 · a contrast theme · 200% zoom · keyboard only"
+  - type: dropdown
+    id: where
+    attributes:
+      label: Where in PipDock?
+      options:
+        - "The desktop application"
+        - "The pipdock command line"
+        - "The installer"
+        - "The documentation or this repository"
+    validations:
+      required: true
+  - type: input
+    id: pd-version
+    attributes:
+      label: PipDock version
+      placeholder: "x.y.z — shown under About → This build"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: Windows version
+      placeholder: "Windows 11 24H2 (26100.x)"
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce (optional)
+      description: The keys you pressed, or what your screen reader said, in order. A recording is welcome and not required.
+      placeholder: "1. Ctrl+2 … 2. Tab to the first row … 3. …"
