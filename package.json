@@ -2,7 +2,7 @@
   "name": "pipdock",
   "version": "1.4.0",
   "private": true,
-  "description": "A friendly dock for your Python environments \u2014 bulk inspect, install, update and clean up Python packages.",
+  "description": "A friendly dock for your Python environments — bulk inspect, install, update and clean up Python packages.",
   "license": "GPL-3.0-only",
   "type": "module",
   "repository": {
@@ -49,6 +49,7 @@
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.2.1",
     "@vitest/coverage-v8": "^5.1.0",
+    "axe-core": "^4.14.0",
     "eslint": "^10.14.0",
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.7",

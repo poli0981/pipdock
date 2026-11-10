@@ -180,3 +180,51 @@ describe('keyboard', () => {
     expect(onSelectAll).toHaveBeenCalledOnce()
   })
 })
+
+describe('grid structure', () => {
+  it('puts every control in a cell, and gives every cell a header', () => {
+    // A `role="row"` may own cells and nothing else. The checkbox was a direct child of the row,
+    // and the header had five column headers over six cells — so a screen reader moving by
+    // column read "Status" above the action buttons.
+    setup()
+    const [header, ...rows] = screen.getAllByRole('row')
+    if (header === undefined) throw new Error('no header row')
+    const headers = within(header).getAllByRole('columnheader')
+
+    for (const row of rows) {
+      expect([...row.children].map((c) => c.getAttribute('role'))).toEqual(
+        headers.map(() => 'gridcell'),
+      )
+    }
+    expect([...header.children].every((c) => c.getAttribute('role') === 'columnheader')).toBe(true)
+    // The two that have no visible heading are named for whoever cannot see the column.
+    expect(headers.map((h) => h.textContent)).toEqual([
+      'Select',
+      'Package',
+      'Version',
+      'Latest',
+      'Size',
+      'Status',
+      'Actions',
+    ])
+  })
+
+  it('says more than one row can be selected', () => {
+    // `aria-selected` on a row means nothing to a reader unless the grid says selection exists.
+    setup()
+    expect(screen.getByRole('grid')).toHaveAttribute('aria-multiselectable', 'true')
+  })
+
+  it('says what a pin chip means in text, not only in a tooltip', () => {
+    // The meaning lived in `title` on a span that cannot take focus, so it was reachable with a
+    // mouse and with nothing else.
+    setup()
+    const pinned = screen
+      .getAllByRole('row')
+      .find((row) => row.getAttribute('data-pinned') === 'true')
+    if (pinned === undefined) throw new Error('the fixture has no pinned row')
+    expect(within(pinned).getByText(/kept at this version|left out of every update/)).toHaveClass(
+      'sr-only',
+    )
+  })
+})

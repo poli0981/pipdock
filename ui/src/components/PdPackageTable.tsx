@@ -78,6 +78,9 @@ export function PdPackageTable({
       role="grid"
       aria-label={t('packages.tableLabel')}
       aria-rowcount={rows.length + 1}
+      // `aria-selected` on a row means nothing unless the grid says rows can be selected, and that
+      // more than one can.
+      aria-multiselectable="true"
       // Focusable but not a tab stop: the rows are (Sonar S6852, the ARIA grid pattern).
       tabIndex={-1}
       // `@container`: the columns size against the table's width, not the window's (U22).
@@ -102,8 +105,12 @@ export function PdPackageTable({
         aria-rowindex={1}
         className={`${COLUMNS.row} shrink-0 overflow-hidden border-b border-border py-1 text-data text-text-dim [scrollbar-gutter:stable]`}
       >
-        {/* Aligns with the row checkbox, which has no header of its own. */}
-        <span aria-hidden="true" className={COLUMNS.checkbox} />
+        {/* The checkbox and action columns have no visible heading, and are still columns: the
+            header had five headings over six cells, so moving by column read "Status" above the
+            action buttons. Named for whoever cannot see which column they are in. */}
+        <span role="columnheader" className={COLUMNS.checkbox}>
+          <span className="sr-only">{t('packages.column.select')}</span>
+        </span>
         <span role="columnheader" className={COLUMNS.name}>
           {t('packages.column.name')}
         </span>
@@ -119,7 +126,9 @@ export function PdPackageTable({
         <span role="columnheader" className={COLUMNS.status}>
           {t('packages.column.status')}
         </span>
-        <span aria-hidden="true" className={COLUMNS.actions} />
+        <span role="columnheader" className={COLUMNS.actions}>
+          <span className="sr-only">{t('packages.column.actions')}</span>
+        </span>
       </div>
 
       <div ref={scrollRef} className="min-h-0 flex-1 overflow-auto [scrollbar-gutter:stable]">
