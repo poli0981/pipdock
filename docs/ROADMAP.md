@@ -1402,9 +1402,14 @@ starting a slice**: several are cheaper inside a slice that touches the same fil
 | U40 | `PdPins.tsx:138-139,202-209`; `stores/index.ts:466-472` | The empty state can show before the list has loaded; a reason edit commits on blur with no way to cancel; accepting a suggestion drops it even when the pin write failed | Small, and best done together |
 | U41 | `stores/index.ts:526-538`; `PdPalette.tsx:96-103` | No in-flight guard: a double click takes two snapshots, and the palette can dispatch twice | Small |
 | U44 | `PdEnvironments.tsx:186-196` | A `scan-progress` listener can outlive the screen | Small; with U19 |
-| U45 | `styles.css:156-162` | `forced-colors` misses Remove, Force, rollback, Clear and the active tab | Needs a High Contrast pass, by hand |
-| U47 | grids, tabs, radio groups, listbox; `PdHealthReport.tsx:220,321` | ARIA roles are partial | An accessibility pass of its own |
-| U48 | `PdPalette.tsx:219` | The palette's selection is not scrolled into view | Small |
+| ~~U45~~, ~~U47~~, ~~U48~~ | — | Closed by 1.5.0, the accessibility pass (below) | — |
+| A1 | `PdPackageTable.tsx`, `PdPackageRow.tsx` | The package grid is one tab stop per row with no `↑`/`↓` between rows, so passing 200 rows is 200 Tabs | Changes the tab model the owner had just tested by hand on 1.4.0; wants a decision and a Narrator pass of its own, and a virtualizer that scrolls ahead of focus |
+| A2 | `PdPackages.tsx:197`, `PdEnvironments.tsx:222`, `PdUninstallDialog.tsx:130`, `PdSummarySheet.tsx:83` | A live region that mounts together with its text may never be announced | Only a screen reader can answer it; Search's region was rebuilt in 1.5.0 because its fix did not depend on the answer |
+| A3 | `PdErrorRow.tsx:68`; `PdStatusLine.tsx:41` with `PdEnvironments.tsx:223` | Every error row is `role="alert"`, so a failed batch may fire one assertive alert per package; "scanning" is announced by two regions | Same: needs Narrator, and a decision about which region owns it |
+| A4 | `PdConflictRow.tsx`, `PdDockBay.tsx` | Why a control is disabled is only in a `title`, which a disabled control cannot be focused to show | Wants visible text beside the control, in both catalogues |
+| A5 | `packageColumns.ts`, `PdSidebar.tsx`, `tauri.conf.json` | No in-app zoom: at 200 % in the default window the name column (`min-w-0 flex-1`) collapses to zero and the sidebar cuts off its last tabs | With U51 — a minimum for the name column, an overflow for the sidebar, then `zoomHotkeysEnabled` |
+| A6 | `PdDialog.tsx`, `PdUninstallDialog.tsx`, `PdCacheUsage.tsx`, `PdHealth.tsx` | A dialog's buttons still go `disabled` while its work runs, so focus drops inside the modal until it closes | The shell's lost-focus rule recovers it when the dialog closes; inside one, `aria-disabled` needs the dialog's own busy handling rethought |
+| A7 | — | Narrator on 1.5.0, NVDA and JAWS at all, each Windows contrast theme by hand, the installers | The owner's hands; `ACCESSIBILITY.md` says none of it has been done and must be updated by whoever does it |
 | U49 | `App.tsx` Ctrl+K | Ctrl+K reads `e.key`, unlike Ctrl+1..9 | Letter shortcuts by physical key are wrong on Dvorak; needs a decision |
 | U50 | `PdHealth.tsx:215`, `PdSecurity.tsx:160`, `PdCacheUsage.tsx:32` | Dates and sizes are not formatted per locale | An `Intl` pass |
 | U51 | `PdEnvironments.tsx:55`, `PdEnvDetail.tsx:76`, `PdPackageRow.tsx` | Long paths and names overflow | With U22's container-query work |
@@ -1521,6 +1526,81 @@ for something the product never contained.
 - **`npm audit` now lists a moderate advisory it cannot fix**: minimatch GHSA-g3hv-75wg-m249,
   patched only in 11.x, which ESLint 10.14 and typescript-eslint 8.72 do not accept. Dev-only, the
   gate is `high`, and ARCHITECTURE §10 says why it is tolerated rather than forced by `overrides`.
+
+## 1.5.0 — the accessibility pass — **2026-11-10**
+
+One slice: audit backlog U45, U47 and U48, taken as "an accessibility pass of its own", plus the
+statement that says what the pass did and did not establish. It began from GitHub's community
+profile — five things missing, `ACCESSIBILITY.md` among them — and from the owner's report that
+1.4.0 had been driven end to end with the mouse unplugged and with Narrator, and nothing blocked.
+Both were true. The code agreed with the owner: nothing was unreachable. What a survey of the code
+found was eleven places where it worked and made a user work for it.
+
+**What shipped** (the changelog has it by reader): focus on every screen replacement, not only on a
+tab change; the tabs, radio group and listbox patterns finished; names that contain the visible
+text; a well-formed grid; a status region for Search; `data-destructive` in place of a hand-kept
+list; axe-core over every screen; `ACCESSIBILITY.md`, `CONTRIBUTING.md`, a code of conduct, a pull
+request template and an accessibility issue form; and About's Accessibility section.
+
+| Decision | Why |
+|---|---|
+| axe-core called directly, no `eslint-plugin-jsx-a11y` | The plugin peers ESLint 9 at most and this repository is on 10 — the same wall `react/jsx-no-literals` hit. The matcher packages wrap axe and pin a runner's major. axe-core has no dependencies |
+| The radio group's arrows move focus and choose nothing | The pattern says arrows check what they land on; here that would open *Force latest*'s destructive confirm from an arrow key |
+| `data-destructive`, and a test that reads the source | Forced-colors cannot be rendered under jsdom, and the stylesheet's list of five `data-action` names had been wrong for as long as it existed |
+| WCAG 2.2 AA as a *target* | Nobody independent has audited it, Narrator was not re-run on 1.5.0, and a statement that claims more than its last test is the thing it exists to prevent |
+| An answer in 7 days and no fix date | One maintainer. The toolkit's template promises 30/60/90 days; a date that slips is worse than none |
+| Zoom built, measured, and taken out | Below |
+| `legal/` untouched | The five hashed documents did not need to change, so the gate does not re-show. A dev-only dependency is not a third-party notice |
+
+**What running found that reading did not** — the installed bundle, WebView2's remote-debugging
+port (`WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS=--remote-debugging-port=…`, which a release build
+honours), real key presses through `Input.dispatchKeyEvent`, and `document.activeElement` and the
+accessibility tree read back after each one. Every item below was in code whose tests were green:
+
+- **The high-contrast border on destructive buttons had never been drawn — not for the five the old
+  list named either.** The rule was in `@layer base`; every button carries Tailwind's `border`
+  utility; a later layer wins whatever the selectors say. UI-SPEC §7 described that border for two
+  milestones, and U45 was filed as "the list is incomplete" when the list did nothing at all. Seen
+  by emulating `forced-colors: active` and enlarging a screenshot of *Cancel* beside *Allow*: the
+  same border. The rule is unlayered now, a test counts the braces, and it is a double border
+  because 2 px beside 1 px is not a difference anyone sees.
+- **A button that disables itself when pressed drops focus to `<body>`.** A browser takes focus
+  from a control that becomes `disabled`; jsdom does not, so no test could fail. Found by pressing
+  *Download the index*. Nine buttons were doing it — *Use*, *Rescan*, *Run*, *Run audit*, *Add*,
+  *Stop* among them — which is to say most of the app's primary actions lost a keyboard user's
+  place on the keypress that started the work. Busy is `aria-disabled` now; `disabled` is for
+  unavailable.
+- **Accepting the legal gate left focus on nothing.** The fix for "focus is lost when the screen is
+  replaced" had been written and tested an hour earlier and did not cover it, because the gate is
+  rendered *instead of* the shell: a fifth way to replace the screen, and the first thing a new
+  user does.
+- **A dialog's name read "Remove packages : certifi".** A browser puts a space before
+  visually-hidden text; jsdom's name computation does not.
+- **The Updates tab's name read "Updates(5)"** — inline spans are joined without a space.
+- **Zoom broke the table.** `zoomHotkeysEnabled` is one line and needs no permission on Windows.
+  At 200 % in the default 1180 px window — a 590 px viewport, emulated with a device-metrics
+  override — the name column collapsed to zero width and the sidebar cut off *Settings* and
+  *About*. It holds at a maximised 1920 px window, which is the layout's own 900 px floor. Taken
+  out; backlog A5.
+
+And one thing running confirmed rather than found. The survey suspected a package row's focus ring
+was clipped, and it was — on three sides, in normal mode, fixed here. The forced-colors block had
+carried that exact fix since M2, with a comment saying why: the knowledge was in the stylesheet,
+scoped to the one mode someone had looked at.
+
+**What it did not establish.** The assistant cannot run a screen reader. Everything above about
+what assistive technology receives is the accessibility tree, which is what is *exposed*, not what
+is *said*. Narrator on 1.5.0, NVDA, JAWS and each contrast theme by hand are backlog A7 and are
+listed as untested in `ACCESSIBILITY.md`. ROADMAP's own count of live regions — "eight now", Phase
+3 · P6 — was ten when this slice counted them, plus two `role="status"`.
+
+**Dependencies, the same day, no version of their own** (#106, superseding #103–#105): the npm,
+actions and tools bumps that were past their cooldown, with `tools-constraints.txt` regenerated by
+the header's command rather than edited (the result was byte-identical to Dependabot's edit, which
+is the check the edit had lacked) and the drift job dispatched on the branch first. Held back and
+said so in the PR: i18next 27 with react-i18next 18, and jsdom 31 — majors inside the 14-day
+window, the first with new defaults and stricter `t()` types that want a session of their own —
+and rfd 0.18, which tauri-plugin-dialog 2.8.4 still pins below.
 
 ## Standing risks
 

@@ -408,11 +408,11 @@ either number. Screens (`ui/src/screens/`, `PdPlanPanel` among them) are not cou
 - Empty states: one mono glyph + one sentence + one action (e.g. Updates empty: `▸ all packages up to date`).
 - Offline: banner chip in top bar; search works (local index), metadata panel shows cached-at timestamp.
 - Errors: inline with catalog code, human message (localized), and *Details* expanding stderr tail. Toasts only for background completions. *Report bug* opens a prefilled GitHub issue that nothing sends until the user submits it; since 1.4.0 the link is rebuilt at the click with the selected environment, so the issue carries its Python version and the configured engine's version — one subprocess per report, rather than one per error row mounted, which a summary of many failures would multiply.
-- Destructive confirms (`Force latest`, uninstall with breakage, PEP 668 override, and — since P5 — `Fix with ruff`, the only one that writes outside an environment) use `--color-danger` primary buttons and require the dialog's default focus to be **Cancel**. The PEP 668 override was on this list while it was a bare checkbox with no confirm at all; it has been a `PdDialog` since 1.4.0. **A destructive control carries `data-destructive`**, and under forced-colors `styles.css` gives every button with it a 2 px border, because high contrast drops every tint and a destructive primary that looks like Cancel is worse than no colour at all. Until 1.5.0 the stylesheet kept its own list of five `data-action` values instead, and the list was never complete: the uninstall dialog's plain *Remove*, the *Force latest* inline confirm, the override's *Allow*, Disk usage's *Clear* confirm and the plan panel's danger-treated Confirm (a rollback, or a forced plan) were not on it, so in high contrast each was told from the control beside it by its label alone (audit backlog U45). A list of names beside a list of buttons is two lists; `ui/src/destructive.test.ts` reads the source instead and fails on a button drawn in the danger colour without the attribute. The same pass fixed the active sidebar tab, which carries `aria-current="page"` under an outline rule that matched `'true'` alone. *Stop* carries the attribute too: it interrupts a run part-way, and is drawn in the danger colour for that reason.
+- Destructive confirms (`Force latest`, uninstall with breakage, PEP 668 override, and — since P5 — `Fix with ruff`, the only one that writes outside an environment) use `--color-danger` primary buttons and require the dialog's default focus to be **Cancel**. The PEP 668 override was on this list while it was a bare checkbox with no confirm at all; it has been a `PdDialog` since 1.4.0. **A destructive control carries `data-destructive`**, and under forced-colors `styles.css` gives every button with it a double border, because high contrast drops every tint and a destructive primary that looks like Cancel is worse than no colour at all. Until 1.5.0 the stylesheet kept its own list of five `data-action` values instead, and the list was never complete: the uninstall dialog's plain *Remove*, the *Force latest* inline confirm, the override's *Allow*, Disk usage's *Clear* confirm and the plan panel's danger-treated Confirm (a rollback, or a forced plan) were not on it, so in high contrast each was told from the control beside it by its label alone (audit backlog U45). A list of names beside a list of buttons is two lists; `ui/src/destructive.test.ts` reads the source instead and fails on a button drawn in the danger colour without the attribute. The same pass fixed the active sidebar tab, which carries `aria-current="page"` under an outline rule that matched `'true'` alone. *Stop* carries the attribute too: it interrupts a run part-way, and is drawn in the danger colour for that reason. **And the border was never drawn at all until 1.5.0**, for the old five as much as the missing five: the rule sat in `@layer base`, every button carries Tailwind's `border` utility, and a later layer wins whatever the selectors say, so `border: 2px` lost to `border-width: 1px`. It is outside every layer now — an unlayered rule beats every layered one, and `destructive.test.ts` counts the braces — and it is a 3 px *double* border, because 2 px beside 1 px is a difference nobody sees at a glance. Found by emulating forced-colors in the installed build and looking at the button; this paragraph described a border for two milestones on the strength of a rule nobody had seen take effect.
 
 ## 8. Keyboard & accessibility
 
-Full keyboard traversal: `Ctrl+1..9` sidebar tabs (by physical key), **`Ctrl+K` opens the command palette**, `/` focuses the Search field, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6). Since 1.5.0: `←`/`→`/`Home`/`End` move between Code Health's tabs, the arrow keys move between a conflict's three choices, and `Ctrl` `+`/`-`/`0` zoom. [`ACCESSIBILITY.md`](../ACCESSIBILITY.md) is the user-facing statement of this section, with what has and has not been tested; About links to it.
+Full keyboard traversal: `Ctrl+1..9` sidebar tabs (by physical key), **`Ctrl+K` opens the command palette**, `/` focuses the Search field, `Space` toggles row selection, `Ctrl+A` select-all-visible, `Enter` primary action, `Esc` closes drawers, and **`←`/`→` move within a focused row** (P6). Since 1.5.0: `←`/`→`/`Home`/`End` move between Code Health's tabs, and the arrow keys move between a conflict's three choices. [`ACCESSIBILITY.md`](../ACCESSIBILITY.md) is the user-facing statement of this section, with what has and has not been tested; About links to it.
 
 **Four rules from 1.4.0:**
 
@@ -441,12 +441,14 @@ A dialog — `PdDialog`, and the palette — returns focus to whatever opened it
 to fall to `<body>`, and a keyboard user lost their place in a 200-row table. The package grid itself
 is focusable but not a tab stop: the row is.
 
-**Five rules from 1.5.0**, the accessibility pass:
+**Six rules from 1.5.0**, the accessibility pass:
 
 - **Focus moves whenever the screen is replaced, not only when the tab changes.** The shell focused
   the new screen's heading on a `nav` change and on nothing else — but the plan panel and each of
   its phases, the dependency view and an opened environment all replace what `<main>` shows without
-  changing `nav`, and each unmounts the control that was just pressed. Focus fell to `<body>`. A
+  changing `nav`, and each unmounts the control that was just pressed. Focus fell to `<body>`. The
+  legal gate is a fifth: it is rendered *instead of* the shell, so accepting it replaces the screen
+  with `nav` unchanged, and the first screen of a first run had focus on nothing. A
   second effect in `App.tsx` covers them, and **acts only when focus was actually lost**: a run
   advancing from `resolving` to `preview` must not pull a keyboard user off *Back*, and an open
   modal owns focus until it closes. The console drawer returns focus to its opener the same way,
@@ -468,8 +470,21 @@ is focusable but not a tab stop: the row is.
   from. Several older regions still mount with their text; whether a reader says them is in the
   Audit backlog, because only a reader can answer it.
 
-**Zoom is on since 1.5.0** (`zoomHotkeysEnabled`, which on Windows is WebView2's own zoom control,
-so it needs no permission and no code). The zoom level is the webview's and is not persisted.
+- **Busy is `aria-disabled`; unavailable is `disabled`.** A browser takes focus away from a control
+  that becomes `disabled`, so a button that disables itself when pressed — *Use*, *Rescan*, *Run*,
+  *Run audit*, *Add*, *Download the index*, *Stop*, the two requirements buttons — dropped focus to
+  `<body>` on the keypress that started its work. Those carry `aria-disabled` while busy and
+  ignore a second press; `disabled` is kept for a control that cannot be used at all, which nobody
+  is focused on when it happens. jsdom does not move focus off a disabled control, so no test could
+  see this; it was found by pressing *Download the index* in the installed build.
+
+**Zoom is not on.** `zoomHotkeysEnabled` (WebView2's own zoom control on Windows — no permission,
+no code) was set for 1.5.0 and taken out again on a measurement: at 200 %, which in the default
+1180 px window is a 590 px viewport, the package table's name column (`min-w-0 flex-1`) collapsed
+to zero width and the sidebar, which does not scroll, cut off its last two tabs. At a maximised
+1920 px window the same zoom is the layout's own 900 px floor and holds. Shipping it means giving
+the name column a minimum and the sidebar an overflow — U51's container-query work — and until
+then the Windows display scale, which enlarges the window with its content, is the supported way.
 
 **The arrow keys are not decoration, and the gap they close was real.** Making the row the only tab stop is what keeps 200 rows from becoming 600 — but every control inside one is `tabIndex={-1}`, and that left *Pin* and *Remove* reachable by mouse only: a WCAG 2.1.1 failure, found by tabbing to a row in the running app and discovering there was nowhere further to go. `←`/`→` are the ARIA grid pattern's roving tabindex, `Esc` returns focus to the row, and no tab stops are added.
 
