@@ -47,7 +47,8 @@ failed package never aborts a batch (skip-and-continue, then a `"13 successful, 
    `--dry-run --report -` crashes on Windows/cp1252 (pip 25 *and* 26), data-dependently.
 8. **uv writes its plan to stderr**, so classify errors only after a plan-parse attempt.
 9. **`env_hash` lowercases the interpreter path on Windows**, or one env splits its pins and
-   snapshots in two.
+   snapshots in two — and since 1.6.0 stops at a venv's own `python.exe`, or a `--symlinks` venv
+   files its pins and snapshots under the Python it was made from.
 10. **PipDock enforces `Requires-Python` itself** (`src/compat.rs`) — the engines disagree, and the
     preview must not depend on which one is selected.
 
@@ -238,8 +239,11 @@ and the installed-build smoke were green:
 - **The path you check is not the path you run.** `validate_interpreter` canonicalized to compare
   against PipDock's own venvs and returned that, so a `--symlinks` venv — whose `python.exe` links
   to its base — was run and stored as the base, and `--env .venv update --all` would have changed
-  the system Python. Resolve to *decide*; run and store what was given, made absolute. `envHash`
-  follows links for the same reason, so nothing that must tell a venv from its base may key on it.
+  the system Python. Resolve to *decide*; run and store what was given, made absolute. **The
+  identity followed the same link**: `env_hash` filed a linked venv's pins, snapshots and reports
+  under its base, which nothing showed while no screen could list the two apart. A venv's own
+  interpreter (recognised by `pyvenv.cfg`) is now resolved only up to its folder. Rows are still
+  matched by path, never by hash: two names for one Python share one.
 - **Anything that resolves a path needs a fallback to the path.** A Microsoft Store Python is an
   app-execution alias that `canonicalize()` refuses (os error 1920). `canonical_interpreter` always
   fell back; the new validator did not, and `env use` would have broken for every Store user.

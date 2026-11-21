@@ -185,9 +185,9 @@ interface EnvState {
    * *Add interpreter…* (PRD P0-1): ask for a `python.exe`, put it on the list, select it.
    *
    * `title` arrives localized — `@/ipc` has no `t`. Cancelling the picker changes nothing. The new
-   * row is merged **by its path, case-insensitively**, not by `envHash`: the hash follows links, so
-   * a venv made with `--symlinks` shares its base interpreter's, and merging on it selected the
-   * base Python in place of the venv a person had just added. A listed row with the same path is
+   * row is merged **by its path, case-insensitively**, not by `envHash`: two names for one Python
+   * share a hash, and until 1.6.0's review so did a venv made with `--symlinks` and its base, so
+   * merging on the hash selected the base Python in place of the venv a person had just added. A listed row with the same path is
    * kept only when discovery found it and it works; one this list put there, or one that is
    * *broken* — a venv deleted and made again — is replaced by the row Rust returned and selected.
    * Refused while a scan runs: the scan read the list before this add wrote to it, and its result

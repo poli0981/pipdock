@@ -100,8 +100,8 @@ it adds. An added row carries the `manual` chip and **Remove from list** — kep
 is gone, so the `PD-ENV-001` row can be removed — and the outcome is said in a `role="status"`
 line mounted before its words. Both are busy while a scan runs, and a scan waits for either: a scan
 that read the list before the change would undo it. An added row is matched to the list by its
-path, never by `envHash`, which follows links — a venv made with `--symlinks` is listed beside the
-base Python it links to, not merged into it. Discovery is unchanged: the registry, the `py` launcher,
+path, never by `envHash`, which two names for one Python share — and a venv made with `--symlinks`
+is listed beside the base Python it links to, with an identity of its own (ARCHITECTURE §6). Discovery is unchanged: the registry, the `py` launcher,
 `uv python list`, and a `.venv`, `venv`, `env` or `.env` in the working directory. And there is no star-as-default: the
 selection lasts for the session, and a rescan keeps it or falls back to the first usable row. The
 CLI's `env use` stores a default, honoured since 1.4.0; the GUI does not read it.
