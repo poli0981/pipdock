@@ -185,20 +185,24 @@ interface EnvState {
    * *Add interpreter…* (PRD P0-1): ask for a `python.exe`, put it on the list, select it.
    *
    * `title` arrives localized — `@/ipc` has no `t`. Cancelling the picker changes nothing. The new
-   * row is merged **by `envHash`**, not by path: Rust returns the canonical path it stored, and the
-   * same interpreter may already be listed under the spelling discovery found. Pins and snapshots
-   * key on the hash, so a second row would split nothing — it would only show one environment
-   * twice. Refused while a scan runs: the scan read the list before this add wrote to it, and its
-   * result would replace `rows` without the new one.
+   * row is merged **by its path, case-insensitively**, not by `envHash`: the hash follows links, so
+   * a venv made with `--symlinks` shares its base interpreter's, and merging on it selected the
+   * base Python in place of the venv a person had just added. A listed row with the same path is
+   * kept only when discovery found it and it works; one this list put there, or one that is
+   * *broken* — a venv deleted and made again — is replaced by the row Rust returned and selected.
+   * Refused while a scan runs: the scan read the list before this add wrote to it, and its result
+   * would replace `rows` without the new one.
    */
   addManual: (title: string) => Promise<void>
-  /** Which added interpreter is being taken off the list, by `envHash`. */
+  /** Which added interpreter is being taken off the list, by its path. */
   removingManual: string | null
   /**
-   * Take an added interpreter off the list. Nothing on disk is touched. A selected or opened row
-   * that goes is deselected or closed; selection falls back as a rescan's would.
+   * Take an added interpreter off the list, by its path. Nothing on disk is touched. A selected or
+   * opened row that goes is deselected or closed; selection falls back as a rescan's would.
+   * Refused while a scan runs, for the add's reason the other way round: a scan that read the list
+   * before the removal would bring the row back.
    */
-  removeManual: (envHash: string) => Promise<void>
+  removeManual: (interpreter: string) => Promise<void>
   /** What the last add or removal did, for the screen's status region — a path, or null. */
   manualNotice: { kind: 'added' | 'removed'; path: string } | null
 
@@ -338,6 +342,12 @@ const NO_SNAPSHOTS = {
   diffLoading: 'idle' as LoadState,
 }
 
+/** Whether two interpreter paths name the same file as a listing compares them — Windows paths are
+ * case-insensitive (CLAUDE.md, invariant 9), and the app ships for Windows only. */
+function samePath(a: string, b: string): boolean {
+  return a.toLowerCase() === b.toLowerCase()
+}
+
 /** Recompute the joined view from the three raw responses. */
 function joined(dists: Dist[], outdated: OutdatedDist[], pins: Pin[]) {
   const { rows, orphanOutdated } = joinRows(dists, outdated, pins)
@@ -363,9 +373,10 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     // expensive thing the app can do twice. `PdEnvironments` has started two on every mount since
     // Stage 1 — StrictMode runs effects twice in development — which was invisible because both
     // produce the same rows.
-    // Nor while an *Add interpreter…* is in flight: a scan that read the list before the add wrote
-    // to it would replace `rows` without the row the add is about to append.
-    if (get().scanning || get().addingManual) return
+    // Nor while an *Add interpreter…* or a *Remove from list* is in flight: a scan that read the
+    // list before the change was written would replace `rows` without the added row, or with the
+    // removed one.
+    if (get().scanning || get().addingManual || get().removingManual !== null) return
     set({ scanning: true, error: null })
     try {
       const rows = await envScan()
@@ -435,13 +446,22 @@ export const useEnvStore = create<EnvState>((set, get) => ({
       }
       const row = await envAddManual(picked)
       set((state) => {
-        const listed = state.rows.find((r) => r.envHash === row.envHash)
-        const interpreter = listed?.interpreter ?? row.interpreter
+        const listed = state.rows.find((r) => samePath(r.interpreter, row.interpreter))
+        // A healthy discovered row keeps its place and its spelling, which is what the next scan
+        // lists. Anything else under this path — an earlier *Add interpreter…*, whose stored text
+        // Rust has just rewritten, or a row broken because its venv was deleted and made again —
+        // gives way to the row Rust returned, or the selection names a row the next scan renames.
+        const keep = listed !== undefined && listed.error === undefined && listed.source !== 'manual'
+        const interpreter = keep ? listed.interpreter : row.interpreter
+        let rows: EnvRow[]
+        if (listed === undefined) rows = [...state.rows, row]
+        else if (keep) rows = state.rows
+        else rows = state.rows.map((r) => (r === listed ? row : r))
         return {
-          rows: listed === undefined ? [...state.rows, row] : state.rows,
+          rows,
           addingManual: false,
           manualNotice: { kind: 'added', path: interpreter },
-          ...(state.selected === interpreter ? {} : { selected: interpreter, ...NO_PACKAGES }),
+          ...(keep && state.selected === interpreter ? {} : { selected: interpreter, ...NO_PACKAGES }),
         }
       })
     } catch (e) {
@@ -449,15 +469,16 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     }
   },
 
-  removeManual: async (envHash) => {
-    if (get().removingManual !== null) return
-    set({ removingManual: envHash, error: null })
+  removeManual: async (interpreter) => {
+    const { removingManual, scanning } = get()
+    if (removingManual !== null || scanning) return
+    set({ removingManual: interpreter, error: null })
     try {
-      await envRemoveManual(envHash)
+      await envRemoveManual(interpreter)
       set((state) => {
-        const gone = state.rows.find((r) => r.envHash === envHash)
+        const gone = state.rows.find((r) => r.interpreter === interpreter)
         if (gone === undefined) return { removingManual: null }
-        const rows = state.rows.filter((r) => r.envHash !== envHash)
+        const rows = state.rows.filter((r) => r !== gone)
         const deselect = state.selected === gone.interpreter
         return {
           rows,

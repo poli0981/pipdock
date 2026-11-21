@@ -1389,6 +1389,9 @@ starting a slice**: several are cheaper inside a slice that touches the same fil
 | — | `pipdock-cli` `apply_fix`; `health::fix::dirty` | `health --fix --yes` outside a git repository proceeds: `dirty` answers `None` for a clean tree and for no repository alike | Needs a three-way answer from `dirty`, which the GUI's `health_dirty` shares |
 | — | `pipdock-cli` | On a terminal, an impossible package is skipped at the prompt without the engine's explanation; `report-bug` points at a log excerpt the CLI never attaches; `uninstall --json --force` warns about "the breakage above", which JSON mode never printed | Small CLI copy fixes |
 | X36/U55 | `src-tauri/src/commands.rs:425-467,1189-1214,1350-1377` | Save and export accept any path the webview names, and overwrite a sibling without asking | The picker is the only caller today; defence in depth, not a reachable hole |
+| X36-b | `src-tauri/src/commands.rs` — every command taking a `PyEnv` (`pkg_list`, `pip_upgrade`, `deps_graph`, `plan_resolve`, `health_run`, `audit_run`, `engine_info`…) and `env_probe` | The interpreter a `PyEnv` names is run as the webview hands it back, and `env_probe` validates only a path the webview calls `manual` | Found by 1.6.0's independent review; predates it. The paths come from `env_scan`, which checks added entries itself, so this is defence in depth against a compromised webview — a `validate_interpreter` per command, its own change |
+| — | `envs::env_hash`; `store` `manual_envs` | A venv made with `--symlinks` has its base interpreter's identity, because `env_hash` follows links: it shares the base's pins, snapshots and Health folder, discovery collapses the two into one row, and `manual_envs`, keyed by the hash, holds one of an added base and an added venv of it | Windows makes such a venv only with Developer Mode or as administrator. An identity that stops at the link is a new `env_hash`, so a migration of everything keyed by the old one |
+| — | `exec.rs:633` `canonical_interpreter` | An interpreter on a share hashes as `unc\server\share\…`: the verbatim prefix `\\?\` is stripped, `\\?\UNC\` is not | Correcting it changes the identity — and orphans the pins and snapshots — of every interpreter on a share |
 | — | `envs/mod.rs:131-138`, `engine/parse.rs:103-108`, `exec.rs:367-375`, `pins/mod.rs:85-89`, `store/mod.rs:253`, `index/mod.rs:144,448` | Failures that are dropped without a log line (a probe error entry, an unreadable pin row, a Job Object that would not attach…) | The log exists now; each wants a `tracing::warn!` and a look at whether it should surface |
 | — | `PIP_MIN_VERSION_FOR_REPORT`, `UV_MIN_VERSION`, `probe_supported`, `MIN_PROBE_PYTHON` | Declared floors nothing enforces | Enforcing them is a user-visible refusal and wants its own copy and test |
 | L56 | `audit.rs:165-168` | An audit's package count includes skipped packages | Cosmetic |
@@ -1687,6 +1690,64 @@ reusable's missing `working-directory`) is gone, but SonarQube Cloud, Qodana, th
 Tauri's configuration all assume the root now. And `pr-mode` is off in `qodana.yml`, where the plan
 had put it back on: a whole scan is two to three minutes a part, so analysing only a pull
 request's files would save little and make a result depend on which files changed.
+
+## 1.6.0 — *Add interpreter…* — **2026-11-21**
+
+One slice: PRD P0-1's manual browse, the last command `NOT_YET` held, shipped as **Add
+interpreter…** on Environments and `pipdock env add` / `env remove` in the CLI, over one new table.
+With it the project moved to maintenance mode (the next section), and the org move above ships in
+the same version. [#120](https://github.com/poli0981org/pipdock/pull/120).
+
+**What shipped** (the changelog has it by reader):
+
+| Piece | What |
+|---|---|
+| Core | `envs::validate_interpreter`, the one check a person's path passes: an existing file named like Python (`python3.14t.exe` included), leading to one, and not inside PipDock's own venvs — run and stored as given, made absolute. `envs::probe_listed` checks an added entry again before every listing probes it |
+| Store | Schema v5, `manual_envs(env_hash, interpreter, added_at)` — apart from the CLI's `envs` recents, which has no source column. Adding again keeps an entry's place |
+| Discovery | Added entries come after discovery's own and never shadow it. One whose file is gone is still listed, with `PD-ENV-001`, because that is the row a person needs in order to remove it |
+| IPC | `env_add_manual`, `env_remove_manual`; `NOT_YET` is empty |
+| GUI | *Add interpreter…* beside *Rescan*, as the empty state's one action and in `Ctrl+K`; *Remove from list* on added rows; a status line mounted before its words; focus to the heading when the focused row goes |
+| CLI | `env add`, `env remove`; `env list` shows what was added; `--env`, `env use` and the stored default are validated |
+| Maintenance | `triage.yml` over a tested `.github/scripts/triage.cjs`, the wording issue form, CONTRIBUTING's scope |
+
+**What running found:**
+
+- The first name rule refused the free-threaded `python3.14t.exe`, which the python.org installer
+  puts beside `python.exe` and the registry lists — found by running `env list` against the owner's
+  own Pythons, not by any test.
+- `env remove <dir>` answered "not on the list" for a deleted venv — the one case it exists for —
+  because `interpreter_in` resolves only what is there. Found by its own test.
+- Qodana for JS flagged a non-ASCII identifier in `triage.cjs`; renamed.
+- The installed build — the release dry run's NSIS installer, a scratch `LOCALAPPDATA`, driven over
+  CDP: the legal gate once on a fresh profile; an interpreter added, rescanned, updated and rolled
+  back in a scratch venv named `myproj-env` outside the working directory; the entry kept across a
+  restart; the venv deleted and its `PD-ENV-001` row removed from the keyboard, focus to the
+  heading; `env list` and `env remove` agreeing with the screen. **Windows' own file picker was not
+  driven**: screen control was declined, and a release build's `__TAURI_INTERNALS__` cannot be
+  patched to stub it, so every add went through `envAddManual` with a path — the call the picker's
+  result makes.
+
+**What an independent review found** once the suites and that smoke were green, reading the diff
+cold and reproducing with a scratch `LOCALAPPDATA` and the debug CLI. Every fix has a test that was
+seen to fail first:
+
+| # | Severity | Found | Now |
+|---|---|---|---|
+| 1 | High | `validate_interpreter` returned the canonical path, and every caller ran and stored it. A `--symlinks` venv's `python.exe` is a link to its base, so `env use <venv>` stored `C:\Python315\python.exe` (reproduced) and `--env .venv update --all --yes` would have changed the system Python; the GUI merged the added venv into the registry row by `envHash` and selected that. The name check looked at the link while the target was stored, so a `python.exe` linking to `notepad.exe` stored `notepad.exe` | The path made absolute is run and stored, links left alone; canonicalizing only decides where a link leads and whether it is PipDock's own. The UI merges and removes by path |
+| 2 | Medium | A Microsoft Store Python was refused: an app-execution alias reports `is_file()` and fails `canonicalize()` with os error 1920, so `--env` and `env use`, which worked in 1.5.0, would have exited 3 | Judged by its own path when it cannot be resolved, as `canonical_interpreter` always fell back |
+| 3 | Medium | Not an enforcement point over IPC, while SECURITY §2 and `env_probe`'s doc said it was: `env_probe` checks only a path the webview calls `manual`, and every `PyEnv` command runs `env.interpreter` unchecked. Stored entries, and the CLI's default from 1.5.0, were probed unchecked too | Both sentences corrected. Added entries are checked again on every listing (`probe_listed`, both heads), the stored default when it is used. The IPC exposure predates 1.6.0: backlog X36-b |
+| 4 | Low–Medium | *Remove from list* announced success while the entry stayed, for an entry on a share whose file was gone: the row's `envHash` was recomputed from the stored text, while the identity it was added under had been hashed from `UNC\server\share\…` | Removed by the path the row shows; the store matches either |
+| 5 | Low–Medium | Re-adding a venv deleted and made again kept the broken row and selected it — a row with no `env`, which nothing loads packages for | The fresh row replaces it and is selected |
+| 6 | Low | Removing during a scan: the scan had read the list first, so its result brought the row back while the status line said it was gone | Each waits for the other; *Remove from list* is busy while a scan runs |
+| 7 | Low | `env remove .venv` never matched what `env add .venv` stored | The typed path is made absolute first |
+| — | — | `env add --json` was documented as printing the entry "exactly as" `env list` would, untrue when discovery also finds it; a Triage failure on a pull request reached no channel | Wording; `notify.yml` reports Triage's `pull_request_target` runs |
+
+Reviewed and found sound: `triage.yml`'s handling of a stranger's pull request (the base branch's
+scripts only, no expression reaching a shell, writes that start no runs), who it can close, the
+v4→v5 migration, the store guard, and the copy in both catalogues.
+
+**Left, in the backlog with a reason each:** X36-b, the `PyEnv` commands' trust in the webview's
+path; a `--symlinks` venv sharing its base's identity; the identity of an interpreter on a share.
 
 ## Maintenance mode — from 1.6.0
 

@@ -4,6 +4,7 @@
 //! file that is not an interpreter is refused before anything runs it and nothing is stored; an
 //! added interpreter whose file has since gone is still listed — with `PD-ENV-001`, because that is
 //! the row a person needs in order to remove it — and is removed by the path it was added under.
+//! A stored entry, or a stored default, that is no longer a Python is checked again and never run.
 //! The success path of `env add` probes a real interpreter, which `ci-integration.yml` has.
 //!
 //! Each test has an app-data root of its own: the store is a file, and tests run in parallel.
@@ -125,4 +126,106 @@ fn an_entry_whose_file_is_gone_is_listed_with_its_error_and_removed_by_its_path(
     assert!(out.status.success());
     let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("one JSON document");
     assert_eq!(doc["removed"], false);
+}
+
+#[test]
+fn an_entry_is_removed_by_a_relative_path_typed_where_it_lives() {
+    // `env add .venv` stores an absolute path; `env remove .venv`, typed in the same folder, has to
+    // reach it. Relative text never matched before the path was made absolute.
+    let local = scratch("relative");
+    let stored = local.join("rel-venv").join("Scripts").join("python.exe");
+    {
+        let store = Store::open(&app_data(&local)).expect("the store opens");
+        store
+            .add_manual_env(
+                &pipdock_core::envs::env_hash(&stored),
+                &stored.display().to_string(),
+                "2026-11-21T00:00:00Z",
+            )
+            .expect("added");
+    }
+    let out = pipdock(&local)
+        .current_dir(&local)
+        .args(["env", "remove", "rel-venv", "--json"])
+        .output()
+        .expect("runs");
+    assert!(out.status.success());
+    let doc: serde_json::Value = serde_json::from_slice(&out.stdout).expect("one JSON document");
+    assert_eq!(doc["removed"], true, "{doc}");
+    let store = Store::open(&app_data(&local)).expect("the store opens");
+    assert!(store.manual_envs().expect("reads").is_empty());
+}
+
+/// An empty file named like another program, which nothing should ever run.
+fn not_python(local: &Path) -> PathBuf {
+    let other = local.join(if cfg!(windows) {
+        "notepad.exe"
+    } else {
+        "notepad"
+    });
+    std::fs::write(&other, "").expect("an empty file that is not Python");
+    other
+}
+
+#[test]
+fn an_added_entry_that_is_no_longer_python_is_listed_with_its_error_and_never_run() {
+    // What the file was when it was added says nothing about what it is now: a `python.exe` that is
+    // a link can be pointed at another program. Written to the store directly, since no `env add`
+    // would accept it — which is the point: the listing is checked on its own account.
+    let local = scratch("relisted");
+    let other = not_python(&local);
+    {
+        let store = Store::open(&app_data(&local)).expect("the store opens");
+        store
+            .add_manual_env(
+                &pipdock_core::envs::env_hash(&other),
+                &other.display().to_string(),
+                "2026-11-21T00:00:00Z",
+            )
+            .expect("stored");
+    }
+
+    let rows = manual_rows(&local);
+    assert_eq!(
+        rows.len(),
+        1,
+        "still listed, so it can be removed: {rows:?}"
+    );
+    assert_eq!(rows[0]["error"]["code"], "PD-ENV-001");
+    let message = rows[0]["error"]["message"].as_str().unwrap_or_default();
+    assert!(message.contains("is not a Python interpreter"), "{message}");
+}
+
+#[test]
+fn a_default_that_is_not_python_is_skipped_with_a_warning() {
+    // `env use` checked nothing before 1.6.0, so a stored default can name any file.
+    let local = scratch("default");
+    let other = not_python(&local);
+    {
+        let store = Store::open(&app_data(&local)).expect("the store opens");
+        store
+            .remember_env(
+                &pipdock_core::envs::env_hash(&other),
+                &other.display().to_string(),
+                "2026-11-21T00:00:00Z",
+                true,
+            )
+            .expect("stored");
+    }
+    let empty = local.join("no-venv-here");
+    std::fs::create_dir_all(&empty).expect("a folder with nothing to fall back to");
+
+    let out = pipdock(&local)
+        .current_dir(&empty)
+        .arg("list")
+        .output()
+        .expect("runs");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert_eq!(out.status.code(), Some(3), "{stderr}");
+    assert!(
+        stderr.contains("warning: the default environment is not used"),
+        "{stderr}"
+    );
+    assert!(stderr.contains("is not a Python interpreter"), "{stderr}");
+    assert!(stderr.contains("error[PD-ENV-001]"), "{stderr}");
 }

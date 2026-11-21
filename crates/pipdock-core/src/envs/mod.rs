@@ -239,14 +239,25 @@ pub async fn scan_with(manual: &[PathBuf]) -> Vec<Candidate> {
 ///   and the failure would read as a broken environment instead of the wrong file;
 /// - it must not be one of PipDock's own environments — Code Health's tools venv or the Security
 ///   tab's audit venv — which PipDock builds and replaces itself, and which a user's update would
-///   quietly break. The check is on canonical paths, or `..` would walk past it.
+///   quietly break. The check is on resolved paths too, or `..` or a link would walk past it.
 ///
-/// Returns the canonical path without Windows' verbatim prefix, which is what is stored and shown.
+/// **Returns the path as given, made absolute — never with its links resolved.** A venv made with
+/// `--symlinks` has a `Scripts\python.exe` that is a link to the base interpreter, and running the
+/// *link* is what makes Python find the venv's `pyvenv.cfg`. The first version returned the
+/// canonical path, so `--env .venv` ran — and *Add interpreter…* stored — the base Python instead
+/// of the venv: an update meant for a project would have changed the system's Python. Found by an
+/// independent review of 1.6.0 and reproduced before fixing. Where the link really points is still
+/// checked: a `python.exe` that links to another program is another program, and is refused.
+///
+/// A Microsoft Store app-execution alias (`%LOCALAPPDATA%\Microsoft\WindowsApps\python.exe`) is a
+/// file Windows will not resolve at all (os error 1920); it is judged by its own path, and accepted,
+/// as discovery has always listed it.
 ///
 /// # Errors
 /// `PD-ENV-001` for each refusal, the message saying which. A missing file reads exactly as the
 /// probe's own "no interpreter at …", so a caller that validates first changes no output.
 pub fn validate_interpreter(path: &Path, app_data: &Path) -> Result<PathBuf> {
+    use crate::health::project::plain;
     let refuse = |why: String| PdError::new(Code::EnvInterpreterMissing, why);
     if !path.is_file() {
         return Err(refuse(format!("no interpreter at {}", path.display())));
@@ -258,24 +269,40 @@ pub fn validate_interpreter(path: &Path, app_data: &Path) -> Result<PathBuf> {
             path.display()
         )));
     }
-    let canonical = path
-        .canonicalize()
-        .map(crate::health::project::plain)
+    let absolute = std::path::absolute(path)
+        .map(plain)
         .map_err(|e| refuse(format!("cannot read {}: {e}", path.display())))?;
-    for own in [
+    let target = path.canonicalize().map(plain).ok();
+    if let Some(target) = &target
+        && !is_python_name(target)
+    {
+        return Err(refuse(format!(
+            "{} leads to {}, which is not a Python interpreter PipDock will run",
+            path.display(),
+            target.display()
+        )));
+    }
+    let own_dirs: Vec<PathBuf> = [
         crate::health::tools_dir(app_data),
         crate::health::audit_dir(app_data),
-    ] {
-        if let Ok(own) = own.canonicalize().map(crate::health::project::plain)
-            && canonical.starts_with(&own)
-        {
-            return Err(refuse(format!(
-                "{} is one of PipDock's own environments, which it manages itself",
-                path.display()
-            )));
-        }
+    ]
+    .iter()
+    .flat_map(|dir| {
+        [
+            dir.canonicalize().map(plain).ok(),
+            std::path::absolute(dir).map(plain).ok(),
+        ]
+    })
+    .flatten()
+    .collect();
+    let inside_own = |p: &Path| own_dirs.iter().any(|own| p.starts_with(own));
+    if inside_own(&absolute) || target.as_deref().is_some_and(inside_own) {
+        return Err(refuse(format!(
+            "{} is one of PipDock's own environments, which it manages itself",
+            path.display()
+        )));
     }
-    Ok(canonical)
+    Ok(absolute)
 }
 
 /// `python`, `python3` or `python3.12`, with `.exe` on Windows; any case. A version may end in `t`,
@@ -438,11 +465,17 @@ pub async fn scan_reporting(
 
 /// Discovered candidates in canonical order, then the manual ones no source already reported, in
 /// the order they were added.
+///
+/// Compared by the path as listed — made absolute, case-folded on Windows — and **not** by
+/// [`canonical_interpreter`], which follows links: a venv made with `--symlinks` would otherwise
+/// collapse into the base interpreter its `python.exe` points at, and the venv a person added would
+/// never be listed.
 fn merge_manual(found: BTreeMap<String, Candidate>, manual: &[PathBuf]) -> Vec<Candidate> {
-    let mut seen: std::collections::HashSet<String> = found.keys().cloned().collect();
     let mut out: Vec<Candidate> = found.into_values().collect();
+    let mut seen: std::collections::HashSet<String> =
+        out.iter().map(|c| listing_key(&c.path)).collect();
     for path in manual {
-        if seen.insert(canonical_interpreter(path)) {
+        if seen.insert(listing_key(path)) {
             out.push(Candidate {
                 path: path.clone(),
                 source: EnvSource::Manual,
@@ -450,6 +483,45 @@ fn merge_manual(found: BTreeMap<String, Candidate>, manual: &[PathBuf]) -> Vec<C
         }
     }
     out
+}
+
+/// A path as a listing compares it: absolute, case-folded on Windows, links left alone.
+fn listing_key(path: &Path) -> String {
+    let absolute = std::path::absolute(path).unwrap_or_else(|_| path.to_path_buf());
+    let text = absolute.display().to_string();
+    if cfg!(windows) {
+        text.to_lowercase()
+    } else {
+        text
+    }
+}
+
+/// Probe a candidate a listing returned — the one place both heads decide what a listing runs.
+///
+/// An added interpreter goes through [`validate_interpreter`] again on **every** listing, not only
+/// on the day it was added: that check said what the file was then, and a `python.exe` that is a
+/// link can be pointed at another program afterwards. `env_scan` and `env list` probed stored
+/// entries unchecked until an independent review of 1.6.0 said so. A discovered path is probed as
+/// found — discovery read it from where Python installs interpreters, and no person typed it.
+///
+/// # Errors
+/// What [`validate_interpreter`] or [`probe`] reports: `PD-ENV-001` for a file that is gone (in the
+/// probe's own words) or is not a Python PipDock will run, `PD-ENV-003` for a probe that fails.
+pub async fn probe_listed(candidate: &Candidate, app_data: &Path) -> Result<ProbeResult> {
+    if candidate.source == EnvSource::Manual {
+        let path = candidate.path.clone();
+        let app_data = app_data.to_path_buf();
+        // On a blocking thread: the check reads the file system (`rust:S7493`).
+        tokio::task::spawn_blocking(move || validate_interpreter(&path, &app_data))
+            .await
+            .map_err(|e| {
+                PdError::new(
+                    Code::IntUnexpected,
+                    format!("interpreter check stopped: {e}"),
+                )
+            })??;
+    }
+    probe(&candidate.path, candidate.source).await
 }
 
 /// PEP 514 registry entries: `HKCU`, and both views of `HKLM`.
@@ -703,7 +775,7 @@ mod tests {
     }
 
     #[test]
-    fn a_python_is_accepted_and_comes_back_canonical_and_plain() {
+    fn a_python_is_accepted_and_comes_back_absolute_and_plain() {
         let dir = scratch("ok");
         let python = touch(&dir, &format!("proj/.venv/Scripts/{}", exe("python")));
         let got = validate_interpreter(&python, &dir.join("data")).expect("a python");
@@ -712,10 +784,44 @@ mod tests {
             "no verbatim prefix: {}",
             got.display()
         );
-        assert_eq!(
+        assert_eq!(got, std::path::absolute(&python).expect("absolute"));
+    }
+
+    /// A link, or `None` where this machine may not make one (Windows without Developer Mode).
+    fn link(target: &Path, at: &Path) -> Option<()> {
+        std::fs::create_dir_all(at.parent().expect("a parent")).expect("parents");
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(target, at);
+        #[cfg(not(windows))]
+        let made = std::os::unix::fs::symlink(target, at);
+        made.ok()
+    }
+
+    #[test]
+    fn a_symlinked_venv_keeps_its_own_path_and_a_link_to_another_program_is_refused() {
+        // `python -m venv --symlinks`: the venv's python.exe links to the base interpreter, and
+        // only running the link finds the venv. Resolving it handed back — and stored — the base.
+        let dir = scratch("links");
+        let base = touch(&dir, &format!("base/{}", exe("python")));
+        let venv_python = dir.join("venv").join("Scripts").join(exe("python"));
+        let Some(()) = link(&base, &venv_python) else {
+            eprintln!("skipped: this machine cannot create symbolic links");
+            return;
+        };
+        let got = validate_interpreter(&venv_python, &dir.join("data")).expect("a python");
+        assert_eq!(got, std::path::absolute(&venv_python).expect("absolute"));
+        assert_ne!(
             got,
-            crate::health::project::plain(python.canonicalize().expect("canonical"))
+            std::path::absolute(&base).expect("absolute"),
+            "not the base"
         );
+
+        // A python.exe that is really another program is still another program.
+        let other = touch(&dir, &format!("tools/{}", exe("notepad")));
+        let disguised = dir.join("disguise").join(exe("python"));
+        link(&other, &disguised).expect("links work here");
+        let err = validate_interpreter(&disguised, &dir.join("data")).expect_err("not python");
+        assert!(err.message.contains("leads to"), "{}", err.message);
     }
 
     #[test]
@@ -1023,5 +1129,38 @@ mod tests {
             .await
             .expect_err("missing interpreter must fail");
         assert_eq!(err.code, Code::EnvInterpreterMissing);
+    }
+
+    #[tokio::test]
+    async fn an_added_entry_is_checked_again_on_every_listing() {
+        // The store held a Python when it was added; what it holds now is another program. Refused
+        // before anything runs it, and still a row — PD-ENV-001 — so it can be removed.
+        let dir = scratch("relisted");
+        let added = Candidate {
+            path: touch(&dir, &exe("notepad")),
+            source: EnvSource::Manual,
+        };
+        let err = probe_listed(&added, &dir.join("data"))
+            .await
+            .expect_err("refused");
+        assert_eq!(err.code, Code::EnvInterpreterMissing);
+        assert!(
+            err.message.contains("is not a Python interpreter"),
+            "{}",
+            err.message
+        );
+
+        // An entry whose file is gone reads exactly as the probe has always said it.
+        let gone = Candidate {
+            path: dir.join("deleted").join(exe("python")),
+            source: EnvSource::Manual,
+        };
+        let err = probe_listed(&gone, &dir.join("data"))
+            .await
+            .expect_err("gone");
+        assert_eq!(
+            err.message,
+            format!("no interpreter at {}", gone.path.display())
+        );
     }
 }

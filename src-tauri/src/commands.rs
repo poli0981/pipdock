@@ -116,14 +116,17 @@ pub struct EnvRow {
     pub error: Option<WireError>,
 }
 
+/// One listed candidate as a row. Through [`envs::probe_listed`], so an added interpreter is checked
+/// again before it runs, exactly as `pipdock env list` checks it.
 async fn probe_row(
-    path: std::path::PathBuf,
-    source: EnvSource,
+    candidate: envs::Candidate,
     health_project: Option<String>,
+    app_data: &std::path::Path,
 ) -> EnvRow {
-    let env_hash = envs::env_hash(&path);
-    let interpreter = path.display().to_string();
-    match envs::probe(&path, source).await {
+    let env_hash = envs::env_hash(&candidate.path);
+    let interpreter = candidate.path.display().to_string();
+    let source = candidate.source;
+    match envs::probe_listed(&candidate, app_data).await {
         Ok(probed) => EnvRow {
             interpreter,
             source,
@@ -216,12 +219,10 @@ pub async fn env_scan(
     for (index, candidate) in candidates.into_iter().enumerate() {
         let folder = folders.remove(&envs::env_hash(&candidate.path));
         let gate = std::sync::Arc::clone(&gate);
+        let app_data = state.app_data.clone();
         probes.spawn(async move {
             let _permit = gate.acquire_owned().await.ok();
-            (
-                index,
-                probe_row(candidate.path, candidate.source, folder).await,
-            )
+            (index, probe_row(candidate, folder, &app_data).await)
         });
     }
     let mut rows = Vec::new();
@@ -252,8 +253,11 @@ pub async fn env_scan(
 ///   source the row already had.
 ///
 /// A path the webview names as `manual` is checked by [`envs::validate_interpreter`] before the
-/// probe runs it, as `env_add_manual` checks one: discovery found the others where Python puts
-/// interpreters, and only a manual path can name anything at all.
+/// probe runs it, as `env_add_manual` checks one. That is a check on what the **webview says**, not
+/// an enforcement point: a webview that names another source skips it, and every command taking a
+/// `PyEnv` runs `env.interpreter` unchecked — the trust in the webview's paths that backlog X36
+/// records, which predates *Add interpreter…*. An independent review of 1.6.0 found this sentence
+/// claiming more than that, as SECURITY §2 did.
 ///
 /// # Errors
 /// `PD-ENV-001` when there is no usable interpreter there, `PD-ENV-003` when the probe output
@@ -293,10 +297,11 @@ pub async fn env_probe(
 /// Add an interpreter the person picked with *Browse…* to the list, and return its row (PRD P0-1).
 ///
 /// Validated, probed, then stored — in that order, so the list never gains an entry that was
-/// refused or broken on arrival. The row carries the canonical path, which is what is stored and
-/// what the next `env_scan` returns, so the screen does not change under the user's eyes. Adding
-/// one already listed — by discovery or by an earlier *Browse…* — is not an error: the row comes
-/// back, and the frontend merges it by `envHash`.
+/// refused or broken on arrival. The row carries the path made absolute with its links left alone
+/// (a `--symlinks` venv's `python.exe` is the venv; its target is the base), which is what is stored
+/// and what the next `env_scan` returns, so the screen does not change under the user's eyes.
+/// Adding one already listed — by discovery or by an earlier *Browse…* — is not an error: the row
+/// comes back, and the frontend merges it by that path, not by `envHash`, which follows links.
 ///
 /// # Errors
 /// `PD-ENV-001` when the file is missing, is not named like a Python interpreter, or is one of
@@ -331,15 +336,24 @@ pub async fn env_add_manual(
     })
 }
 
-/// Take an interpreter off the list *Browse…* put it on. Nothing on disk is touched, and its pins,
-/// snapshots and Health folder stay keyed to it for the day it is added again.
+/// Take an interpreter off the list *Add interpreter…* put it on, by the path its row shows.
+/// Nothing on disk is touched, and its pins, snapshots and Health folder stay keyed to it for the
+/// day it is added again.
+///
+/// The path rather than the row's `envHash`: for an interpreter whose file is gone — the row that
+/// most needs removing — the identity is recomputed from the stored text and can differ from the
+/// one it was added under, and removing by hash then reported success while the entry stayed.
 ///
 /// # Errors
 /// `PD-INT-001` when the store cannot be written. `false` when it was not on the list.
 #[tauri::command]
-pub async fn env_remove_manual(state: tauri::State<'_, AppState>, env_hash: String) -> Wire<bool> {
+pub async fn env_remove_manual(
+    state: tauri::State<'_, AppState>,
+    interpreter: String,
+) -> Wire<bool> {
+    let hash = envs::env_hash(std::path::Path::new(&interpreter));
     let store = state.store.lock().await;
-    Ok(store.remove_manual_env(&env_hash)?)
+    Ok(store.remove_manual_env(&hash, &interpreter)?)
 }
 
 /// [`envs::validate_interpreter`], off the async workers: it reads the file system, which

@@ -232,6 +232,25 @@ driving the installed build:
 - **Zoom is off on a measurement** (`zoomHotkeysEnabled`): at 200 % in the default window the
   table's name column collapses to zero. Backlog A5 says what has to change first.
 
+**1.6.0, *Add interpreter…*, left these behind** — found by an independent review after every suite
+and the installed-build smoke were green:
+
+- **The path you check is not the path you run.** `validate_interpreter` canonicalized to compare
+  against PipDock's own venvs and returned that, so a `--symlinks` venv — whose `python.exe` links
+  to its base — was run and stored as the base, and `--env .venv update --all` would have changed
+  the system Python. Resolve to *decide*; run and store what was given, made absolute. `envHash`
+  follows links for the same reason, so nothing that must tell a venv from its base may key on it.
+- **Anything that resolves a path needs a fallback to the path.** A Microsoft Store Python is an
+  app-execution alias that `canonicalize()` refuses (os error 1920). `canonical_interpreter` always
+  fell back; the new validator did not, and `env use` would have broken for every Store user.
+- **A check made once is a claim about the past.** An added entry is validated again on every
+  listing (`envs::probe_listed`, both heads), and the CLI's stored default when it is used: a link
+  can be re-pointed after it was accepted.
+- **Remove a row by what it shows, not by an identity recomputed from it.** For a file that is
+  gone, `env_hash` hashes the stored text, which is not the identity it was added under whenever
+  canonicalizing changed it (a share: `UNC\server\…`); removal by hash reported success, and the
+  row came back on the next scan.
+
 Three rules P1 left behind, all found by running rather than reading:
 
 - **A venv is never externally managed**, and `sysconfig.get_path("stdlib")` inside one resolves to
