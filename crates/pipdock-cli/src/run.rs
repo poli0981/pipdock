@@ -1074,18 +1074,22 @@ pub async fn env_add(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
 ///
 /// Matched by identity, and by the path as stored when the file is gone — a deleted venv cannot be
 /// canonicalized into the identity it was added under, and it is exactly the entry someone wants
-/// gone. Not being on the list is not an error: the list is what was asked about, and it is right.
+/// gone. A directory is matched as the venv whose interpreter it would hold, existing or not:
+/// `interpreter_in` resolves only what is there, and the first version of this command answered
+/// "not on the list" for the one case it exists for — found by its own test. Not being on the list
+/// is not an error: the list is what was asked about, and it is right.
 ///
 /// # Errors
 /// `PD-INT-001` when the store cannot be read or written.
 pub fn env_remove(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
     let store = Store::open(&app_data_dir())?;
     let interpreter = envs::interpreter_in(path);
-    let wanted = envs::env_hash(&interpreter);
-    let entry = store
-        .manual_envs()?
-        .into_iter()
-        .find(|m| m.env_hash == wanted || same_path(&m.interpreter, &interpreter));
+    let candidates = [interpreter.clone(), envs::venv_interpreter(path)];
+    let entry = store.manual_envs()?.into_iter().find(|m| {
+        candidates
+            .iter()
+            .any(|c| m.env_hash == envs::env_hash(c) || same_path(&m.interpreter, c))
+    });
     let removed = match &entry {
         Some(m) => store.remove_manual_env(&m.env_hash)?,
         None => false,

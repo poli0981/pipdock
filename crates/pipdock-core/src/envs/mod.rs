@@ -318,16 +318,24 @@ pub fn interpreter_in(path: &Path) -> PathBuf {
     if path.is_file() {
         return path.to_path_buf();
     }
-    let exe: PathBuf = if cfg!(windows) {
-        ["Scripts", "python.exe"].iter().collect()
-    } else {
-        ["bin", "python"].iter().collect()
-    };
-    let candidate = path.join(&exe);
+    let candidate = venv_interpreter(path);
     if candidate.is_file() {
         candidate
     } else {
         path.to_path_buf()
+    }
+}
+
+/// Where a virtual environment's interpreter is, whether or not it is there: `<dir>\Scripts\python.exe`
+/// on Windows, `<dir>/bin/python` elsewhere. `pipdock env remove <dir>` needs the answer for a venv
+/// that has been deleted — exactly the entry someone wants gone, and one [`interpreter_in`] can no
+/// longer resolve.
+#[must_use]
+pub fn venv_interpreter(dir: &Path) -> PathBuf {
+    if cfg!(windows) {
+        dir.join("Scripts").join("python.exe")
+    } else {
+        dir.join("bin").join("python")
     }
 }
 
