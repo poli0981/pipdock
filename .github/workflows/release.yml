@@ -1,8 +1,8 @@
-# Project-local: the ops repo has no reusable Tauri/build workflow (docs/RELEASE-CI.md §1).
+# Project-local, like every workflow here (RELEASE-CI.md §1).
 #
 # Builds the NSIS .exe and .msi, attests where they were built, publishes SHA256SUMS.txt and leaves
 # a DRAFT release. Publishing is a separate, human-directed step (RELEASE-CI.md §3.4), and
-# announce-release.yml fires on `release: published`.
+# notify.yml's announcement fires on `release: published`.
 #
 # **Two jobs, so the token that can write releases never runs the build.** Building executes
 # third-party code — every crate's build script, every npm package's — and gets a read-only token
@@ -54,7 +54,7 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           ref: ${{ inputs.tag || github.ref }}
           persist-credentials: false
@@ -92,13 +92,13 @@ jobs:
           "tag=v$v" >> $env:GITHUB_OUTPUT
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
           cache: npm
 
       - name: Cache cargo
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: |
             ~/.cargo/registry
@@ -149,7 +149,7 @@ jobs:
           Get-Content release-artifacts\SHA256SUMS.txt
 
       - name: Upload the build
-        uses: actions/upload-artifact@v7
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: release-artifacts
           path: release-artifacts/*
@@ -167,15 +167,17 @@ jobs:
       attestations: write
     steps:
       - name: Download the build
-        uses: actions/download-artifact@v8
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           name: release-artifacts
           path: release-artifacts
 
       # Build provenance for the two installers: `gh attestation verify <file> --repo
-      # poli0981/pipdock` proves an installer came from this workflow, at this commit — which a
+      # poli0981org/pipdock` proves an installer came from this workflow, at this commit — which a
       # checksum published beside the file cannot, since whoever could replace one could replace
-      # both.
+      # both. An attestation stays with the account that made it: those of 1.4.0 and 1.5.0, made
+      # before the repository moved to the organization, verify with `--owner poli0981
+      # --signer-repo poli0981/pipdock` and no longer with any `--repo` (README, Install).
       - name: Attest provenance
         uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
         with:

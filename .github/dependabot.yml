@@ -1,8 +1,7 @@
 # Dependency updates — docs/RELEASE-CI.md §2.
 #
-# Dependabot, not Renovate: there is no Renovate configuration anywhere in the poli0981/.github
-# ops repo, and that repo ships a dependabot-summary.yml, which makes Dependabot the portfolio
-# standard.
+# Dependabot, not Renovate: Dependabot was the standard of the owner's ops repo when the CI was
+# set up, and it still is across the poli0981org organization.
 #
 # Weekly grouped PRs per ecosystem, with Code Health's pins kept apart so a tool bump is reviewed
 # on its own. Security advisories bypass grouping and schedule — that is Dependabot's default for
@@ -19,6 +18,13 @@
 # its Tauri packages into one PR, and ci-node.yml's `tauri lockstep` job fails either PR until its
 # counterpart is merged beside it.
 #
+# **A group's position decides nothing.** Dependabot gives a dependency to the *most specific*
+# group that matches it, and a group with `update-types` counts as more specific than one with
+# patterns alone: on 2026-11-21 its log read "Skipping tauri-plugin-dialog for group 'tauri' -
+# belongs to more specific group 'cargo-minor-patch'", and every Tauri bump of that week (#116,
+# #118) landed in the catch-all groups. This file said the order kept them out. What does is
+# `exclude-patterns` on each catch-all, below.
+#
 # The labels below must exist in the repository, or Dependabot opens its PRs without them.
 
 version: 2
@@ -33,16 +39,20 @@ updates:
     cooldown:
       default-days: 3
       semver-major-days: 14
-    # No cargo ignores. The rfd one (`>=0.17.0`) went on 2026-11-04: src-tauri takes rfd only
-    # because tauri-plugin-dialog already compiles it, and 2.8.4 moved that to rfd ^0.17, which
-    # met the ignore's own condition. If tauri-plugin-dialog moves rfd again, bump both together —
-    # `cargo tree -i rfd --target all` must still show one rfd.
+    ignore:
+      # src-tauri takes rfd only because tauri-plugin-dialog already compiles it, and 2.8.4 — the
+      # newest — still requires rfd ^0.17, so rfd 0.18 alone (#112) would put a second rfd in the
+      # binary. Remove this when tauri-plugin-dialog moves to rfd 0.18, and bump both together:
+      # `cargo tree -i rfd --target all` must still show one rfd. (The same ignore, at 0.17, went
+      # on 2026-11-04 when its own condition was met.)
+      - dependency-name: rfd
+        versions: ['>=0.18.0']
     groups:
-      # First, so a Tauri crate never lands in the catch-all group below.
       tauri:
         patterns: ['tauri', 'tauri-*']
       cargo-minor-patch:
         update-types: [minor, patch]
+        exclude-patterns: ['tauri', 'tauri-*']
     labels: [dependencies, rust]
 
   - package-ecosystem: npm
@@ -69,6 +79,7 @@ updates:
         patterns: ['vitest', '@vitest/*']
       npm-minor-patch:
         update-types: [minor, patch]
+        exclude-patterns: ['@tauri-apps/*', 'vitest', '@vitest/*']
     labels: [dependencies, frontend]
 
   - package-ecosystem: github-actions

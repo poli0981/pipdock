@@ -1,0 +1,92 @@
+# Discord notifications, self-contained in this repository since the move to poli0981org
+# (2026-11-21). They were two callers into the owner's personal ops repo, whose notifier checked
+# out *that* repo's `main` and ran its script with PipDock's webhooks in the environment; the
+# script is vendored now (.github/scripts/discord_notify.py, standard library only).
+#
+# - ci-failure: a run of a listed workflow failed outside a pull request — a push to `main`, the
+#   daily or weekly schedule, a dispatch, a release tag -> DISCORD_CI_WEBHOOK. Pull-request runs
+#   report on the pull request, and a fork's or Dependabot's get no secrets anyway. The filter is
+#   on the event alone, never on a branch name or a login, which a fork controls.
+# - announce: a release was published, or re-announced with a dispatch -> DISCORD_RELEASES_WEBHOOK
+#   and DISCORD_REPO_WEBHOOK. Publishing the draft (RELEASE-CI.md §3) is done with a person's token,
+#   which does fire `release: published`; a release published with GITHUB_TOKEN would not.
+#
+# **The list is by exact `name:`.** `workflows: ['*']`, which the ops repo's own example
+# suggested, is not a wildcard to `workflow_run`: it matched nothing, and `main` was red for three
+# weeks in September with nobody told. A new workflow is added here by name. Unlike the ops-repo
+# reusable, which skipped anything named like CodeQL or Release because they had "dedicated
+# notifiers" PipDock never had, CodeQL, Qodana and Release are listed: a failed Release run used
+# to reach no channel at all.
+
+name: Notify
+
+on:
+  workflow_run:
+    workflows:
+      - CI / Rust
+      - CI / Node
+      - CI / Integration
+      - CodeQL
+      - Qodana
+      - Release
+      - Security scan
+      - SonarCloud
+    types: [completed]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Release tag to announce again (e.g. v1.6.0)
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+jobs:
+  ci-failure:
+    if: >-
+      github.event_name == 'workflow_run' &&
+      github.event.workflow_run.conclusion == 'failure' &&
+      github.event.workflow_run.event != 'pull_request' &&
+      github.event.workflow_run.event != 'pull_request_target'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Post the failure to Discord
+        env:
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_CI_WEBHOOK }}
+          WORKFLOW_NAME: ${{ github.event.workflow_run.name }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          BRANCH: ${{ github.event.workflow_run.head_branch }}
+          COMMIT_SHA: ${{ github.event.workflow_run.head_sha }}
+          COMMIT_MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+          ACTOR: ${{ github.event.workflow_run.actor.login }}
+          EVENT: ${{ github.event.workflow_run.event }}
+        run: python3 .github/scripts/discord_notify.py failure
+
+  announce:
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Announce on Discord
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.release.tag_name || inputs.tag }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_RELEASES_WEBHOOK }}
+          DISCORD_WEBHOOK_EXTRA: ${{ secrets.DISCORD_REPO_WEBHOOK }}
+        run: python3 .github/scripts/discord_notify.py release

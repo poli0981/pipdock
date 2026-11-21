@@ -8,12 +8,12 @@ By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
 ## Before you write code
 
-- **A bug** — [open an issue](https://github.com/poli0981/pipdock/issues/new/choose). The in-app
+- **A bug** — [open an issue](https://github.com/poli0981org/pipdock/issues/new/choose). The in-app
   *Report bug* button fills most of the form in for you.
 - **Something that gets in your way as a keyboard, screen-reader or high-contrast user** — see
   [ACCESSIBILITY.md](ACCESSIBILITY.md). That report does not need a diagnosis.
 - **A security problem** — do not open an issue; follow the [security policy](.github/SECURITY.md).
-- **A question or an idea** — [Discussions](https://github.com/poli0981/pipdock/discussions).
+- **A question or an idea** — [Discussions](https://github.com/poli0981org/pipdock/discussions).
 - **A feature** — please ask first. The design is written down in `docs/`, the feature list and its
   non-goals are in [`docs/PRD.md`](docs/PRD.md), and what is planned and why is in
   [`docs/ROADMAP.md`](docs/ROADMAP.md). A pull request that contradicts those will be asked to
@@ -68,11 +68,17 @@ cargo clippy --workspace --all-targets --locked -- -D warnings
 cargo test --workspace --locked
 ```
 
-A pull request needs five checks green before it can merge — `fmt · clippy · test`, `cargo audit`,
-`lint · typecheck · test · build`, `npm audit` and CodeQL for JavaScript/TypeScript. Several more
-run and are read before merging (`cargo deny`, the Tauri version lockstep, CodeQL for Rust and
-Actions, the real-engine integration tests, SonarQube Cloud). New code is expected to be covered by
-tests; the SonarQube gate asks for 80 % on new lines.
+```bash
+node scripts/check-licenses.mjs
+```
+
+A pull request needs eight checks green before it can merge — `fmt · clippy · test`, `cargo audit`,
+`cargo deny`, `lint · typecheck · test · build`, `npm audit`, `npm licences`, `tauri lockstep` and
+CodeQL for JavaScript/TypeScript. Several more run and are read before merging (CodeQL for Rust and
+Actions, the real-engine integration tests, SonarQube Cloud, Qodana). New code is expected to be
+covered by tests; the SonarQube gate asks for 80 % on new lines. A new dependency the app ships must
+be under a licence `deny.toml` allows — the two licence checks fail otherwise, and widening the list
+is a licensing decision, not a CI fix.
 
 ## What a pull request should look like
 

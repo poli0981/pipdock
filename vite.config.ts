@@ -35,10 +35,11 @@ function devCsp(): Plugin {
   }
 }
 
-// The frontend lives in ui/ per ARCHITECTURE §2, but package.json sits at the repo root so the
-// ops-repo `reusable-web-react.yml` — which has no working-directory input — can run `npm ci` and
-// `npm run build` unmodified. Hence root: './ui' with the bundle emitted to the repo-root dist/,
-// which is that workflow's default dist-dir.
+// The frontend lives in ui/ per ARCHITECTURE §2, but package.json sits at the repo root — first
+// because the ops repo's reusable CI workflow had no working-directory input, and since CI went
+// project-local (2026-11-21) because SonarCloud, Qodana, the scripts and Tauri's configuration all
+// assume it. Hence root: './ui' with the bundle emitted to the repo-root dist/, which is where
+// tauri.conf.json's frontendDist looks.
 export default defineConfig({
   root: './ui',
   plugins: [react(), tailwindcss(), devCsp()],
@@ -68,7 +69,7 @@ export default defineConfig({
     include: ['ui/src/**/*.test.{ts,tsx}'],
     root: fileURLToPath(new URL('.', import.meta.url)),
     // Off unless asked for (`npm run test:coverage`): sonar.yml imports the LCOV, and nothing
-    // else reads it, so the plain `npm test` the ops-repo reusable runs stays as fast as it was.
+    // else reads it, so the plain `npm test` ci-node.yml runs stays as fast as it was.
     coverage: {
       provider: 'v8',
       // `lcovonly`: `lcov` adds an HTML report beside the file Sonar reads.

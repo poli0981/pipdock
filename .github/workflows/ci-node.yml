@@ -1,11 +1,15 @@
-# Caller into the ops repo's React reusable, plus local jobs.
+# The frontend's checks, all project-local.
 #
-# The reusable runs Node 24, `npm ci`, then lint / typecheck / test when the matching npm script
-# exists, then the build. It has no `npm audit` step, so that gate lives here — see
-# docs/RELEASE-CI.md §1.
+# Until the move to poli0981org (2026-11-21) the `lint · typecheck · test · build` job was a caller
+# into the owner's personal ops repo — `poli0981/.github`'s reusable-web-react.yml, at `@main`,
+# unpinned. A project in the organization no longer runs a workflow another account can change, so
+# the job's steps live here, pinned like every other action in this repository. Two things went
+# with the reusable: the `pages: write` and `id-token: write` grants its always-skipped Pages job
+# forced on the caller, and the `dist` artifact nothing downloaded.
 #
-# It also has no working-directory input, which is why package.json sits at the repo root with
-# Vite configured `root: './ui'` (ARCHITECTURE §2).
+# package.json still sits at the repository root with Vite's `root: './ui'` (ARCHITECTURE §2). The
+# reusable's missing `working-directory` input was the original reason and is gone; SonarCloud,
+# Qodana, the scripts below and Tauri's own configuration all assume the root now.
 
 name: CI / Node
 
@@ -23,22 +27,37 @@ concurrency:
 
 jobs:
   web:
+    # A required check under exactly this name (RELEASE-CI.md §2): renaming it means changing the
+    # branch protection payload in the same breath.
     name: lint · typecheck · test · build
-    # The reusable declares a Pages-deploy job needing `pages: write` and `id-token: write`. It is
-    # skipped here (`deploy-pages: false`), but permissions are validated at startup regardless of
-    # `if:`, so a caller that grants less than the callee declares is rejected before it runs.
-    # Granted on this job only, not the workflow: the other jobs here never need to write.
-    permissions:
-      contents: read
-      pages: write
-      id-token: write
-    uses: poli0981/.github/.github/workflows/reusable-web-react.yml@main
-    with:
-      node-version: '26'
-      package-manager: npm
-      build-command: npm run build
-      dist-dir: dist
-      deploy-pages: false
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
 
   audit:
     name: npm audit
@@ -46,12 +65,12 @@ jobs:
     timeout-minutes: 10
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
       - name: Setup Node.js
-        uses: actions/setup-node@v7
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '26'
           cache: npm
@@ -63,13 +82,38 @@ jobs:
       - name: Audit
         run: npm audit --audit-level=high
 
+  licences:
+    # The npm half of what deny.toml does for the crates: every package the production build can
+    # bundle must carry a GPL-3.0-compatible licence (THIRD-PARTY-NOTICES, SECURITY §7). It reads
+    # package-lock.json and installs nothing.
+    name: npm licences
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+
+      # The checker tests itself with Node's built-in runner, so it needs no dependency either.
+      - name: Test the checker
+        run: node --test scripts/*.test.mjs
+
+      - name: Production dependencies under GPL-3.0-compatible licences
+        run: node scripts/check-licenses.mjs
+
   lockstep:
     name: tauri lockstep
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
       - name: Checkout
-        uses: actions/checkout@v7
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 

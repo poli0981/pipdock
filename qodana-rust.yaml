@@ -1,0 +1,53 @@
+# Qodana for the Rust half of the repository.
+#
+# One of two Qodana Cloud projects, each with its own token — QODANA_TOKEN_RUST for this file,
+# QODANA_TOKEN_TS_JS for qodana-js.yaml — which is JetBrains' layout for a monorepo: every part is
+# a project of its own, analysed by its own linter, and the two runs never report the same file.
+# .github/workflows/qodana.yml runs both, and passes `--linter qodana-rust` there rather than here,
+# so the linter's version is the action's and moves when Dependabot moves the action.
+#
+# **What this run cannot see.** The linter is RustRover in a Linux container (it has no native
+# mode), so code behind `#[cfg(windows)]` — the PEP 514 registry, Job Objects, the `py` launcher —
+# is inactive to it and is not analysed. Clippy, CodeQL and SonarQube Cloud run on Windows and
+# cover it; this run adds RustRover's inspections over the code every platform compiles.
+
+version: "1.0"
+
+profile:
+  name: qodana.recommended
+
+# Tauri's build scripts link GTK and WebKitGTK on Linux. Without their development packages those
+# scripts fail, and RustRover reads macro output and build-script results through them. The
+# container is Debian; when it cannot install as root the analysis still runs, with less resolved.
+bootstrap: |
+  set -eu
+  if command -v apt-get >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
+    apt-get update -qq
+    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
+      pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
+      libssl-dev libxdo-dev >/dev/null
+  else
+    echo "bootstrap: not root or no apt-get; Tauri's Linux build scripts will not resolve"
+  fi
+
+# Everything that is not Rust belongs to qodana-js.yaml or to no linter at all. Fixtures are
+# captured engine output and deliberately broken sample projects; snapshots are the CLI's goldens.
+exclude:
+  - name: All
+    paths:
+      - .github
+      - changelog
+      - coverage
+      - crates/pipdock-cli/tests/snapshots
+      - crates/pipdock-core/tests/fixtures
+      - dist
+      - docs
+      - legal
+      - node_modules
+      - screenshot
+      - spikes
+      - src-tauri/gen
+      - src-tauri/icons
+      - target
+      - tools
+      - ui
