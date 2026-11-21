@@ -211,8 +211,116 @@ pub struct Candidate {
 /// Sources are queried independently and merged by canonical identity, so a Chocolatey shim and
 /// the installation it points at collapse into one entry (SP-6). The **first** source to report a
 /// path wins, and sources are ordered so the more authoritative one is asked first.
+///
+/// Discovery alone: interpreters a person added are not here. Code Health's choice of a Python to
+/// build its tools venv with reads this, and should choose among installations, not among whatever
+/// the user pointed the Environments screen at.
 pub async fn scan() -> Vec<Candidate> {
-    scan_reporting(&|_| {}).await
+    scan_reporting(&[], &|_| {}).await
+}
+
+/// Discovery plus the interpreters a person added (*Browse…*, `pipdock env add`), for the two
+/// listings — the Environments screen and `pipdock env list`.
+pub async fn scan_with(manual: &[PathBuf]) -> Vec<Candidate> {
+    scan_reporting(manual, &|_| {}).await
+}
+
+/// Refuse an interpreter path a person supplied before anything runs it (SECURITY §2).
+///
+/// Discovery finds interpreters where Python installs them. A path from *Browse…*, `pipdock env
+/// add`, `env use` or `--env` can name anything, and the probe **runs** the file — so this is the
+/// enforcement point, not the picker, which only suggests:
+///
+/// - it must exist and be a file, or there is nothing to probe;
+/// - its name must be `python.exe`, `python3.exe` or `python3.12.exe` (`python`, `python3`, … off
+///   Windows), so that adding an interpreter is not a way to start any program with PipDock's
+///   arguments. `pythonw.exe` is refused too: it has no console, the probe's output would be empty,
+///   and the failure would read as a broken environment instead of the wrong file;
+/// - it must not be one of PipDock's own environments — Code Health's tools venv or the Security
+///   tab's audit venv — which PipDock builds and replaces itself, and which a user's update would
+///   quietly break. The check is on canonical paths, or `..` would walk past it.
+///
+/// Returns the canonical path without Windows' verbatim prefix, which is what is stored and shown.
+///
+/// # Errors
+/// `PD-ENV-001` for each refusal, the message saying which. A missing file reads exactly as the
+/// probe's own "no interpreter at …", so a caller that validates first changes no output.
+pub fn validate_interpreter(path: &Path, app_data: &Path) -> Result<PathBuf> {
+    let refuse = |why: String| PdError::new(Code::EnvInterpreterMissing, why);
+    if !path.is_file() {
+        return Err(refuse(format!("no interpreter at {}", path.display())));
+    }
+    if !is_python_name(path) {
+        return Err(refuse(format!(
+            "{} is not a Python interpreter PipDock will run: the file has to be python.exe \
+             (or python3.exe, python3.12.exe)",
+            path.display()
+        )));
+    }
+    let canonical = path
+        .canonicalize()
+        .map(crate::health::project::plain)
+        .map_err(|e| refuse(format!("cannot read {}: {e}", path.display())))?;
+    for own in [
+        crate::health::tools_dir(app_data),
+        crate::health::audit_dir(app_data),
+    ] {
+        if let Ok(own) = own.canonicalize().map(crate::health::project::plain)
+            && canonical.starts_with(&own)
+        {
+            return Err(refuse(format!(
+                "{} is one of PipDock's own environments, which it manages itself",
+                path.display()
+            )));
+        }
+    }
+    Ok(canonical)
+}
+
+/// `python`, `python3` or `python3.12`, with `.exe` on Windows; any case.
+fn is_python_name(path: &Path) -> bool {
+    let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
+        return false;
+    };
+    let name = name.to_ascii_lowercase();
+    let stem = if cfg!(windows) {
+        match name.strip_suffix(".exe") {
+            Some(stem) => stem,
+            None => return false,
+        }
+    } else {
+        name.as_str()
+    };
+    let Some(version) = stem.strip_prefix("python") else {
+        return false;
+    };
+    version.is_empty()
+        || (version.split('.').count() <= 2
+            && version
+                .split('.')
+                .all(|part| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit())))
+}
+
+/// An interpreter path, or the interpreter inside an environment directory (CLI-SPEC §2).
+///
+/// `<dir>\Scripts\python.exe` on Windows, `<dir>/bin/python` elsewhere; anything else comes back
+/// unchanged, for [`validate_interpreter`] to refuse with the path the person gave.
+#[must_use]
+pub fn interpreter_in(path: &Path) -> PathBuf {
+    if path.is_file() {
+        return path.to_path_buf();
+    }
+    let exe: PathBuf = if cfg!(windows) {
+        ["Scripts", "python.exe"].iter().collect()
+    } else {
+        ["bin", "python"].iter().collect()
+    };
+    let candidate = path.join(&exe);
+    if candidate.is_file() {
+        candidate
+    } else {
+        path.to_path_buf()
+    }
 }
 
 /// Where a discovery sweep currently is.
@@ -260,11 +368,21 @@ pub enum ScanPhase {
 /// How many sources a sweep reads, for the `total` a caller renders against.
 const SCAN_SOURCES: usize = 5;
 
-/// Discover environments, reporting progress as each source is read.
+/// Discover environments, reporting progress as each source is read, and append the interpreters a
+/// person added.
+///
+/// `manual` comes last, so an interpreter discovery also finds keeps the discovered source — the
+/// chip says where Python put it, which is the more useful fact. Unlike every discovered path, a
+/// manual one is kept **when its file is gone**: dropping it would make an entry the user added
+/// vanish without a word, and with no row there would be nothing to remove it from. Its probe then
+/// fails with `PD-ENV-001`, whose remedy is exactly that removal.
 ///
 /// The callback is synchronous and must not block: it is called between sources, on the task
 /// driving the scan.
-pub async fn scan_reporting(report: &(dyn Fn(ScanProgress) + Sync)) -> Vec<Candidate> {
+pub async fn scan_reporting(
+    manual: &[PathBuf],
+    report: &(dyn Fn(ScanProgress) + Sync),
+) -> Vec<Candidate> {
     let step = |phase: ScanPhase, done: usize| ScanProgress {
         phase,
         done,
@@ -299,8 +417,23 @@ pub async fn scan_reporting(report: &(dyn Fn(ScanProgress) + Sync)) -> Vec<Candi
                 .or_insert(Candidate { path, source });
         }
     }
+    merge_manual(found, manual)
+}
 
-    found.into_values().collect()
+/// Discovered candidates in canonical order, then the manual ones no source already reported, in
+/// the order they were added.
+fn merge_manual(found: BTreeMap<String, Candidate>, manual: &[PathBuf]) -> Vec<Candidate> {
+    let mut seen: std::collections::HashSet<String> = found.keys().cloned().collect();
+    let mut out: Vec<Candidate> = found.into_values().collect();
+    for path in manual {
+        if seen.insert(canonical_interpreter(path)) {
+            out.push(Candidate {
+                path: path.clone(),
+                source: EnvSource::Manual,
+            });
+        }
+    }
+    out
 }
 
 /// PEP 514 registry entries: `HKCU`, and both views of `HKLM`.
@@ -463,6 +596,176 @@ mod tests {
                 "probe must stay stdlib-only: {forbidden}"
             );
         }
+    }
+
+    fn scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pd-envs-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("create scratch dir");
+        dir
+    }
+
+    /// An empty file at `dir/rel`, which is all [`validate_interpreter`] looks at — it never runs it.
+    fn touch(dir: &Path, rel: &str) -> PathBuf {
+        let path = dir.join(rel);
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("parents");
+        std::fs::write(&path, "").expect("write");
+        path
+    }
+
+    fn exe(stem: &str) -> String {
+        if cfg!(windows) {
+            format!("{stem}.exe")
+        } else {
+            stem.to_owned()
+        }
+    }
+
+    #[test]
+    fn only_a_file_named_like_python_is_accepted() {
+        for name in ["python", "PYTHON", "python3", "python3.12", "Python3.14"] {
+            assert!(is_python_name(Path::new(&exe(name))), "{name}");
+        }
+        // pythonw has no console; the rest are other programs, or versions that are not versions.
+        for name in [
+            "pythonw",
+            "notepad",
+            "py",
+            "python3.12.1",
+            "python3.",
+            "python.3",
+            "python3x",
+            "mypython",
+        ] {
+            assert!(!is_python_name(Path::new(&exe(name))), "{name}");
+        }
+        if cfg!(windows) {
+            assert!(
+                !is_python_name(Path::new("python.bat")),
+                "a script is not an exe"
+            );
+            assert!(
+                !is_python_name(Path::new("python")),
+                "Windows needs the .exe"
+            );
+        }
+    }
+
+    #[test]
+    fn a_missing_interpreter_reads_exactly_as_the_probe_says_it() {
+        // The CLI's error-envelope goldens pin this sentence for `--env C:/definitely/not/here`.
+        let err = validate_interpreter(Path::new("C:/definitely/not/here"), &scratch("missing"))
+            .expect_err("nothing there");
+        assert_eq!(err.code, Code::EnvInterpreterMissing);
+        assert_eq!(err.message, "no interpreter at C:/definitely/not/here");
+    }
+
+    #[test]
+    fn another_program_is_refused_before_anything_runs_it() {
+        let dir = scratch("other");
+        let notepad = touch(&dir, &exe("notepad"));
+        let err = validate_interpreter(&notepad, &dir.join("data")).expect_err("not python");
+        assert_eq!(err.code, Code::EnvInterpreterMissing);
+        assert!(
+            err.message.contains("is not a Python interpreter"),
+            "{}",
+            err.message
+        );
+    }
+
+    #[test]
+    fn a_python_is_accepted_and_comes_back_canonical_and_plain() {
+        let dir = scratch("ok");
+        let python = touch(&dir, &format!("proj/.venv/Scripts/{}", exe("python")));
+        let got = validate_interpreter(&python, &dir.join("data")).expect("a python");
+        assert!(
+            !got.display().to_string().starts_with(r"\\?\"),
+            "no verbatim prefix: {}",
+            got.display()
+        );
+        assert_eq!(
+            got,
+            crate::health::project::plain(python.canonicalize().expect("canonical"))
+        );
+    }
+
+    #[test]
+    fn pipdocks_own_environments_are_refused_even_through_dot_dot() {
+        let dir = scratch("own");
+        let app_data = dir.join("data");
+        for own in ["tools", "audit"] {
+            let python = touch(&app_data, &format!("{own}/.venv/Scripts/{}", exe("python")));
+            let err = validate_interpreter(&python, &app_data).expect_err("PipDock's own");
+            assert!(err.message.contains("PipDock's own"), "{}", err.message);
+
+            // Reached the long way round: canonicalized before the comparison, or `..` walks past.
+            let sideways = app_data
+                .join("elsewhere")
+                .join("..")
+                .join(own)
+                .join(".venv")
+                .join("Scripts")
+                .join(exe("python"));
+            std::fs::create_dir_all(app_data.join("elsewhere")).expect("dir");
+            let err = validate_interpreter(&sideways, &app_data).expect_err("still PipDock's own");
+            assert!(err.message.contains("PipDock's own"), "{}", err.message);
+        }
+        // A sibling whose name merely starts with "tools" is someone else's.
+        let neighbour = touch(&app_data, &format!("tools-mine/{}", exe("python")));
+        validate_interpreter(&neighbour, &app_data).expect("not inside tools");
+    }
+
+    #[test]
+    fn an_environment_directory_resolves_to_its_interpreter() {
+        let dir = scratch("dir");
+        let inside = if cfg!(windows) {
+            format!("venv/Scripts/{}", exe("python"))
+        } else {
+            "venv/bin/python".to_owned()
+        };
+        let python = touch(&dir, &inside);
+        assert_eq!(interpreter_in(&dir.join("venv")), python);
+        assert_eq!(interpreter_in(&python), python, "a file is itself");
+        let nothing = dir.join("nothing-here");
+        assert_eq!(
+            interpreter_in(&nothing),
+            nothing,
+            "left for the validator to refuse"
+        );
+    }
+
+    #[test]
+    fn manual_entries_come_last_and_never_shadow_discovery() {
+        let discovered = PathBuf::from(r"C:\Python314\python.exe");
+        let mut found = BTreeMap::new();
+        found.insert(
+            canonical_interpreter(&discovered),
+            Candidate {
+                path: discovered.clone(),
+                source: EnvSource::Registry,
+            },
+        );
+        let manual = [
+            PathBuf::from(r"D:\work\proj\myenv\Scripts\python.exe"),
+            // The same interpreter the registry reported, in other casing: discovery keeps it.
+            PathBuf::from(r"c:\python314\python.exe"),
+            // Added twice, listed once.
+            PathBuf::from(r"D:\work\proj\myenv\Scripts\python.exe"),
+            // Gone from disk: still listed, so it can be removed.
+            PathBuf::from(r"E:\gone\python.exe"),
+        ];
+        let merged = merge_manual(found, &manual);
+        let sources: Vec<_> = merged.iter().map(|c| (c.path.clone(), c.source)).collect();
+        let mut expected = vec![(discovered, EnvSource::Registry)];
+        if !cfg!(windows) {
+            // Off Windows the casing differs, so the second is its own interpreter.
+            expected.push((manual[0].clone(), EnvSource::Manual));
+            expected.push((manual[1].clone(), EnvSource::Manual));
+        } else {
+            expected.push((manual[0].clone(), EnvSource::Manual));
+        }
+        expected.push((manual[3].clone(), EnvSource::Manual));
+        assert_eq!(sources, expected);
     }
 
     #[test]
