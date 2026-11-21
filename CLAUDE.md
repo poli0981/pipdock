@@ -1,7 +1,7 @@
 # PipDock — working notes for Claude
 
 Windows GUI + CLI for bulk-managing Python packages. Tauri 2 + Rust core + React 19.
-Repo `poli0981org/pipdock` (moved from `poli0981/pipdock` on 2026-11-21) · GPL-3.0-only · **Status: 1.5.0. M1, M2, Phase 3, Phase 4, the P1 wave, the Security tab and the dependency view are all complete.** 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette; 1.2.0 added the Security tab (PRD P1-1); 1.3.0 added the dependency view (P1-6), which is a *mode of the package screen* rather than a tab and adds no runtime dependency — read its ROADMAP record before touching `graph/`, because the shape of the screen is a consequence of measurements rather than of taste. 1.4.0 added no feature: it is the audit release — about 170 findings, every Critical and High fixed with a test that failed first, and the rest in ROADMAP's **Audit backlog**, with file:line and a reason each. Read that table before starting a slice; most of what is wrong with the codebase is already written down there. 1.5.0 added no feature either: it is the accessibility pass (backlog U45, U47, U48) — focus, names, keyboard patterns and high contrast, axe-core in the suite, and `ACCESSIBILITY.md`, which is a *record of what was tested* and has to be kept true like one. **What is left of Post-1.0 is one thing** — the scheduled check (P1-7) — and `docs/ROADMAP.md` now carries the survey of what blocks it, which for two versions it was cited for and did not contain: no toast component, no notification/autostart/tray plugin, nothing on a timer, and no surface that can report a background failure.
+Repo `poli0981org/pipdock` (moved from `poli0981/pipdock` on 2026-11-21) · GPL-3.0-only · **Status: 1.6.0, and in maintenance mode since that release.** M1, M2, Phase 3, Phase 4, the P1 wave, the Security tab and the dependency view are all complete, and 1.6.0 closed the last P0 gap, *Browse…* (`env_add_manual`). **Read ROADMAP's *Maintenance mode* section before starting anything**: dependency, security, major-upgrade, defect and wording work is taken; features are not, and `triage.yml` closes requests for them. 1.0.0 shipped the release pipeline, a protected `main`, the manual charter and legal documents that match the code; 1.1.0 added pin auto-suggest, requirements export/import, the cache manager and the `Ctrl+K` palette; 1.2.0 added the Security tab (PRD P1-1); 1.3.0 added the dependency view (P1-6), which is a *mode of the package screen* rather than a tab and adds no runtime dependency — read its ROADMAP record before touching `graph/`, because the shape of the screen is a consequence of measurements rather than of taste. 1.4.0 added no feature: it is the audit release — about 170 findings, every Critical and High fixed with a test that failed first, and the rest in ROADMAP's **Audit backlog**, with file:line and a reason each. Read that table before starting a slice; most of what is wrong with the codebase is already written down there. 1.5.0 added no feature either: it is the accessibility pass (backlog U45, U47, U48) — focus, names, keyboard patterns and high contrast, axe-core in the suite, and `ACCESSIBILITY.md`, which is a *record of what was tested* and has to be kept true like one. 1.6.0 added *Add interpreter…* (GUI) and `pipdock env add`/`env remove` (CLI) over a `manual_envs` table and `envs::validate_interpreter`, moved the repository to the poli0981org organization with CI that calls nothing outside it, and put the project in maintenance mode. **Nothing is left of Post-1.0**: the scheduled check (P1-7) was closed as not planned, for the reasons ROADMAP's survey of it gives — no toast component, no notification/autostart/tray plugin, nothing on a timer, and no surface that can report a background failure.
 
 ## Read the docs before changing anything
 
@@ -157,10 +157,11 @@ wrong; the record says why). P1 closed **P0-10**: pip's version is on every Envi
 screen, the gated `ruff --fix` — and are recorded in ROADMAP. P2 touched no `NOT_YET` entry: it is CLI-only on purpose, so P3's `health_run` owns the
 implicit sync rather than the frontend getting two ways to reach one operation.
 
-**`NOT_YET` is one**: `env_add_manual` — *Browse…*, and the next slice. `logs_tail` shipped in
-1.4.0 together with the log it tails. `NOT_YET` in `src-tauri/src/lib.rs` is the authority and
-three tests keep it honest in both directions — this file has said "four", "two" and "two" in
-different paragraphs at once, each true when written and none updated.
+**`NOT_YET` is empty since 1.6.0**: `env_add_manual` shipped with *Add interpreter…*, beside a
+second command, `env_remove_manual`. `NOT_YET` in `src-tauri/src/lib.rs` is the authority and three
+tests keep it honest in both directions — this file has said "four", "two" and "two" in different
+paragraphs at once, each true when written and none updated. A future command that is declared
+before it is built goes back on that list, not into a sentence here.
 
 **1.4.0, the audit release, left these behind** — most found by running rather than by reading, and each
 rule below backed by a test where a test can hold it:
@@ -238,9 +239,10 @@ Three rules P1 left behind, all found by running rather than reading:
   with, so every venv built from a uv-managed, Debian, Homebrew or Fedora Python refused every
   mutation. Anything reading a path out of `sysconfig` inside a venv is asking about the base.
 - **`envs::venv_scan` matches exactly `.venv`, `venv`, `env`, `.env`.** A scratch venv named
-  anything else is invisible to `env list` and to the GUI, and `env_add_manual` (*Browse…*) is
-  still owed — so hand-verification of any environment feature needs one of those four names in
-  the working directory.
+  anything else is not *discovered*; since 1.6.0 it can be *added* — *Add interpreter…* in the GUI,
+  `pipdock env add` in the CLI — and that is how hand-verification reaches a venv outside the
+  working directory. A path a person supplies goes through `envs::validate_interpreter` (named like
+  Python, not PipDock's own venvs) before anything runs it; the picker is not the check.
 - **Every pip below 22.2 is broken on Python 3.12+** (`distutils`, `pkgutil.ImpImporter`), so the
   one case *Upgrade pip* exists for is also a pip that cannot run. `upgrade_pip` falls back to
   `ensurepip`, and decides by asking `pip --version` rather than matching a traceback.
@@ -310,7 +312,7 @@ Things worth knowing before you change any of it:
 
 - **`cargo test` fails when `ui/src/ipc/generated.ts` is stale.** Fix with
   `cargo run -p xtask -- bindings`; the failure names that command and the first differing line.
-- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 68 snapshots at 1.4.0) are the CLI's output
+- **The L4 goldens (`crates/pipdock-cli/tests/golden.rs`, 70 snapshots at 1.6.0) are the CLI's output
   contract.** A diff there is a real behaviour change — re-bless deliberately, never reflexively.
   They are what made the `core::flow` refactor provably behaviour-preserving.
 - **Two tests hold the wire format**: `Code::ALL` must serialize as `as_str()`, and no
