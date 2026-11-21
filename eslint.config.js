@@ -116,9 +116,20 @@ export default tseslint.config(
   // `scripts/**` is here because `recommendedTypeChecked` above is unscoped: without this,
   // adding one `.mjs` build script makes `eslint .` fail outright rather than report a lint.
   {
-    files: ['*.js', '*.ts', 'scripts/**/*.{js,mjs}'],
+    files: ['*.js', '*.ts', 'scripts/**/*.{js,mjs}', '.github/scripts/**/*.{js,cjs,mjs}'],
     ...tseslint.configs.disableTypeChecked,
     // Node globals: these run under node, not in the webview.
     languageOptions: { globals: { console: 'readonly', process: 'readonly' } },
+  },
+
+  // The triage helper beside the workflows is CommonJS: actions/github-script loads it with
+  // `require`, and its test does the same so it tests what the workflow runs.
+  {
+    files: ['.github/scripts/**/*.cjs'],
+    languageOptions: {
+      sourceType: 'commonjs',
+      globals: { require: 'readonly', module: 'writable' },
+    },
+    rules: { '@typescript-eslint/no-require-imports': 'off' },
   },
 )

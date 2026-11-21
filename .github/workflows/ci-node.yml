@@ -103,9 +103,10 @@ jobs:
         with:
           node-version: '26'
 
-      # The checker tests itself with Node's built-in runner, so it needs no dependency either.
-      - name: Test the checker
-        run: node --test scripts/*.test.mjs
+      # The repository's own CI scripts — this checker, and the maintenance-mode triage beside the
+      # workflows — test themselves with Node's built-in runner, so they need no dependency either.
+      - name: Test the CI scripts
+        run: node --test scripts/*.test.mjs .github/scripts/*.test.cjs
 
       - name: Production dependencies under GPL-3.0-compatible licences
         run: node scripts/check-licenses.mjs

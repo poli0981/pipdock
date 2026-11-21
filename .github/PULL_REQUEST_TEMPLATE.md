@@ -1,7 +1,20 @@
 <!--
 One pull request is one slice: a single thing, taken deep, with its tests. CONTRIBUTING.md has the
 details. Delete the sections that do not apply.
+
+PipDock is in maintenance mode (CONTRIBUTING.md, "Scope in maintenance mode"): a pull request that
+adds a feature is closed automatically, and so is one titled `feat:`.
 -->
+
+## What kind of change
+
+- [ ] A bug fix
+- [ ] A UI/UX defect
+- [ ] An accessibility barrier
+- [ ] Wording or a translation (English or Vietnamese)
+- [ ] A dependency, runtime or toolchain update
+- [ ] A security fix
+- [ ] Documentation
 
 ## What this changes
 

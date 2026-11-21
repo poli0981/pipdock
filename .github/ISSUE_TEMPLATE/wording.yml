@@ -1,0 +1,52 @@
+name: Wording or translation problem
+description: Text in PipDock that is wrong, misleading, misspelt, or reads badly in English or Vietnamese — Câu chữ hoặc bản dịch sai, gây hiểu nhầm, sai chính tả hay không tự nhiên
+title: "[Wording]: "
+labels: ["i18n", "triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        PipDock is in maintenance mode, and fixing words is part of it: a sentence that misleads, a
+        spelling mistake that changes the meaning, or a translation that does not sound like
+        Vietnamese as people speak it is a bug worth a report. Quote the text exactly as it
+        appears — that is how it is found in the catalogues.
+
+        PipDock đang ở giai đoạn bảo trì, và sửa câu chữ là một phần việc đó: một câu dễ gây hiểu
+        nhầm, lỗi chính tả làm sai nghĩa, hay bản dịch không giống cách người Việt vẫn nói đều đáng
+        được báo. Hãy chép nguyên văn đoạn chữ như nó hiện trên màn hình.
+  - type: dropdown
+    id: language
+    attributes:
+      label: Which language? / Ngôn ngữ nào?
+      options:
+        - "English"
+        - "Tiếng Việt"
+        - "Both / Cả hai"
+    validations:
+      required: true
+  - type: textarea
+    id: current
+    attributes:
+      label: The text as it is now / Đoạn chữ hiện tại
+      description: Exactly as it appears, and where — the screen, the dialog, or the CLI command.
+      placeholder: "Environments → the button beside Rescan: \"…\""
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What is wrong with it / Vấn đề là gì
+      description: Misleading, wrong, misspelt, unnatural — and, if it misleads, what you understood from it.
+    validations:
+      required: true
+  - type: textarea
+    id: suggestion
+    attributes:
+      label: A better wording, if you have one / Cách viết tốt hơn, nếu có
+  - type: input
+    id: pd-version
+    attributes:
+      label: PipDock version
+      placeholder: "x.y.z — shown under About → This build"
+    validations:
+      required: true
