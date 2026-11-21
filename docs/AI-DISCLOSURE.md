@@ -1,6 +1,6 @@
 # AI disclosure
 
-*Last updated 2026-10-17, for PipDock 1.4.0.*
+*Last updated 2026-11-21, for PipDock 1.6.0.*
 
 **PipDock was written with substantial help from an AI coding assistant, under human review.** This
 page says which model, what it did, what it did not do, and how you can check any of it yourself.
@@ -13,10 +13,10 @@ commit trailers. Nothing here changes the licence or the warranty position — s
 
 | | |
 |---|---|
-| Model | **Claude Opus 5** — first commit through 1.3.0 · **Claude Opus 5.5** — 1.4.0 and the maintenance after it, through 2026-11-04 · **Claude Fable 5.2** — from 2026-11-10, which is 1.5.0 |
+| Model | **Claude Opus 5** — first commit through 1.3.0 · **Claude Opus 5.5** — 1.4.0 and the maintenance after it, through 2026-11-04 · **Claude Fable 5.2** — 2026-11-10, which is 1.5.0 · **Claude Opus 5.5** — 2026-11-21, the move to poli0981org and 1.6.0 |
 | Vendor | **Anthropic** ([anthropic.com](https://www.anthropic.com)) |
 | Interface | [Claude Code](https://claude.com/claude-code), Anthropic's CLI/desktop coding agent |
-| Period | 2026-07-27 → 2026-08-21 (first commit to 1.3.0) · 2026-10-16 → 2026-10-17 (1.4.0) · 2026-10-20 → 2026-11-04 (CI and dependency maintenance) · 2026-11-10 (1.5.0) |
+| Period | 2026-07-27 → 2026-08-21 (first commit to 1.3.0) · 2026-10-16 → 2026-10-17 (1.4.0) · 2026-10-20 → 2026-11-04 (CI and dependency maintenance) · 2026-11-10 (1.5.0) · 2026-11-21 (the move to poli0981org, 1.6.0) |
 
 The trailer on each commit records which model produced it, and `git log` is the authoritative
 history — the table above is a summary of it, not a substitute.
@@ -48,12 +48,14 @@ load-bearing, and all four caught real defects the review-by-reading did not:
    described: all three Code Health tools exit non-zero on findings and vulture uses 3; deptry
    reports a *module* name rather than the distribution providing it; ruff's rule URL is keyed by
    rule name, not code. Each is now pinned by a test because a document was not enough.
-3. **CI is a second reviewer that cannot be talked round.** Five checks block every pull
-   request — formatting, clippy and the test suite; `cargo audit`; `npm audit`; lint, typecheck,
-   tests and build of the frontend; and CodeQL for JavaScript/TypeScript — and `main` is protected
-   so that the owner cannot bypass them. Integration tests against real pip and uv in disposable
-   venvs run on every pull request that touches what they cover, and `cargo deny`, CodeQL for Rust
-   and Actions, and a Tauri version check run on all of them without being required.
+3. **CI is a second reviewer that cannot be talked round.** Eight checks block every pull
+   request — formatting, clippy and the test suite; `cargo audit`; `cargo deny`; `npm audit`; the
+   npm licence check; the Tauri version check; lint, typecheck, tests and build of the frontend;
+   and CodeQL for JavaScript/TypeScript — and `main` is protected so that the owner cannot bypass
+   them. Integration tests against real pip and uv in disposable venvs run on every pull request
+   that touches what they cover, and CodeQL for Rust and Actions, SonarQube Cloud and Qodana run
+   on all of them without being required. Since 2026-11-21 every one of those workflows lives in
+   this repository; none calls code another account can change.
 4. **The built application was driven by hand before release.** Before 1.0.0 the owner did it —
    on a real machine, in Windows Sandbox and in a Windows 10 VM — following `docs/TESTING.md` §4's
    charter, and several defects were found that way and only that way. For 1.4.0 the assistant
@@ -74,7 +76,12 @@ load-bearing, and all four caught real defects the review-by-reading did not:
   the assistant carried it out under the same two conditions. The owner's own keyboard and
   Narrator testing of 1.4.0 is theirs and is recorded as theirs in `ACCESSIBILITY.md`; the
   assistant cannot run a screen reader, and that file says which checks were a person's and which
-  were a machine's.
+  were a machine's. 1.6.0 was released the same way again. Moving the repository to the
+  poli0981org organization and putting PipDock in maintenance mode were the owner's decisions,
+  and the transfer itself was the owner's own action; the owner then approved a plan naming every
+  outward step — the two pull requests, the change to `main`'s required checks, the tag, the
+  published release, the announcement in Discussions, the repository description, the new labels
+  and the wiki — and the assistant carried it out under the same two conditions.
 - **Anything requiring a legal or security judgment** was raised for a decision rather than taken —
   for example the PEP 668 override's default, and whether a `mailto:` scheme belonged in the
   browser-launch allowlist.
