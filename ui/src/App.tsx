@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { isBrowserShortcut } from '@/components/browserKeys'
@@ -34,7 +34,7 @@ import {
  * hand-maintained negation of every key above it, so adding a screen meant editing two places and
  * forgetting the second showed both at once. Tabs with no entry fall through to the placeholder.
  */
-const SCREENS: Partial<Record<NavKey, React.ReactNode>> = {
+const SCREENS: Partial<Record<NavKey, ReactNode>> = {
   environments: <PdEnvironments />,
   installed: <PdPackages mode="installed" />,
   updates: <PdPackages mode="updates" />,

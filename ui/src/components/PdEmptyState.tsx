@@ -6,6 +6,8 @@
  * also why it passes the JSX-literal rule as a template expression rather than bare text.
  */
 
+import type { ReactNode } from 'react'
+
 interface PdEmptyStateProps {
   /** Defaults to the terminal caret the rest of the app uses for a quiet statement of fact. */
   glyph?: string
@@ -14,7 +16,7 @@ interface PdEmptyStateProps {
   /** Optional second line, one shade quieter. */
   hint?: string
   /** Optional single action, per §7. */
-  action?: React.ReactNode
+  action?: ReactNode
 }
 
 export function PdEmptyState({ glyph = '▸', message, hint, action }: PdEmptyStateProps) {

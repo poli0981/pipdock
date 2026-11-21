@@ -16,19 +16,21 @@ version: "1.0"
 profile:
   name: qodana.recommended
 
-# Tauri's build scripts link GTK and WebKitGTK on Linux. Without their development packages those
-# scripts fail, and RustRover reads macro output and build-script results through them. The
-# container is Debian; when it cannot install as root the analysis still runs, with less resolved.
+# **The container runs as the runner's user, not root**, so nothing can be installed into it — and
+# that includes the toolchain rust-toolchain.toml pins: rustup writes under /usr/local/rustup,
+# which root owns, so `cargo metadata` failed with "Permission denied", RustRover loaded no Cargo
+# project, and the first run reported **0 problems after analysing nothing** (2026-11-21). The job's
+# own checkout is writable, so the bootstrap points *that copy* at the toolchain the image ships;
+# the repository's pin is untouched. (GTK and WebKitGTK cannot be installed either, so Tauri's
+# Linux build scripts do not resolve; that touches macro expansion in src-tauri, not the analysis
+# of the code around it.)
 bootstrap: |
   set -eu
-  if command -v apt-get >/dev/null 2>&1 && [ "$(id -u)" = "0" ]; then
-    apt-get update -qq
-    DEBIAN_FRONTEND=noninteractive apt-get install -y -qq --no-install-recommends \
-      pkg-config libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev \
-      libssl-dev libxdo-dev >/dev/null
-  else
-    echo "bootstrap: not root or no apt-get; Tauri's Linux build scripts will not resolve"
-  fi
+  shipped=$(rustup toolchain list | grep -m1 'default' | cut -d' ' -f1 || true)
+  if [ -z "$shipped" ]; then shipped=$(rustup toolchain list | head -n1 | cut -d' ' -f1); fi
+  printf '[toolchain]\nchannel = "%s"\n' "$shipped" > rust-toolchain.toml
+  echo "bootstrap: analysing with the image's $shipped instead of the pinned toolchain"
+  cargo metadata --format-version 1 --no-deps > /dev/null && echo "bootstrap: cargo metadata works"
 
 # Everything that is not Rust belongs to qodana-js.yaml or to no linter at all. Fixtures are
 # captured engine output and deliberately broken sample projects; snapshots are the CLI's goldens.

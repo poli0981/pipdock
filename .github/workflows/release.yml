@@ -107,8 +107,12 @@ jobs:
           key: ${{ runner.os }}-cargo-release-${{ hashFiles('**/Cargo.lock', 'rust-toolchain.toml') }}
           restore-keys: ${{ runner.os }}-cargo-release-
 
+      # No install script runs: the only package in the lockfile that has one is fsevents, which
+      # is macOS-only, and a lifecycle script is how a compromised dependency runs on the runner
+      # (SonarCloud githubactions:S6505). The bundle does not need them: Tauri's CLI arrives as
+      # an optional platform package, not a download in a postinstall.
       - name: Install frontend dependencies
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       # One script owns the recipe (`package.json` → `bundle`), so the workflow cannot drift
       # from what a developer runs locally. It stages the CLI sidecar, then bundles with the

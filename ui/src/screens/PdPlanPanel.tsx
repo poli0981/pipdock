@@ -153,6 +153,10 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
     forced.flatMap((f) => (f.blockers ?? []).map((b) => b.by ?? b.constraint)),
   ).size
   const needsDecisions = step?.step === 'needsDecisions'
+  // Read where the narrowing happens rather than through `needsDecisions`: TypeScript follows an
+  // aliased condition back to `step`, but not every reader does, and Qodana's WebStorm engine
+  // reported `step.roundsRemaining` below as a possible null (2026-11-21).
+  const roundsRemaining = step?.step === 'needsDecisions' ? step.roundsRemaining : null
   const exhausted = step?.step === 'roundsExhausted'
   const nothingToDo = isRollback ? preview !== null && rollbackOps === 0 : step?.step === 'nothing'
   const confirmable = isRollback ? preview !== null && rollbackOps > 0 : step !== null && step.step !== 'nothing'
@@ -193,11 +197,11 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
 
         {/* The round counter UI-SPEC §4 now requires. `MAX_CONFLICT_ROUNDS` existed in core with
             nothing surfacing it, so a user could hit the cap unwarned. */}
-        {needsDecisions ? (
+        {roundsRemaining === null ? null : (
           <p className="mt-2 text-data text-text-dim">
-            {t('plan.roundsLeft', { count: step.roundsRemaining })}
+            {t('plan.roundsLeft', { count: roundsRemaining })}
           </p>
-        ) : null}
+        )}
         {exhausted ? <p className="mt-2 text-data text-warn">{t('plan.roundsExhausted')}</p> : null}
 
         {preview !== null ? (

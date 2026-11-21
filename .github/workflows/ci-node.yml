@@ -44,8 +44,11 @@ jobs:
           node-version: '26'
           cache: npm
 
+      # No install script runs: the only package in the lockfile that has one is fsevents, which
+      # is macOS-only, and a lifecycle script is how a compromised dependency runs on the runner
+      # (SonarCloud githubactions:S6505). `npm licences` and `npm audit` never needed them either.
       - name: Install
-        run: npm ci
+        run: npm ci --ignore-scripts
 
       - name: Lint
         run: npm run lint
