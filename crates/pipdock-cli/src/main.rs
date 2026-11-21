@@ -275,11 +275,21 @@ enum Command {
 
 #[derive(Debug, Subcommand)]
 enum EnvCommand {
-    /// List discovered environments, their sources and PEP 668 flags.
+    /// List discovered environments and the ones added with `env add`, their sources and PEP 668 flags.
     List,
     /// Set the default environment.
     Use {
         /// Interpreter or environment directory.
+        path: PathBuf,
+    },
+    /// Add an interpreter discovery does not find to the list (the GUI's Add interpreter…).
+    Add {
+        /// Interpreter or environment directory.
+        path: PathBuf,
+    },
+    /// Take an interpreter added with `env add` off the list. Nothing on disk is touched.
+    Remove {
+        /// Interpreter or environment directory, as it was added.
         path: PathBuf,
     },
 }
@@ -395,6 +405,8 @@ async fn main() -> ExitCode {
         }
         Command::Schema { type_name } => run::schema(type_name),
         Command::Env(EnvCommand::Use { path }) => run::env_use(&cli.global, path).await,
+        Command::Env(EnvCommand::Add { path }) => run::env_add(&cli.global, path).await,
+        Command::Env(EnvCommand::Remove { path }) => run::env_remove(&cli.global, path),
         Command::Audit => run::audit(&cli.global).await,
         Command::PipUpgrade => run::pip_upgrade(&cli.global).await,
         Command::Snapshot(SnapshotCommand::Rollback { id }) => {

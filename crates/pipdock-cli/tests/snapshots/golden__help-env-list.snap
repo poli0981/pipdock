@@ -2,7 +2,7 @@
 source: crates/pipdock-cli/tests/golden.rs
 expression: "stdout_of(&[parent, child, \"--help\"])"
 ---
-List discovered environments, their sources and PEP 668 flags
+List discovered environments and the ones added with `env add`, their sources and PEP 668 flags
 
 Usage: pipdock env list [OPTIONS]
 

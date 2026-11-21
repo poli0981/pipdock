@@ -154,6 +154,8 @@ fn subcommand_help_is_stable() {
     for (parent, child) in [
         ("env", "list"),
         ("env", "use"),
+        ("env", "add"),
+        ("env", "remove"),
         ("pin", "add"),
         ("pin", "remove"),
         ("pin", "list"),
