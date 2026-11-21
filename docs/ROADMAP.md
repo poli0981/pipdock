@@ -1725,6 +1725,11 @@ the same version. [#120](https://github.com/poli0981org/pipdock/pull/120).
   driven**: screen control was declined, and a release build's `__TAURI_INTERNALS__` cannot be
   patched to stub it, so every add went through `envAddManual` with a path — the call the picker's
   result makes.
+- The review's fixes (below) were smoke-tested the same way on a second dry-run installer, against
+  a real `--symlinks` venv made from the registry's Python 3.14: added as itself, with its own
+  prefix and its own identity, listed beside its base, its own one package against the base's 64,
+  removed and not brought back by a scan; a deleted venv's broken row removed for good; and the
+  installed CLI's `env add`, `env list` and `env remove` agreeing.
 
 **What an independent review found** once the suites and that smoke were green, reading the diff
 cold and reproducing with a scratch `LOCALAPPDATA` and the debug CLI. Every fix has a test that was
