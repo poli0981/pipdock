@@ -68,7 +68,7 @@ function classify(item) {
 /** The answer left on a closed request, in both of the project's languages. */
 function comment(kind) {
   const what = kind === 'pull_request' ? 'pull request' : 'issue'
-  const cái = kind === 'pull_request' ? 'Pull request' : 'Issue'
+  const whatVi = kind === 'pull_request' ? 'Pull request' : 'Issue'
   return [
     'Thanks for taking the time to write this.',
     '',
@@ -78,7 +78,7 @@ function comment(kind) {
     '',
     '---',
     '',
-    `Cảm ơn bạn đã dành thời gian viết. Từ bản 1.6.0, PipDock ở **giai đoạn bảo trì**: chỉ nhận sửa lỗi, lỗi UI/UX và khả năng tiếp cận, sửa câu chữ và bản dịch, cập nhật phụ thuộc và bảo mật — không nhận tính năng mới. ${cái} này là một đề xuất tính năng, nên đã được gắn nhãn \`${OUT_OF_SCOPE}\` và đóng lại. Nếu đây thật ra là lỗi, hãy bình luận để được xem lại; nếu bạn tin tính năng này thật sự cần thiết, hãy trình bày ở [Discussions → Ideas](${IDEAS_URL}).`,
+    `Cảm ơn bạn đã dành thời gian viết. Từ bản 1.6.0, PipDock ở **giai đoạn bảo trì**: chỉ nhận sửa lỗi, lỗi UI/UX và khả năng tiếp cận, sửa câu chữ và bản dịch, cập nhật phụ thuộc và bảo mật — không nhận tính năng mới. ${whatVi} này là một đề xuất tính năng, nên đã được gắn nhãn \`${OUT_OF_SCOPE}\` và đóng lại. Nếu đây thật ra là lỗi, hãy bình luận để được xem lại; nếu bạn tin tính năng này thật sự cần thiết, hãy trình bày ở [Discussions → Ideas](${IDEAS_URL}).`,
   ].join('\n')
 }
 
