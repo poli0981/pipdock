@@ -18,9 +18,16 @@
 # cargo caches the required checks restore. A run is slower for it, and it is not a required
 # check (RELEASE-CI.md §2): a failure on `main` reaches Discord through notify.yml.
 #
-# **Baselines.** `.qodana/*.sarif.json` hold the problems that were triaged and accepted when this
-# was set up (ROADMAP records how many and why); a run fails on a problem outside its baseline,
-# and only those reach Code scanning.
+# **Every run is a full scan, and only a new problem fails it.** `pr-mode` is off: a whole scan is
+# two to three minutes a part, so analysing only a pull request's files would save little and make
+# a result depend on which files happened to change. `.qodana/rust.sarif.json` is the baseline —
+# the 62 problems the first real run found, triaged on 2026-11-21 (ROADMAP: two Critical that are
+# RustRover misreading what rustc compiles, and 60 Moderate style findings), trimmed to the results
+# and their fingerprints. `--fail-threshold 0` then fails on anything outside it. The TypeScript
+# half has no baseline because it has no accepted problem: the six it found were fixed.
+#
+# **Only new problems reach Code scanning**, under `qodana-rust` and `qodana-js` — a baseline
+# problem is triaged already, and alerting on it again would bury the next real one.
 
 name: Qodana
 
@@ -94,23 +101,19 @@ jobs:
           # the container's mount of the action's cache directory, which this user owns.
           CARGO_HOME: /data/cache/cargo-home
         with:
-          args: --config qodana-rust.yaml --linter qodana-rust
+          args: --config qodana-rust.yaml --linter qodana-rust --baseline .qodana/rust.sarif.json --fail-threshold 0
           env-vars-to-linter: CARGO_HOME
           pr-mode: false
           use-caches: false
           upload-result: true
           artifact-name: qodana-rust
 
-      # Only once a baseline exists: before it, every problem in the tree would become an alert,
-      # and the triage that decides which are real is what the baseline records.
       - name: Keep the problems outside the baseline
         id: filter
         if: ${{ !cancelled() }}
         env:
           SARIF: ${{ runner.temp }}/qodana/results/qodana.sarif.json
-          BASELINE: .qodana/rust.sarif.json
         run: |
-          if [ ! -f "$BASELINE" ]; then echo "::notice::No baseline yet ($BASELINE); nothing goes to Code scanning."; exit 0; fi
           if [ ! -f "$SARIF" ]; then echo "::notice::The scan left no SARIF."; exit 0; fi
           jq '.runs |= map(.results |= map(select((.baselineState // "new") != "unchanged" and (.baselineState // "new") != "absent")))' \
             "$SARIF" > "$RUNNER_TEMP/qodana-rust.sarif"
@@ -159,7 +162,7 @@ jobs:
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_TS_JS }}
         with:
-          args: --config qodana-js.yaml --linter qodana-js --within-docker false
+          args: --config qodana-js.yaml --linter qodana-js --within-docker false --fail-threshold 0
           pr-mode: false
           use-caches: false
           upload-result: true
@@ -170,9 +173,7 @@ jobs:
         if: ${{ !cancelled() }}
         env:
           SARIF: ${{ runner.temp }}/qodana/results/qodana.sarif.json
-          BASELINE: .qodana/js.sarif.json
         run: |
-          if [ ! -f "$BASELINE" ]; then echo "::notice::No baseline yet ($BASELINE); nothing goes to Code scanning."; exit 0; fi
           if [ ! -f "$SARIF" ]; then echo "::notice::The scan left no SARIF."; exit 0; fi
           jq '.runs |= map(.results |= map(select((.baselineState // "new") != "unchanged" and (.baselineState // "new") != "absent")))' \
             "$SARIF" > "$RUNNER_TEMP/qodana-js.sarif"

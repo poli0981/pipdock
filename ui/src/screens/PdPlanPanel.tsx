@@ -153,10 +153,11 @@ export function PdPlanPanel({ onFinished }: PdPlanPanelProps) {
     forced.flatMap((f) => (f.blockers ?? []).map((b) => b.by ?? b.constraint)),
   ).size
   const needsDecisions = step?.step === 'needsDecisions'
-  // Read where the narrowing happens rather than through `needsDecisions`: TypeScript follows an
-  // aliased condition back to `step`, but not every reader does, and Qodana's WebStorm engine
-  // reported `step.roundsRemaining` below as a possible null (2026-11-21).
-  const roundsRemaining = step?.step === 'needsDecisions' ? step.roundsRemaining : null
+  // Narrowed by an explicit null check, where it is read. TypeScript follows both an aliased
+  // condition (`needsDecisions`) and an optional chain back to `step`; Qodana's WebStorm engine
+  // follows neither, and reported `step.roundsRemaining` as a possible null twice (2026-11-21).
+  const roundsRemaining =
+    step !== null && step.step === 'needsDecisions' ? step.roundsRemaining : null
   const exhausted = step?.step === 'roundsExhausted'
   const nothingToDo = isRollback ? preview !== null && rollbackOps === 0 : step?.step === 'nothing'
   const confirmable = isRollback ? preview !== null && rollbackOps > 0 : step !== null && step.step !== 'nothing'

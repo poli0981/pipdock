@@ -1,0 +1,3974 @@
+{
+ "$schema": "https://raw.githubusercontent.com/schemastore/schemastore/master/src/schemas/json/sarif-2.1.0-rtm.5.json",
+ "version": "2.1.0",
+ "runs": [
+  {
+   "tool": {
+    "driver": {
+     "name": "QDRST",
+     "fullName": "Qodana for Rust",
+     "version": "262.12665"
+    }
+   },
+   "originalUriBaseIds": {
+    "SRCROOT": {
+     "description": {
+      "text": "The subdirectory within the project that was analyzed (--project-dir qodana CLI parameter)"
+     }
+    }
+   },
+   "automationDetails": {
+    "id": "project/qodana/2026-11-21",
+    "guid": "b2f88b2c-bf47-49bf-ad95-9239a9ea1aad",
+    "properties": {
+     "jobUrl": "https://github.com/poli0981org/pipdock/actions/runs/44913672855",
+     "analysisKind": "regular"
+    }
+   },
+   "results": [
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 265,
+         "startColumn": 5,
+         "charOffset": 10384,
+         "charLength": 151,
+         "snippet": {
+          "text": "let exe: PathBuf = if cfg!(windows) {\n        [\"Scripts\", \"python.exe\"].iter().collect()\n    } else {\n        [\"bin\", \"python\"].iter().collect()\n    };"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 265,
+         "startColumn": 1,
+         "charOffset": 10380,
+         "charLength": 155,
+         "snippet": {
+          "text": "    let exe: PathBuf = if cfg!(windows) {\n        [\"Scripts\", \"python.exe\"].iter().collect()\n    } else {\n        [\"bin\", \"python\"].iter().collect()\n    };"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/envs/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 421,
+         "startColumn": 5,
+         "charOffset": 16056,
+         "charLength": 151,
+         "snippet": {
+          "text": "let exe: PathBuf = if cfg!(windows) {\n        [\"Scripts\", \"python.exe\"].iter().collect()\n    } else {\n        [\"bin\", \"python\"].iter().collect()\n    };"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 421,
+         "startColumn": 1,
+         "charOffset": 16052,
+         "charLength": 155,
+         "snippet": {
+          "text": "    let exe: PathBuf = if cfg!(windows) {\n        [\"Scripts\", \"python.exe\"].iter().collect()\n    } else {\n        [\"bin\", \"python\"].iter().collect()\n    };"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "d8d025f03cbb906b",
+      "equalIndicator/v1": "0cf6e0df798edd1d9ec4a9d3942cdae312d477f28584b28055c819e0f3a9a66b"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 765,
+         "startColumn": 5,
+         "charOffset": 28561,
+         "charLength": 298,
+         "snippet": {
+          "text": "tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams engine output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 765,
+         "startColumn": 1,
+         "charOffset": 28557,
+         "charLength": 302,
+         "snippet": {
+          "text": "    tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams engine output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1714,
+         "startColumn": 5,
+         "charOffset": 63730,
+         "charLength": 298,
+         "snippet": {
+          "text": "tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams engine output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1714,
+         "startColumn": 1,
+         "charOffset": 63726,
+         "charLength": 302,
+         "snippet": {
+          "text": "    tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams engine output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "be78b435f06181e6",
+      "equalIndicator/v1": "7a7d006d3e4af586e80de528688fa3ece983c1a5d9010e9385f6a3b9790b459f"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1090,
+         "startColumn": 5,
+         "charOffset": 40236,
+         "charLength": 307,
+         "snippet": {
+          "text": "let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams tool output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1090,
+         "startColumn": 1,
+         "charOffset": 40232,
+         "charLength": 311,
+         "snippet": {
+          "text": "    let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams tool output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1159,
+         "startColumn": 5,
+         "charOffset": 42941,
+         "charLength": 221,
+         "snippet": {
+          "text": "let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1159,
+         "startColumn": 1,
+         "charOffset": 42937,
+         "charLength": 225,
+         "snippet": {
+          "text": "    let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1325,
+         "startColumn": 5,
+         "charOffset": 49179,
+         "charLength": 221,
+         "snippet": {
+          "text": "let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1325,
+         "startColumn": 1,
+         "charOffset": 49175,
+         "charLength": 225,
+         "snippet": {
+          "text": "    let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 2126,
+         "startColumn": 5,
+         "charOffset": 78768,
+         "charLength": 309,
+         "snippet": {
+          "text": "let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams engine output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 2126,
+         "startColumn": 1,
+         "charOffset": 78764,
+         "charLength": 313,
+         "snippet": {
+          "text": "    let pump = tokio::spawn(async move {\n        while let Some(event) = rx.recv().await {\n            // The lifecycle markers carry no text; the CLI streams engine output only.\n            if let Some(line) = event.line().filter(|_| !quiet) {\n                eprintln!(\"{line}\");\n            }\n        }\n    });"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "8439435a42e276bb",
+      "equalIndicator/v1": "780ac48d7807af30adbbd0ee273cb435c7d26966f98981516cbae1bebe0686ff"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-cli/src/run.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1258,
+         "startColumn": 24,
+         "charOffset": 46364,
+         "charLength": 18,
+         "snippet": {
+          "text": "std::collections::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1256,
+         "startColumn": 1,
+         "charOffset": 46281,
+         "charLength": 159,
+         "snippet": {
+          "text": "            .iter()\n            .map(|a| a.pkg.to_string())\n            .collect::<std::collections::BTreeSet<_>>()\n            .len(),\n        report.packages"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "812fc0e16cb023ab",
+      "equalIndicator/v1": "971c103482a2986fb22c90ebab98be1b3b0528f5c864bcd0a2d8c1586e33bea3"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/audit.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 641,
+         "startColumn": 25,
+         "charOffset": 26865,
+         "charLength": 11,
+         "snippet": {
+          "text": "std::path::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 639,
+         "startColumn": 1,
+         "charOffset": 26643,
+         "charLength": 296,
+         "snippet": {
+          "text": "        // \"-f json\" is one argument to `CreateProcess`, and the tool would reject it as a flag it\n        // does not have. SECURITY §2's argv-array rule only means anything if the array is split.\n        let argv = argv(std::path::Path::new(r\"C:\\tmp\\freeze.txt\"));\n\n        for entry in &argv {"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "b458b6f6a144c549",
+      "equalIndicator/v1": "a2a63c8bee8571ec24885ba152e1d8539372a42627b16564014144ce47a78c66"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/audit.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 709,
+         "startColumn": 13,
+         "charOffset": 29887,
+         "charLength": 11,
+         "snippet": {
+          "text": "std::path::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 707,
+         "startColumn": 1,
+         "charOffset": 29848,
+         "charLength": 127,
+         "snippet": {
+          "text": "\n        let report = run(\n            std::path::Path::new(&dir),\n            &a_python_env(),\n            \"urllib3==2.0.0\\n\","
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "e69ff0346c0099b4",
+      "equalIndicator/v1": "c0ab78fc4df83214162ff8e79c658b7ba4e88ea3989b60f1dce42a525289c5f8"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/audit.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 745,
+         "startColumn": 13,
+         "charOffset": 31527,
+         "charLength": 11,
+         "snippet": {
+          "text": "std::path::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 743,
+         "startColumn": 1,
+         "charOffset": 31477,
+         "charLength": 134,
+         "snippet": {
+          "text": "        });\n        let report = run(\n            std::path::Path::new(&dir),\n            &a_python_env(),\n            \"urllib3==2.0.0"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "6a0a94bd9716783e",
+      "equalIndicator/v1": "68cf1d3cdf8b6fe57c7c9a1c9310ec357fd9223c4041ad2822bee1c3510a3548"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/bindings.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 16,
+         "startColumn": 16,
+         "charOffset": 1021,
+         "charLength": 17,
+         "snippet": {
+          "text": "crate::bindings::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 14,
+         "startColumn": 1,
+         "charOffset": 909,
+         "charLength": 383,
+         "snippet": {
+          "text": "//!\n//! What is given up: tauri-specta makes drift a *compile* error, and this makes it a *test*\n//! failure ([`crate::bindings::tests::the_committed_bindings_are_current`]). One notch weaker, at\n//! roughly a tenth of the cost. Revisit when specta 2.0 is stable — the generated file and the\n//! wrapper layer are identical either way, so adopting it later is a generator swap, not a"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "897d8dfd74da1223",
+      "equalIndicator/v1": "336e357e9b4295018b4fb1ede0eb704635aabc9e875a8606a2d2374ff3caecb3"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/bindings.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 112,
+         "startColumn": 5,
+         "charOffset": 4628,
+         "charLength": 214,
+         "snippet": {
+          "text": "let required: BTreeSet<&str> = schema\n        .get(\"required\")\n        .and_then(serde_json::Value::as_array)\n        .map(|r| r.iter().filter_map(serde_json::Value::as_str).collect())\n        .unwrap_or_default();"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 112,
+         "startColumn": 1,
+         "charOffset": 4624,
+         "charLength": 218,
+         "snippet": {
+          "text": "    let required: BTreeSet<&str> = schema\n        .get(\"required\")\n        .and_then(serde_json::Value::as_array)\n        .map(|r| r.iter().filter_map(serde_json::Value::as_str).collect())\n        .unwrap_or_default();"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/bindings.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 208,
+         "startColumn": 5,
+         "charOffset": 8762,
+         "charLength": 212,
+         "snippet": {
+          "text": "let required: BTreeSet<&str> = node\n        .get(\"required\")\n        .and_then(serde_json::Value::as_array)\n        .map(|r| r.iter().filter_map(serde_json::Value::as_str).collect())\n        .unwrap_or_default();"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 208,
+         "startColumn": 1,
+         "charOffset": 8758,
+         "charLength": 216,
+         "snippet": {
+          "text": "    let required: BTreeSet<&str> = node\n        .get(\"required\")\n        .and_then(serde_json::Value::as_array)\n        .map(|r| r.iter().filter_map(serde_json::Value::as_str).collect())\n        .unwrap_or_default();"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "581becbe7d5a7172",
+      "equalIndicator/v1": "cf32288ba6fbab91f09b5ffc6d3bf6f1b86c073f640da0c04fe229b7909ebfde"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 341,
+         "startColumn": 17,
+         "charOffset": 13670,
+         "charLength": 18,
+         "snippet": {
+          "text": "tokio_util::sync::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 339,
+         "startColumn": 1,
+         "charOffset": 13544,
+         "charLength": 270,
+         "snippet": {
+          "text": "pub struct ResolveCtx {\n    /// Stops the dry run; a stopped resolve returns an error with `Stop::Cancelled`.\n    pub cancel: tokio_util::sync::CancellationToken,\n    /// What the flow changes about the requirement lines the engine is given.\n    pub adjust: GuardAdjust,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "ca121104e2f933e9",
+      "equalIndicator/v1": "18f4902e8a12ded2522852901eca7037a86edf8124862aab5b72bdb50b17a5e5"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 545,
+         "startColumn": 58,
+         "charOffset": 22740,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 543,
+         "startColumn": 1,
+         "charOffset": 22640,
+         "charLength": 178,
+         "snippet": {
+          "text": "/// product exists to prevent.\n#[must_use]\npub fn plan_requirements(req: &PlanRequest, installed: &[crate::model::Dist]) -> Vec<PinnedSpec> {\n    use std::collections::BTreeSet;\n"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "7d3c3f8f8b0c6d72",
+      "equalIndicator/v1": "9a14ed0339acb5501a9f425c4712587e5c52fee77c808ada1ea269ef80fcc75e"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 554,
+         "startColumn": 5,
+         "charOffset": 22972,
+         "charLength": 556,
+         "snippet": {
+          "text": "installed\n        .iter()\n        .filter(|d| !moving.contains(&d.name))\n        // A version that could be read as more than a version — whitespace, a marker, a URL —\n        // never reaches argv. pip itself cannot install such a distribution, so restating it\n        // would only fail the resolve; leaving it out leaves it untouched, which is what a guard\n        // is for.\n        .filter(|d| crate::pep440::is_argv_safe(&d.version.0))\n        .map(|d| PinnedSpec {\n            name: d.name.clone(),\n            version: d.version.clone(),\n        })"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 554,
+         "startColumn": 1,
+         "charOffset": 22968,
+         "charLength": 560,
+         "snippet": {
+          "text": "    installed\n        .iter()\n        .filter(|d| !moving.contains(&d.name))\n        // A version that could be read as more than a version — whitespace, a marker, a URL —\n        // never reaches argv. pip itself cannot install such a distribution, so restating it\n        // would only fail the resolve; leaving it out leaves it untouched, which is what a guard\n        // is for.\n        .filter(|d| crate::pep440::is_argv_safe(&d.version.0))\n        .map(|d| PinnedSpec {\n            name: d.name.clone(),\n            version: d.version.clone(),\n        })"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 781,
+         "startColumn": 21,
+         "charOffset": 31731,
+         "charLength": 251,
+         "snippet": {
+          "text": "installed\n        .iter()\n        .filter(|d| !planned.contains(&d.name))\n        .filter(|d| crate::pep440::is_argv_safe(&d.version.0))\n        .map(|d| PinnedSpec {\n            name: d.name.clone(),\n            version: d.version.clone(),\n        })"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 781,
+         "startColumn": 1,
+         "charOffset": 31711,
+         "charLength": 272,
+         "snippet": {
+          "text": "    let untouched = installed\n        .iter()\n        .filter(|d| !planned.contains(&d.name))\n        .filter(|d| crate::pep440::is_argv_safe(&d.version.0))\n        .map(|d| PinnedSpec {\n            name: d.name.clone(),\n            version: d.version.clone(),\n        });"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "91c82585269ed324",
+      "equalIndicator/v1": "1d810c069799f791a9adfc52a61cfff54b9c83f8a91932d271a7249e0341cfe8"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 581,
+         "startColumn": 56,
+         "charOffset": 24291,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 579,
+         "startColumn": 1,
+         "charOffset": 24129,
+         "charLength": 257,
+         "snippet": {
+          "text": "/// Omitting group 3 is the SP-1 failure — the resolver breaks installed dependents at exit 0.\n#[must_use]\npub fn plan_argv_specs(req: &PlanRequest, installed: &[crate::model::Dist]) -> Vec<String> {\n    plan_lines(req, installed, &GuardAdjust::default())\n}"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "dced4e8757ecb44e",
+      "equalIndicator/v1": "845c95533586c953a6b139743f9b88cfc50deca73c4946d8cb5558b6eeb2de89"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 589,
+         "startColumn": 18,
+         "charOffset": 24524,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 587,
+         "startColumn": 1,
+         "charOffset": 24465,
+         "charLength": 124,
+         "snippet": {
+          "text": "pub fn plan_lines(\n    req: &PlanRequest,\n    installed: &[crate::model::Dist],\n    adjust: &GuardAdjust,\n) -> Vec<String> {"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "a369ff80455fef7b",
+      "equalIndicator/v1": "1a385b3fbfa1fe044eb58a1565547f1289018325c90ce4815210854d5dabc477"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 667,
+         "startColumn": 19,
+         "charOffset": 27188,
+         "charLength": 15,
+         "snippet": {
+          "text": "crate::errors::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 665,
+         "startColumn": 1,
+         "charOffset": 27147,
+         "charLength": 135,
+         "snippet": {
+          "text": "        }\n    } else {\n        let err = crate::errors::PdError::from_engine_stderr(&out.stderr);\n        StepResult {\n            pkg,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "0bb9cb7ef91275cb",
+      "equalIndicator/v1": "74a17f713e1f7ecb6ff856d3009c5659118e875ff606619e8cdb3b11d065ccbf"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 698,
+         "startColumn": 19,
+         "charOffset": 28110,
+         "charLength": 15,
+         "snippet": {
+          "text": "crate::errors::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 696,
+         "startColumn": 1,
+         "charOffset": 28069,
+         "charLength": 135,
+         "snippet": {
+          "text": "        }\n    } else {\n        let err = crate::errors::PdError::from_engine_stderr(&out.stderr);\n        StepResult {\n            pkg,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "2a160591fd3216d0",
+      "equalIndicator/v1": "e6fe2ce71813f3b5e25e8a39eb53ef7e1c24bc32bcab546763a2adf8af0db6e8"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 929,
+         "startColumn": 13,
+         "charOffset": 36313,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 927,
+         "startColumn": 1,
+         "charOffset": 36207,
+         "charLength": 249,
+         "snippet": {
+          "text": "    fn the_guard_set_leaves_out_a_version_that_is_not_argv_safe() {\n        let installed = [\n            crate::model::Dist {\n                name: PkgName::parse(\"good\").expect(\"name\"),\n                version: crate::model::Version(\"1.0\".into()),"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "03af52b95b5a9895",
+      "equalIndicator/v1": "14cc5b75a72b154ed5b061dbd573c8de1f4d889efcd6465ff24440702e4b74f5"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 931,
+         "startColumn": 26,
+         "charOffset": 36420,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 929,
+         "startColumn": 1,
+         "charOffset": 36301,
+         "charLength": 237,
+         "snippet": {
+          "text": "            crate::model::Dist {\n                name: PkgName::parse(\"good\").expect(\"name\"),\n                version: crate::model::Version(\"1.0\".into()),\n                requires_dist: Vec::new(),\n                requires_python: None,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "ca8fe899e364ddb1",
+      "equalIndicator/v1": "30b74428a1378b75d7dcbf6e5c6fb2f28c546208d0aef326bf3b817807593e3a"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 936,
+         "startColumn": 13,
+         "charOffset": 36600,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 934,
+         "startColumn": 1,
+         "charOffset": 36539,
+         "charLength": 226,
+         "snippet": {
+          "text": "                size_bytes: None,\n            },\n            crate::model::Dist {\n                name: PkgName::parse(\"odd\").expect(\"name\"),\n                version: crate::model::Version(\"1.0 ; python_version < '0'\".into()),"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "05531325fec9b393",
+      "equalIndicator/v1": "091e552968c58307e1d4a3ba4705c333c47186c1dce9d705e254a00288976488"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 938,
+         "startColumn": 26,
+         "charOffset": 36706,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 936,
+         "startColumn": 1,
+         "charOffset": 36588,
+         "charLength": 259,
+         "snippet": {
+          "text": "            crate::model::Dist {\n                name: PkgName::parse(\"odd\").expect(\"name\"),\n                version: crate::model::Version(\"1.0 ; python_version < '0'\".into()),\n                requires_dist: Vec::new(),\n                requires_python: None,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "8e5aa8f0f5245f05",
+      "equalIndicator/v1": "4c6489d049631e052766fd6e8ba8d26e2676bca6ac56c829e67457aafa7b6ecb"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 947,
+         "startColumn": 23,
+         "charOffset": 37030,
+         "charLength": 13,
+         "snippet": {
+          "text": "crate::plan::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 945,
+         "startColumn": 1,
+         "charOffset": 36940,
+         "charLength": 193,
+         "snippet": {
+          "text": "            upgrades: Vec::new(),\n            installs: Vec::new(),\n            strategy: crate::plan::Strategy::Compatible,\n        };\n        let guards = plan_requirements(&req, &installed);"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "d4bb6b0dfee7756d",
+      "equalIndicator/v1": "1f06640e33d8c612274b02d0a0565f76f0fd5973c727df7b627e0cfd5ce83d6c"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 959,
+         "startColumn": 28,
+         "charOffset": 37627,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 957,
+         "startColumn": 1,
+         "charOffset": 37408,
+         "charLength": 390,
+         "snippet": {
+          "text": "        // 32,767-character limit, the spawn failed with os error 206, and the user was told to\n        // install an engine. As a file, the command line no longer grows with the environment.\n        let installed: Vec<crate::model::Dist> = (0..2000)\n            .map(|i| crate::model::Dist {\n                name: PkgName::parse(&format!(\"package-with-a-long-name-{i:04}\")).expect(\"name\"),"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "f92360e504137f34",
+      "equalIndicator/v1": "7f71770150eceb1b1bf4b32ce4ed03943446bf8e70a08e9f3f7df9bddcdd091b"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 960,
+         "startColumn": 22,
+         "charOffset": 37680,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 958,
+         "startColumn": 1,
+         "charOffset": 37504,
+         "charLength": 363,
+         "snippet": {
+          "text": "        // install an engine. As a file, the command line no longer grows with the environment.\n        let installed: Vec<crate::model::Dist> = (0..2000)\n            .map(|i| crate::model::Dist {\n                name: PkgName::parse(&format!(\"package-with-a-long-name-{i:04}\")).expect(\"name\"),\n                version: crate::model::Version(\"12.34.5678\".into()),"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "0986e0655620c626",
+      "equalIndicator/v1": "acec0d836581b02b564fa6cf6c5def205617b3a3d138a3995e5fa2fad8fdbd4e"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 962,
+         "startColumn": 26,
+         "charOffset": 37824,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 960,
+         "startColumn": 1,
+         "charOffset": 37659,
+         "charLength": 290,
+         "snippet": {
+          "text": "            .map(|i| crate::model::Dist {\n                name: PkgName::parse(&format!(\"package-with-a-long-name-{i:04}\")).expect(\"name\"),\n                version: crate::model::Version(\"12.34.5678\".into()),\n                requires_dist: Vec::new(),\n                requires_python: None,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "c2f4e426433f26f3",
+      "equalIndicator/v1": "b372b5731627a425e7703d18c83f23a593a9fbb8563b7bfac54c4cbef0314ea4"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 971,
+         "startColumn": 23,
+         "charOffset": 38145,
+         "charLength": 13,
+         "snippet": {
+          "text": "crate::plan::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 969,
+         "startColumn": 1,
+         "charOffset": 38055,
+         "charLength": 190,
+         "snippet": {
+          "text": "            upgrades: Vec::new(),\n            installs: Vec::new(),\n            strategy: crate::plan::Strategy::Compatible,\n        };\n        let lines = plan_argv_specs(&req, &installed);"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "77714d0cfe24e03b",
+      "equalIndicator/v1": "962144e59c99e52b4cfcbcaba644296ce100bc4864aec01c794913c193f87011"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/parse.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 52,
+         "startColumn": 33,
+         "charOffset": 2124,
+         "charLength": 13,
+         "snippet": {
+          "text": "crate::plan::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 50,
+         "startColumn": 1,
+         "charOffset": 2020,
+         "charLength": 208,
+         "snippet": {
+          "text": "    /// parsers worked to extract never reached a user.\n    #[must_use]\n    pub fn into_report(self) -> crate::plan::ResolutionReport {\n        crate::plan::ResolutionReport {\n            yanked: self.yanked,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "44e51c60f2418874",
+      "equalIndicator/v1": "5c662b2f9719d9b18128c7e424a1ff5ccc4372d29b0d0c772a1e638dda6b77f7"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/parse.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 53,
+         "startColumn": 9,
+         "charOffset": 2164,
+         "charLength": 13,
+         "snippet": {
+          "text": "crate::plan::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 51,
+         "startColumn": 1,
+         "charOffset": 2076,
+         "charLength": 178,
+         "snippet": {
+          "text": "    #[must_use]\n    pub fn into_report(self) -> crate::plan::ResolutionReport {\n        crate::plan::ResolutionReport {\n            yanked: self.yanked,\n            ..self.report"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "528b7bb4a45cc4a5",
+      "equalIndicator/v1": "a392837ad6497602083fafffa48a0669284a5e4e00be102cf97b63e1698e9d0a"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/parse.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 228,
+         "startColumn": 47,
+         "charOffset": 9013,
+         "charLength": 13,
+         "snippet": {
+          "text": "crate::plan::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 226,
+         "startColumn": 1,
+         "charOffset": 8871,
+         "charLength": 281,
+         "snippet": {
+          "text": "/// the stderr is not an impossibility at all, so the caller classifies it instead.\n#[must_use]\npub fn pip_impossible(stderr: &str) -> Option<crate::plan::ImpossibleDetail> {\n    if crate::errors::classify_stderr(stderr) != crate::errors::Code::ResImpossible {\n        return None;"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "a1602a4a4ea1ef5d",
+      "equalIndicator/v1": "0f8addcf115fd7957d6c28d77603ec21e69247119e1cdc2198b250582530b671"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/parse.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 229,
+         "startColumn": 50,
+         "charOffset": 9095,
+         "charLength": 15,
+         "snippet": {
+          "text": "crate::errors::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 227,
+         "startColumn": 1,
+         "charOffset": 8955,
+         "charLength": 203,
+         "snippet": {
+          "text": "#[must_use]\npub fn pip_impossible(stderr: &str) -> Option<crate::plan::ImpossibleDetail> {\n    if crate::errors::classify_stderr(stderr) != crate::errors::Code::ResImpossible {\n        return None;\n    }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "3a94da13a9089517",
+      "equalIndicator/v1": "2ee5caedd1dcd14f39ee9a4ca56aeb1c7a0b3690697356c032d288a78c5cef59"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/parse.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 260,
+         "startColumn": 10,
+         "charOffset": 10114,
+         "charLength": 13,
+         "snippet": {
+          "text": "crate::plan::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 258,
+         "startColumn": 1,
+         "charOffset": 10089,
+         "charLength": 95,
+         "snippet": {
+          "text": "        }\n    }\n    Some(crate::plan::ImpossibleDetail {\n        packages,\n        explanation,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "26758ec2040d002f",
+      "equalIndicator/v1": "10db167175062f0f4a09ed6d17796bf4e63a9c43abe726accd94e2e003daeeed"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/pip.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 120,
+         "startColumn": 19,
+         "charOffset": 4064,
+         "charLength": 433,
+         "snippet": {
+          "text": "{\n            Ok(o) if o.ok() => EngineInfo {\n                id: EngineId::Pip,\n                // \"pip 26.1.2 from C:\\... (python 3.12)\" -> \"26.1.2\"\n                version: o.stdout.split_whitespace().nth(1).map(str::to_owned),\n                available: true,\n            },\n            _ => EngineInfo {\n                id: EngineId::Pip,\n                version: None,\n                available: false,\n            },\n        }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 120,
+         "startColumn": 1,
+         "charOffset": 4046,
+         "charLength": 451,
+         "snippet": {
+          "text": "        match out {\n            Ok(o) if o.ok() => EngineInfo {\n                id: EngineId::Pip,\n                // \"pip 26.1.2 from C:\\... (python 3.12)\" -> \"26.1.2\"\n                version: o.stdout.split_whitespace().nth(1).map(str::to_owned),\n                available: true,\n            },\n            _ => EngineInfo {\n                id: EngineId::Pip,\n                version: None,\n                available: false,\n            },\n        }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/engine/uv.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 123,
+         "startColumn": 9,
+         "charOffset": 4546,
+         "charLength": 452,
+         "snippet": {
+          "text": "{\n            Ok(o) if o.ok() => EngineInfo {\n                id: EngineId::Uv,\n                // \"uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)\" -> \"0.11.32\"\n                version: o.stdout.split_whitespace().nth(1).map(str::to_owned),\n                available: true,\n            },\n            _ => EngineInfo {\n                id: EngineId::Uv,\n                version: None,\n                available: false,\n            },\n        }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 123,
+         "startColumn": 1,
+         "charOffset": 4538,
+         "charLength": 460,
+         "snippet": {
+          "text": "        {\n            Ok(o) if o.ok() => EngineInfo {\n                id: EngineId::Uv,\n                // \"uv 0.11.32 (3010295ae 2026-07-23 x86_64-pc-windows-msvc)\" -> \"0.11.32\"\n                version: o.stdout.split_whitespace().nth(1).map(str::to_owned),\n                available: true,\n            },\n            _ => EngineInfo {\n                id: EngineId::Uv,\n                version: None,\n                available: false,\n            },\n        }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "ed0741b143ce0614",
+      "equalIndicator/v1": "16d0d1430111fc4996c3842fd335cd2982d99fed4b373cca992410d93a638f4c"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsBorrowChecker",
+     "kind": "fail",
+     "level": "error",
+     "message": {
+      "text": "Value used after being moved [E0382]",
+      "markdown": "Value used after being moved \\[[E0382](https://doc.rust-lang.org/error-index.html#E0382)\\]  "
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/exec.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1057,
+         "startColumn": 19,
+         "charOffset": 43917,
+         "charLength": 4,
+         "snippet": {
+          "text": "kind"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1055,
+         "startColumn": 1,
+         "charOffset": 43797,
+         "charLength": 153,
+         "snippet": {
+          "text": "                user_file_error(p, &Error::from(kind)).code,\n                Code::PrmSourceReadOnly,\n                \"{kind:?}\"\n            );\n        }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "8de517775f10a174",
+      "equalIndicator/v1": "6fb5c9472477bc15d3ad96d5a96877665c5d57ca8f4984c146a14dac1022fe55"
+     },
+     "properties": {
+      "ideaSeverity": "ERROR",
+      "qodanaSeverity": "Critical",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 525,
+         "startColumn": 9,
+         "charOffset": 22197,
+         "charLength": 298,
+         "snippet": {
+          "text": "let snap = snapshot::create(\n            app_data,\n            &self.env_hash,\n            self.engine.freeze(&self.env).await?,\n            snapshot::Trigger::Plan {\n                plan_id: self.plan_id.clone(),\n            },\n            self.engine.id(),\n            (self.clock)(),\n        )?;"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 525,
+         "startColumn": 1,
+         "charOffset": 22189,
+         "charLength": 306,
+         "snippet": {
+          "text": "        let snap = snapshot::create(\n            app_data,\n            &self.env_hash,\n            self.engine.freeze(&self.env).await?,\n            snapshot::Trigger::Plan {\n                plan_id: self.plan_id.clone(),\n            },\n            self.engine.id(),\n            (self.clock)(),\n        )?;"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 899,
+         "startColumn": 9,
+         "charOffset": 36474,
+         "charLength": 298,
+         "snippet": {
+          "text": "let snap = snapshot::create(\n            app_data,\n            &self.env_hash,\n            self.engine.freeze(&self.env).await?,\n            snapshot::Trigger::Plan {\n                plan_id: self.plan_id.clone(),\n            },\n            self.engine.id(),\n            (self.clock)(),\n        )?;"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 899,
+         "startColumn": 1,
+         "charOffset": 36466,
+         "charLength": 306,
+         "snippet": {
+          "text": "        let snap = snapshot::create(\n            app_data,\n            &self.env_hash,\n            self.engine.freeze(&self.env).await?,\n            snapshot::Trigger::Plan {\n                plan_id: self.plan_id.clone(),\n            },\n            self.engine.id(),\n            (self.clock)(),\n        )?;"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "57450307a0658f53",
+      "equalIndicator/v1": "3de7e4faa1b02188eb930d39cc0adfc3e3151088ec1fccb65e3737352785f91f"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 548,
+         "startColumn": 58,
+         "charOffset": 23185,
+         "charLength": 7,
+         "snippet": {
+          "text": "crate::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 546,
+         "startColumn": 1,
+         "charOffset": 22992,
+         "charLength": 367,
+         "snippet": {
+          "text": "    /// stale or the environment drifted. Per-package failures are **not** errors; they appear in\n    /// the summary with their codes.\n    pub async fn execute(&self, tx: EventSink) -> Result<crate::plan::ExecutionSummary> {\n        let proof = proof_from(&self.snapshot)?;\n        // `total` is corrected inside plan::execute, which is the only place that knows the"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "63d7d9fbb63ebbe7",
+      "equalIndicator/v1": "e8c55bf992dfc6e808d79323852794e1d31de9ca8c8d6539db1687095b443622"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 730,
+         "startColumn": 45,
+         "charOffset": 29550,
+         "charLength": 7,
+         "snippet": {
+          "text": "crate::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 728,
+         "startColumn": 1,
+         "charOffset": 29438,
+         "charLength": 198,
+         "snippet": {
+          "text": "\n/// One line for every run that ended, or the error that ended it.\nfn log_summary(flow: &str, summary: &Result<crate::plan::ExecutionSummary>) {\n    match summary {\n        Ok(s) => tracing::info!("
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "226b4651bc3e0b8f",
+      "equalIndicator/v1": "3bcaa5fe1580a898011753c6edaa9116463abca7fb2b5d89fba7f5b4d9c9bfc7"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 924,
+         "startColumn": 17,
+         "charOffset": 37324,
+         "charLength": 7,
+         "snippet": {
+          "text": "crate::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 922,
+         "startColumn": 1,
+         "charOffset": 37262,
+         "charLength": 178,
+         "snippet": {
+          "text": "        ack: GuardAck,\n        tx: EventSink,\n    ) -> Result<crate::plan::ExecutionSummary> {\n        ack_ok(&self.guard, ack)?;\n        let proof = proof_from(&self.snapshot)?;"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "083c6af208860d1b",
+      "equalIndicator/v1": "6de131d4eeab13ce6b68608f8ae274843ea43a489f3abf5013f42dce43477ef1"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1096,
+         "startColumn": 58,
+         "charOffset": 43872,
+         "charLength": 7,
+         "snippet": {
+          "text": "crate::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1094,
+         "startColumn": 1,
+         "charOffset": 43678,
+         "charLength": 353,
+         "snippet": {
+          "text": "    /// `PD-SNP-001` when [`Self::take_snapshot`] has not run. Per-package failures appear in the\n    /// summary rather than as errors.\n    pub async fn execute(&self, tx: EventSink) -> Result<crate::plan::ExecutionSummary> {\n        let proof = proof_from(&self.pre)?;\n        let sink = ProgressSink::new(tx, self.restore.len(), self.cancel.clone());"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "cb3e4bc3fec0e5e1",
+      "equalIndicator/v1": "7d9f1722014e23d157428fa097c207a12615ae3aef4fd399c28aa3049f2a8ccf"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1441,
+         "startColumn": 24,
+         "charOffset": 56049,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1439,
+         "startColumn": 1,
+         "charOffset": 55881,
+         "charLength": 303,
+         "snippet": {
+          "text": "    fn guard_over(pkg: &str, broken: &[&str]) -> crate::graph::GuardReport {\n        let name = |n: &str| PkgName::parse(n).expect(\"test name\");\n        let dists: Vec<crate::model::Dist> = std::iter::once(crate::model::Dist {\n            name: name(pkg),\n            version: Version(\"1.0\".to_owned()),"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "3901bae9f530ea6e",
+      "equalIndicator/v1": "b96092b7b98f794cbc8a2252292477c61d14c3563d44b7230d6064b0e7b3663a"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1441,
+         "startColumn": 62,
+         "charOffset": 56087,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1439,
+         "startColumn": 1,
+         "charOffset": 55881,
+         "charLength": 303,
+         "snippet": {
+          "text": "    fn guard_over(pkg: &str, broken: &[&str]) -> crate::graph::GuardReport {\n        let name = |n: &str| PkgName::parse(n).expect(\"test name\");\n        let dists: Vec<crate::model::Dist> = std::iter::once(crate::model::Dist {\n            name: name(pkg),\n            version: Version(\"1.0\".to_owned()),"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "2069418a52bd745c",
+      "equalIndicator/v1": "884b65d998d0ab8ade9e665563d71212c139b62b1fa5a7972554cc36f8a52621"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/flow/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1448,
+         "startColumn": 38,
+         "charOffset": 56337,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1446,
+         "startColumn": 1,
+         "charOffset": 56259,
+         "charLength": 173,
+         "snippet": {
+          "text": "            size_bytes: None,\n        })\n        .chain(broken.iter().map(|d| crate::model::Dist {\n            name: name(d),\n            version: Version(\"2.0\".to_owned()),"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "ed4c0ac7d2e122d6",
+      "equalIndicator/v1": "a54e97b27b8c9ff60a743b348632d24e7646894b59786f7c79796da577773945"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/health/fix.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 244,
+         "startColumn": 5,
+         "charOffset": 11539,
+         "charLength": 228,
+         "snippet": {
+          "text": "if !super::is_findings_exit(\"ruff\", out.code) {\n        return Err(PdError::new(\n            Code::HltToolFailed,\n            format!(\"ruff exited {}\", out.code.unwrap_or(-1)),\n        )\n        .with_stderr(&out.stderr));\n    }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 244,
+         "startColumn": 1,
+         "charOffset": 11535,
+         "charLength": 232,
+         "snippet": {
+          "text": "    if !super::is_findings_exit(\"ruff\", out.code) {\n        return Err(PdError::new(\n            Code::HltToolFailed,\n            format!(\"ruff exited {}\", out.code.unwrap_or(-1)),\n        )\n        .with_stderr(&out.stderr));\n    }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/health/fix.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 317,
+         "startColumn": 5,
+         "charOffset": 14257,
+         "charLength": 228,
+         "snippet": {
+          "text": "if !super::is_findings_exit(\"ruff\", out.code) {\n        return Err(PdError::new(\n            Code::HltToolFailed,\n            format!(\"ruff exited {}\", out.code.unwrap_or(-1)),\n        )\n        .with_stderr(&out.stderr));\n    }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 317,
+         "startColumn": 1,
+         "charOffset": 14253,
+         "charLength": 232,
+         "snippet": {
+          "text": "    if !super::is_findings_exit(\"ruff\", out.code) {\n        return Err(PdError::new(\n            Code::HltToolFailed,\n            format!(\"ruff exited {}\", out.code.unwrap_or(-1)),\n        )\n        .with_stderr(&out.stderr));\n    }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "c96c3d8b8f3b0a2e",
+      "equalIndicator/v1": "930c8aebf96954895e976b06ccdfab344cfd487c9205889aa3019aae2bc6aa0e"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/legal_hash.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 136,
+         "startColumn": 9,
+         "charOffset": 3467,
+         "charLength": 196,
+         "snippet": {
+          "text": "while self.buffer.len() >= 64 {\n            let block: [u8; 64] = self.buffer[..64].try_into().unwrap_or([0; 64]);\n            self.compress(&block);\n            self.buffer.drain(..64);\n        }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 136,
+         "startColumn": 1,
+         "charOffset": 3459,
+         "charLength": 204,
+         "snippet": {
+          "text": "        while self.buffer.len() >= 64 {\n            let block: [u8; 64] = self.buffer[..64].try_into().unwrap_or([0; 64]);\n            self.compress(&block);\n            self.buffer.drain(..64);\n        }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/legal_hash.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 151,
+         "startColumn": 9,
+         "charOffset": 3970,
+         "charLength": 196,
+         "snippet": {
+          "text": "while self.buffer.len() >= 64 {\n            let block: [u8; 64] = self.buffer[..64].try_into().unwrap_or([0; 64]);\n            self.compress(&block);\n            self.buffer.drain(..64);\n        }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 151,
+         "startColumn": 1,
+         "charOffset": 3962,
+         "charLength": 204,
+         "snippet": {
+          "text": "        while self.buffer.len() >= 64 {\n            let block: [u8; 64] = self.buffer[..64].try_into().unwrap_or([0; 64]);\n            self.compress(&block);\n            self.buffer.drain(..64);\n        }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "6145204ec6327fca",
+      "equalIndicator/v1": "05080c92038a4b1d9c7f1e04da47914fe92dd652626f945bf2c60fa7befaa7e7"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/lib.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 15,
+         "startColumn": 61,
+         "charOffset": 751,
+         "charLength": 8,
+         "snippet": {
+          "text": "errors::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 13,
+         "startColumn": 1,
+         "charOffset": 561,
+         "charLength": 309,
+         "snippet": {
+          "text": "//! 3. `plan_execute` refuses a report older than [`plan::PLAN_MAX_AGE`], or one whose environment\n//!    probe hash has changed.\n//! 4. Every failure surfaced to the UI or CLI carries an [`errors::Code`].\n//! 5. Pinned packages never enter `PlanRequest::upgrades` unless explicitly unpinned this session.\n//!"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "f35b05d6df78ebd4",
+      "equalIndicator/v1": "6a7cdd4dd4f2896380ef01aa83d764d2f61bd6b9a306b833f55bbfb5f209793b"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 321,
+         "startColumn": 20,
+         "charOffset": 13381,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 319,
+         "startColumn": 1,
+         "charOffset": 13270,
+         "charLength": 233,
+         "snippet": {
+          "text": "        \"Dist\" => crate::model::Dist,\n        \"OutdatedDist\" => crate::model::OutdatedDist,\n        \"PyEnv\" => crate::model::PyEnv,\n        \"CheckReport\" => crate::model::CheckReport,\n        \"StepResult\" => crate::model::StepResult,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "b6b971505ef7b1e6",
+      "equalIndicator/v1": "ddeb349e0962feb54891ed81b569ba3d6a6fa48f9d1129d29c28e855540744d5"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 322,
+         "startColumn": 26,
+         "charOffset": 13427,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 320,
+         "startColumn": 1,
+         "charOffset": 13308,
+         "charLength": 233,
+         "snippet": {
+          "text": "        \"OutdatedDist\" => crate::model::OutdatedDist,\n        \"PyEnv\" => crate::model::PyEnv,\n        \"CheckReport\" => crate::model::CheckReport,\n        \"StepResult\" => crate::model::StepResult,\n        \"PlanRequest\" => PlanRequest,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "421a77169577146f",
+      "equalIndicator/v1": "4fc1368cad6b2d715c80c3d417ddd87e0f255145ae6a407d8645e88048fbcdbc"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 323,
+         "startColumn": 25,
+         "charOffset": 13478,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 321,
+         "startColumn": 1,
+         "charOffset": 13362,
+         "charLength": 227,
+         "snippet": {
+          "text": "        \"PyEnv\" => crate::model::PyEnv,\n        \"CheckReport\" => crate::model::CheckReport,\n        \"StepResult\" => crate::model::StepResult,\n        \"PlanRequest\" => PlanRequest,\n        \"ResolutionReport\" => ResolutionReport,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "e19a5952c81b2a2a",
+      "equalIndicator/v1": "ffcd08ac79618d4b838f086f0baa8ea9782460d11e7efd0874e624fcbd20f06e"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 347,
+         "startColumn": 19,
+         "charOffset": 14634,
+         "charLength": 15,
+         "snippet": {
+          "text": "crate::errors::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 345,
+         "startColumn": 1,
+         "charOffset": 14543,
+         "charLength": 307,
+         "snippet": {
+          "text": "        \"Decision\" => Decision,\n        \"Intent\" => crate::flow::Intent,\n        \"Code\" => crate::errors::Code,\n        // Only `HealthReport`, not its parts: the bindings generator hoists every `$defs` entry\n        // into its own TS declaration, so `DeptryIssue` and the rest arrive without being listed."
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "e677a344997001d4",
+      "equalIndicator/v1": "67289e9db34314d2ba13a8ed2dc610f4f97077206ad0aa2bf4e78abdf42a9738"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 404,
+         "startColumn": 7,
+         "charOffset": 16360,
+         "charLength": 9,
+         "snippet": {
+          "text": "preview::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 402,
+         "startColumn": 1,
+         "charOffset": 16184,
+         "charLength": 249,
+         "snippet": {
+          "text": "/// How many times one forced resolve may release guard pins the engine names as colliding with a\n/// forced package, before the impossibility is shown as it stands. See\n/// [`preview::forced_collisions`].\npub const FORCE_RELEASE_ROUNDS: usize = 3;\n"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "6ed9019839e369a2",
+      "equalIndicator/v1": "caf655357ce2480bb6472bad33ce034f57d304aa7f1894257d6df19a107327d4"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 609,
+         "startColumn": 45,
+         "charOffset": 24459,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 607,
+         "startColumn": 1,
+         "charOffset": 24266,
+         "charLength": 279,
+         "snippet": {
+          "text": "    // adapter runs one command — so every row used to carry `from: None`, and the summary and\n    // `--json` called every upgrade a fresh install.\n    let before: std::collections::BTreeMap<&crate::model::PkgName, &crate::model::Version> = plan\n        .report\n        .changes"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "22979f588ddd2a20",
+      "equalIndicator/v1": "c1a4063cd3851dae02c538c243d40edf4c7585b8ebe265bb37c70545b1e57057"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 609,
+         "startColumn": 69,
+         "charOffset": 24483,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 607,
+         "startColumn": 1,
+         "charOffset": 24266,
+         "charLength": 279,
+         "snippet": {
+          "text": "    // adapter runs one command — so every row used to carry `from: None`, and the summary and\n    // `--json` called every upgrade a fresh install.\n    let before: std::collections::BTreeMap<&crate::model::PkgName, &crate::model::Version> = plan\n        .report\n        .changes"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "2f3c5620dfe79d62",
+      "equalIndicator/v1": "d7d74362774bb70be732cbd6fbf26ce0882e762c89bad8d89659f8402f3ac867"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 773,
+         "startColumn": 21,
+         "charOffset": 31421,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 771,
+         "startColumn": 1,
+         "charOffset": 31336,
+         "charLength": 201,
+         "snippet": {
+          "text": "    installed: &[crate::model::Dist],\n    pinned: &[PinnedSpec],\n    except: Option<&crate::model::PkgName>,\n) -> Vec<PinnedSpec> {\n    let planned: std::collections::BTreeSet<&crate::model::PkgName> ="
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "f9be1f677d341f91",
+      "equalIndicator/v1": "3ea0b372cd50dc7cda9854f9d6d2e27ad47dd81e1e28ab995ace8214728a2911"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/plan/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 775,
+         "startColumn": 46,
+         "charOffset": 31513,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 773,
+         "startColumn": 1,
+         "charOffset": 31401,
+         "charLength": 210,
+         "snippet": {
+          "text": "    except: Option<&crate::model::PkgName>,\n) -> Vec<PinnedSpec> {\n    let planned: std::collections::BTreeSet<&crate::model::PkgName> =\n        pinned.iter().map(|p| &p.name).collect();\n    let others = pinned"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "3d998f86dd81f891",
+      "equalIndicator/v1": "9b1f2930a697b61ad89c144794d6a5e4923bd301b532463cc2d5d7e8cde680a9"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/snapshot/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 268,
+         "startColumn": 17,
+         "charOffset": 10974,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 266,
+         "startColumn": 1,
+         "charOffset": 10873,
+         "charLength": 180,
+         "snippet": {
+          "text": "    current: &BTreeMap<PkgName, Version>,\n    snapshot: &BTreeMap<PkgName, Version>,\n    taken_with: crate::model::EngineId,\n    restoring_with: crate::model::EngineId,\n) -> Diff {"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "64d4438cff5384d9",
+      "equalIndicator/v1": "426efbbed4ba937692e6fd3c8939a382f0631461134f258441621b5c10186b28"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/src/snapshot/mod.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 269,
+         "startColumn": 21,
+         "charOffset": 11018,
+         "charLength": 14,
+         "snippet": {
+          "text": "crate::model::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 267,
+         "startColumn": 1,
+         "charOffset": 10915,
+         "charLength": 159,
+         "snippet": {
+          "text": "    snapshot: &BTreeMap<PkgName, Version>,\n    taken_with: crate::model::EngineId,\n    restoring_with: crate::model::EngineId,\n) -> Diff {\n    let comparable ="
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "c3ca543419a9761e",
+      "equalIndicator/v1": "ddeb0df9165e57846cb9ee51dae0e3458817921c6bd328ffcae1c529dca9dc73"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsSortImplTraitMembers",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "The order of `impl` members differs from the trait",
+      "markdown": "The order of \\`impl\\` members differs from the trait"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "crates/pipdock-core/tests/execution.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 97,
+         "startColumn": 1,
+         "charOffset": 3691,
+         "charLength": 26,
+         "snippet": {
+          "text": "impl Engine for FakeEngine"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 95,
+         "startColumn": 1,
+         "charOffset": 3675,
+         "charLength": 97,
+         "snippet": {
+          "text": "\n#[async_trait]\nimpl Engine for FakeEngine {\n    fn id(&self) -> EngineId {\n        EngineId::Pip"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "7faff82c9985427b",
+      "equalIndicator/v1": "7249af8a52ed8ac71cf1937af8857083b49dbf07478212b92c57b8340f85954b"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/commands.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 656,
+         "startColumn": 36,
+         "charOffset": 28320,
+         "charLength": 14,
+         "snippet": {
+          "text": "pipdock_core::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 654,
+         "startColumn": 1,
+         "charOffset": 28223,
+         "charLength": 233,
+         "snippet": {
+          "text": "async fn flow_inputs(\n    state: &tauri::State<'_, AppState>,\n) -> pipdock_core::Result<(Box<dyn pipdock_core::engine::Engine>, flow::FlowOptions)> {\n    let store = state.store.lock().await;\n    let stored = settings::load(&store)?;"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "9c60fb7efc892e9c",
+      "equalIndicator/v1": "4e2ef9f4ec75f604337fd8ec9352d07f3bfc8edcd119b7136db581bb47972aa7"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/commands.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1037,
+         "startColumn": 50,
+         "charOffset": 43490,
+         "charLength": 14,
+         "snippet": {
+          "text": "pipdock_core::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1035,
+         "startColumn": 1,
+         "charOffset": 43386,
+         "charLength": 176,
+         "snippet": {
+          "text": "    app: &tauri::AppHandle,\n    channel: &'static str,\n    mut rx: tokio::sync::mpsc::UnboundedReceiver<pipdock_core::engine::ProgressEvent>,\n) {\n    let emitter = app.clone();"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "9f0ea4e9b6b9553c",
+      "equalIndicator/v1": "ad6ed36d27aad5b907926309ea3cae067f247a55c9ee6f7d20ba615dc84dd630"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsIncorrectFunctionArgumentCount",
+     "kind": "fail",
+     "level": "error",
+     "message": {
+      "text": "This function takes 2 parameters, but 1 parameter was supplied [E0061]",
+      "markdown": "This function takes 2 parameters, but 1 parameter was supplied \\[[E0061](https://doc.rust-lang.org/error-index.html#E0061)\\]  "
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/commands.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1045,
+         "startColumn": 30,
+         "charOffset": 43809,
+         "charLength": 1,
+         "snippet": {
+          "text": ")"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1043,
+         "startColumn": 1,
+         "charOffset": 43683,
+         "charLength": 193,
+         "snippet": {
+          "text": "        while let Some(event) = rx.recv().await {\n            if let Some(line) = event.line() {\n                log.push(line);\n            }\n            let _ = emitter.emit(channel, &event);"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "9b4b8202f6ff02c7",
+      "equalIndicator/v1": "f56aab3fcfb6a63ab26f180646c16b0548f19d23d81a692db23a5ea94d86d799"
+     },
+     "properties": {
+      "ideaSeverity": "ERROR",
+      "qodanaSeverity": "Critical",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "DuplicatedCode",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Duplicated code",
+      "markdown": "Duplicated code"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/commands.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1243,
+         "startColumn": 5,
+         "charOffset": 52089,
+         "charLength": 204,
+         "snippet": {
+          "text": "for (target, contents) in [(&md, body), (&json, document)] {\n        tokio::fs::write(target, contents)\n            .await\n            .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;\n    }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1243,
+         "startColumn": 1,
+         "charOffset": 52085,
+         "charLength": 208,
+         "snippet": {
+          "text": "    for (target, contents) in [(&md, body), (&json, document)] {\n        tokio::fs::write(target, contents)\n            .await\n            .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;\n    }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      },
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/commands.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 1403,
+         "startColumn": 5,
+         "charOffset": 59521,
+         "charLength": 204,
+         "snippet": {
+          "text": "for (target, contents) in [(&md, body), (&json, document)] {\n        tokio::fs::write(target, contents)\n            .await\n            .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;\n    }"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 1403,
+         "startColumn": 1,
+         "charOffset": 59517,
+         "charLength": 208,
+         "snippet": {
+          "text": "    for (target, contents) in [(&md, body), (&json, document)] {\n        tokio::fs::write(target, contents)\n            .await\n            .map_err(|e| pipdock_core::exec::user_file_error(target, &e))?;\n    }"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "8bdcacd8541f8e93",
+      "equalIndicator/v1": "f80576b6eca0e7607b9305806e18b5a2b28f8bdc842a712057b32291624643e7"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "DUPLICATES",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/state.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 64,
+         "startColumn": 18,
+         "charOffset": 3005,
+         "charLength": 11,
+         "snippet": {
+          "text": "std::path::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 62,
+         "startColumn": 1,
+         "charOffset": 2924,
+         "charLength": 191,
+         "snippet": {
+          "text": "pub struct HealthSession {\n    /// The folder the tools ran in.\n    pub project: std::path::PathBuf,\n    /// The environment the report was produced against.\n    pub env: pipdock_core::PyEnv,"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "1aa5c6dcc97c3a1c",
+      "equalIndicator/v1": "7e6615ddfba927e6c3ca91f330b21efca10a9799b954242b5ebc967e1f7638bd"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/state.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 537,
+         "startColumn": 45,
+         "charOffset": 22072,
+         "charLength": 14,
+         "snippet": {
+          "text": "pipdock_core::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 535,
+         "startColumn": 1,
+         "charOffset": 21989,
+         "charLength": 202,
+         "snippet": {
+          "text": "\n    /// Publish the result of a load.\n    pub fn finish_index_load(&self, loaded: pipdock_core::Result<NameIndex>) {\n        if let Ok(mut slot) = self.index.lock() {\n            *slot = match loaded {"
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "2c602090b1d49cc4",
+      "equalIndicator/v1": "c4f15aa717c1fc54ac826c76260dd9cec0ddff5dc050598d5911caebc55cae78"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    },
+    {
+     "ruleId": "RsUnnecessaryQualifications",
+     "kind": "fail",
+     "level": "note",
+     "message": {
+      "text": "Path prefix not necessary",
+      "markdown": "Path prefix not necessary"
+     },
+     "locations": [
+      {
+       "physicalLocation": {
+        "artifactLocation": {
+         "uri": "src-tauri/src/state.rs",
+         "uriBaseId": "SRCROOT"
+        },
+        "region": {
+         "startLine": 617,
+         "startColumn": 37,
+         "charOffset": 25313,
+         "charLength": 14,
+         "snippet": {
+          "text": "pipdock_core::"
+         },
+         "sourceLanguage": "Rust"
+        },
+        "contextRegion": {
+         "startLine": 615,
+         "startColumn": 1,
+         "charOffset": 25153,
+         "charLength": 270,
+         "snippet": {
+          "text": "        let (state, dir) = app_state(\"index\");\n        assert!(state.begin_index_load(), \"the first search starts a load\");\n        state.finish_index_load(Err(pipdock_core::PdError::new(\n            Code::NetIndexRefreshFailed,\n            \"the package index is empty\","
+         },
+         "sourceLanguage": "Rust"
+        }
+       },
+       "logicalLocations": [
+        {
+         "fullyQualifiedName": "project",
+         "kind": "module"
+        }
+       ]
+      }
+     ],
+     "partialFingerprints": {
+      "equalIndicator/v2": "b953804137437392",
+      "equalIndicator/v1": "6a4a93afc8419897c1995a1bb82d5a9c5496c32bccdc08f37b176850947c08d3"
+     },
+     "properties": {
+      "ideaSeverity": "WEAK WARNING",
+      "qodanaSeverity": "Moderate",
+      "problemType": "REGULAR",
+      "tags": [
+       "Rust"
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}
