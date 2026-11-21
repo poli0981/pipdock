@@ -219,9 +219,13 @@ export const envProbe = (interpreter: string, source?: EnvSource): Promise<EnvRo
 export const envAddManual = (interpreter: string): Promise<EnvRow> =>
   invoke('env_add_manual', { interpreter })
 
-/** Take an added interpreter off that list. Nothing on disk is touched. `false` if it was not on it. */
-export const envRemoveManual = (envHash: string): Promise<boolean> =>
-  invoke('env_remove_manual', { envHash })
+/**
+ * Take an added interpreter off that list, by the path its row shows. Nothing on disk is touched;
+ * `false` if it was not on it. The path, not the `envHash`: an interpreter whose file is gone gets
+ * its identity recomputed from the stored text, which can differ from the one it was added under.
+ */
+export const envRemoveManual = (interpreter: string): Promise<boolean> =>
+  invoke('env_remove_manual', { interpreter })
 
 /**
  * Everything installed in `env` — the Installed table.

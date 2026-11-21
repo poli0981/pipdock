@@ -217,8 +217,8 @@ pub async fn select_env(opts: &GlobalOpts) -> Result<PyEnv> {
 /// CLI-SPEC §2 and `--env`'s own help text: `--env` wins; then the default `env use` set; then a
 /// `.venv` in the working directory. The default was written by `env use` and read by nothing, so
 /// `env use` reported success and every later command ignored it (X3). A default whose interpreter
-/// is gone is said on stderr and skipped, rather than failing a command the user ran somewhere a
-/// `.venv` would have answered.
+/// is gone, or that [`envs::validate_interpreter`] refuses, is said on stderr and skipped, rather
+/// than failing a command the user ran somewhere a `.venv` would have answered.
 ///
 /// Returns the probe, not just the `PyEnv`, so a command that needs the listing does not probe a
 /// second time — `list` did, and paid twice on every invocation (X28).
@@ -238,12 +238,23 @@ pub async fn select(opts: &GlobalOpts) -> Result<envs::ProbeResult> {
     if let Some(default) = stored {
         let interpreter = PathBuf::from(&default.interpreter);
         if interpreter.is_file() {
-            return envs::probe(&interpreter, EnvSource::Manual).await;
+            // Checked like `--env`: a default written by 1.5.0 or earlier never was, and the file
+            // may have changed since. Refused, it is skipped with a warning, as a gone one is.
+            match envs::validate_interpreter(&interpreter, &app_data_dir()) {
+                Ok(checked) => return envs::probe(&checked, EnvSource::Manual).await,
+                Err(e) => eprintln!(
+                    "warning: the default environment is not used: {}; `pipdock env use` sets \
+                     another",
+                    e.message
+                ),
+            }
+        } else {
+            eprintln!(
+                "warning: the default environment ({}) no longer exists; `pipdock env use` sets \
+                 another",
+                default.interpreter
+            );
         }
-        eprintln!(
-            "warning: the default environment ({}) no longer exists; `pipdock env use` sets another",
-            default.interpreter
-        );
     }
 
     let cwd = std::env::current_dir().unwrap_or_default();
@@ -274,9 +285,13 @@ pub async fn env_list(opts: &GlobalOpts) -> Result<Exit> {
         .collect();
     let candidates = envs::scan_with(&manual).await;
 
+    // Through `probe_listed`, as the GUI's `env_scan` goes: an added entry is checked again before
+    // it runs, because what it was when added says nothing about what it is now.
+    let app_data = app_data_dir();
     let mut rows = Vec::new();
-    for Candidate { path, source } in candidates {
-        let probed = envs::probe(&path, source).await;
+    for candidate in candidates {
+        let probed = envs::probe_listed(&candidate, &app_data).await;
+        let Candidate { path, source } = candidate;
         rows.push((path, source, probed));
     }
 
@@ -1043,7 +1058,9 @@ fn env_json(path: &Path, source: EnvSource, probed: &envs::ProbeResult) -> serde
 /// `pipdock env add <path>` — the GUI's *Add interpreter…* (PRD P0-1).
 ///
 /// Validated, probed, then stored, so the list never gains an entry that was refused or broken on
-/// arrival. `--json` prints the entry exactly as `env list --json` will.
+/// arrival. `--json` prints the entry in the shape of an `env list --json` element — not always the
+/// element `env list` will show, which takes the discovered source and spelling when discovery also
+/// finds the interpreter.
 ///
 /// # Errors
 /// `PD-ENV-001` when the path is missing, not named like a Python interpreter, or one of PipDock's
@@ -1079,19 +1096,23 @@ pub async fn env_add(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
 /// "not on the list" for the one case it exists for — found by its own test. Not being on the list
 /// is not an error: the list is what was asked about, and it is right.
 ///
+/// What was typed is made absolute first — `env add .venv` stores an absolute path, so `env remove
+/// .venv` has to compare one, and a relative path never matched (independent review, 1.6.0).
+///
 /// # Errors
 /// `PD-INT-001` when the store cannot be read or written.
 pub fn env_remove(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
     let store = Store::open(&app_data_dir())?;
-    let interpreter = envs::interpreter_in(path);
-    let candidates = [interpreter.clone(), envs::venv_interpreter(path)];
+    let absolute = |p: PathBuf| std::path::absolute(&p).unwrap_or(p);
+    let interpreter = absolute(envs::interpreter_in(path));
+    let candidates = [interpreter.clone(), absolute(envs::venv_interpreter(path))];
     let entry = store.manual_envs()?.into_iter().find(|m| {
         candidates
             .iter()
             .any(|c| m.env_hash == envs::env_hash(c) || same_path(&m.interpreter, c))
     });
     let removed = match &entry {
-        Some(m) => store.remove_manual_env(&m.env_hash)?,
+        Some(m) => store.remove_manual_env(&m.env_hash, &m.interpreter)?,
         None => false,
     };
     let shown = entry.map_or_else(|| interpreter.display().to_string(), |m| m.interpreter);

@@ -310,7 +310,12 @@ impl Store {
     ///
     /// Adding one that is already there keeps its place and its date — the list is in the order
     /// things were added, and adding again is not a new addition — but takes the path as given
-    /// this time, which is the canonical one [`crate::envs::validate_interpreter`] returned.
+    /// this time, which is the absolute one [`crate::envs::validate_interpreter`] returned, links
+    /// left alone.
+    ///
+    /// Keyed by `env_hash`, which follows links, so a `--symlinks` venv and its base interpreter
+    /// are one entry here: added after the base, the venv replaces it. Only an added base and an
+    /// added venv of it meet this; the backlog records it with the rest of that identity.
     ///
     /// # Errors
     /// `PD-INT-001` when the write fails.
@@ -357,12 +362,21 @@ impl Store {
     /// pins, snapshots and Health folder keyed to the same `env_hash` stay, ready for the day it
     /// is added — or discovered — again.
     ///
+    /// **Matched by identity or by the stored path**, case-insensitively for the path. An
+    /// interpreter whose file is gone can no longer be canonicalized into the identity it was added
+    /// under — on a network share the two spellings differ (`\\server\share` against
+    /// `UNC\server\share`) — and that entry, listed with PD-ENV-001, is exactly the one a person
+    /// wants removed. By hash alone, removing it reported success and the next scan brought it back.
+    ///
     /// # Errors
     /// `PD-INT-001` when the write fails. `Ok(false)` when it was not on the list.
-    pub fn remove_manual_env(&self, env_hash: &str) -> Result<bool> {
+    pub fn remove_manual_env(&self, env_hash: &str, interpreter: &str) -> Result<bool> {
         let removed = self
             .conn
-            .execute("DELETE FROM manual_envs WHERE env_hash = ?1", [env_hash])
+            .execute(
+                "DELETE FROM manual_envs WHERE env_hash = ?1 OR lower(interpreter) = lower(?2)",
+                rusqlite::params![env_hash, interpreter],
+            )
             .map_err(|e| PdError::new(Code::IntUnexpected, format!("manual env store: {e}")))?;
         Ok(removed > 0)
     }
@@ -612,11 +626,17 @@ mod tests {
             .expect("and Health's folder");
 
         assert!(
-            store.remove_manual_env("h").expect("remove"),
+            !store
+                .remove_manual_env("other", r"D:\elsewhere\python.exe")
+                .expect("remove"),
+            "neither the identity nor the path matches"
+        );
+        assert!(
+            store.remove_manual_env("h", "unused").expect("remove"),
             "it was there"
         );
         assert!(
-            !store.remove_manual_env("h").expect("again"),
+            !store.remove_manual_env("h", "unused").expect("again"),
             "and is not now"
         );
         assert!(store.manual_envs().expect("read").is_empty());
@@ -629,5 +649,30 @@ mod tests {
             Some(r"D:\p"),
             "keyed data outlives the entry"
         );
+    }
+
+    #[test]
+    fn a_gone_interpreter_is_removed_by_its_stored_path_when_its_identity_moved() {
+        // Added while the file was there, under the identity its canonical path hashed to; once the
+        // file is gone the row's identity is the hash of the stored text, which on a network share
+        // is spelled differently. The stored path, in any case, still matches.
+        let store = Store::in_memory().expect("open");
+        store
+            .add_manual_env(
+                "hash-of-unc-spelling",
+                r"\\server\share\proj\Scripts\python.exe",
+                "2026-11-02T00:00:00Z",
+            )
+            .expect("add");
+        assert!(
+            store
+                .remove_manual_env(
+                    "hash-of-the-stored-text",
+                    r"\\SERVER\share\proj\Scripts\python.exe"
+                )
+                .expect("remove"),
+            "matched by the path"
+        );
+        assert!(store.manual_envs().expect("read").is_empty());
     }
 }

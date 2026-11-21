@@ -143,7 +143,7 @@ An error's exit is derived from its code's area (`run::exit_for`) rather than wr
 | `snapshot diff` | `Diff`, as a rollback with this engine would see it; the lines no index can restore are printed in text mode only |
 | `env list` | An array, one object per discovered interpreter and then per added one (`source: "manual"`, 1.6.0): `interpreter`, `source`, `python`, `externallyManaged`, `hiddenUserSite`, `packages` (a count), `envHash`, `pipVersion` — or `interpreter`, `source` and `error: {code, message}` for one that could not be probed, without failing the rest |
 | `env use` | The `PyEnv` that is now the default |
-| `env add` | The added interpreter as one `env list` element, `source: "manual"` |
+| `env add` | The added interpreter in the shape of one `env list` element, `source: "manual"`. When discovery also finds that interpreter, `env list` shows it under the discovered source and spelling instead, and the added entry waits unseen |
 | `env remove` | `{interpreter, removed}` — `removed` is false when it was not on the list, which is not an error (exit 0) |
 | `list` | `[Dist]`, from the probe; with `--outdated`, `[OutdatedDist]` |
 | `search` | `[Hit]` |

@@ -2,8 +2,10 @@
  * *Add interpreter…* and *Remove from list* — PRD P0-1's manual browse (1.6.0).
  *
  * The store half and the screen half, because the seam between them is where this app's bugs have
- * lived (CLAUDE.md, `PdPlanPanel`): the store merges by `envHash` and the screen renders by
- * interpreter path, and a test of either alone would not see the two disagree.
+ * lived (CLAUDE.md, `PdPlanPanel`). Both key on the interpreter **path**: the first version merged
+ * and removed by `envHash`, which follows links — so a venv made with `--symlinks` merged into the
+ * base Python it points at, and *Remove from list* took every row sharing the hash with it. An
+ * independent review of 1.6.0 found both, and the cases below are the ones it named.
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -89,7 +91,8 @@ describe('the store', () => {
   })
 
   it('does not list an interpreter twice when discovery already has it', async () => {
-    // The same environment under the registry's spelling: one row, the discovered one, selected.
+    // The same file in another case — Windows paths are case-insensitive: one row, the
+    // discovered one, under the spelling the next scan will list, selected.
     vi.mocked(ipc.pickOpenFile).mockResolvedValueOnce(DISCOVERED.interpreter)
     vi.mocked(ipc.envAddManual).mockResolvedValueOnce({
       ...ADDED,
@@ -103,6 +106,62 @@ describe('the store', () => {
     const state = useEnvStore.getState()
     expect(state.rows).toEqual([DISCOVERED])
     expect(state.selected).toBe(DISCOVERED.interpreter)
+  })
+
+  it('lists a venv made with --symlinks beside the base Python it links to, and selects the venv', async () => {
+    // Its `python.exe` is a link to the base, so the two share an `envHash`. Merging on the hash
+    // selected the base: the next update would have changed the system's Python, not the venv's.
+    const linked: EnvRow = { ...ADDED, envHash: DISCOVERED.envHash }
+    vi.mocked(ipc.pickOpenFile).mockResolvedValueOnce(linked.interpreter)
+    vi.mocked(ipc.envAddManual).mockResolvedValueOnce(linked)
+    useEnvStore.setState({ rows: [DISCOVERED], selected: DISCOVERED.interpreter })
+
+    await useEnvStore.getState().addManual('Choose one')
+
+    const state = useEnvStore.getState()
+    expect(state.rows).toEqual([DISCOVERED, linked])
+    expect(state.selected).toBe(linked.interpreter)
+  })
+
+  it('replaces a broken row when its venv is made again, and selects the working one', async () => {
+    const fresh: EnvRow = {
+      interpreter: GONE.interpreter,
+      source: 'manual',
+      envHash: GONE.envHash,
+      env: {
+        interpreter: GONE.interpreter,
+        prefix: 'E:\\gone',
+        pythonVersion: '3.13.9',
+        externallyManaged: false,
+        hiddenUserSite: null,
+        source: 'manual',
+      },
+    }
+    vi.mocked(ipc.pickOpenFile).mockResolvedValueOnce(GONE.interpreter)
+    vi.mocked(ipc.envAddManual).mockResolvedValueOnce(fresh)
+    useEnvStore.setState({ rows: [DISCOVERED, GONE], selected: DISCOVERED.interpreter })
+
+    await useEnvStore.getState().addManual('Choose one')
+
+    const state = useEnvStore.getState()
+    expect(state.rows).toEqual([DISCOVERED, fresh])
+    expect(state.rows[1]?.error).toBeUndefined()
+    expect(state.selected).toBe(GONE.interpreter)
+  })
+
+  it('takes the spelling Rust stored when an added interpreter is added again', async () => {
+    // `add_manual_env` rewrites the stored text, so the next scan lists the new spelling; a row
+    // kept under the old one would leave the selection naming a row that is about to be renamed.
+    const respelled: EnvRow = { ...ADDED, interpreter: ADDED.interpreter.toLowerCase() }
+    vi.mocked(ipc.pickOpenFile).mockResolvedValueOnce(respelled.interpreter)
+    vi.mocked(ipc.envAddManual).mockResolvedValueOnce(respelled)
+    useEnvStore.setState({ rows: [DISCOVERED, ADDED], selected: ADDED.interpreter })
+
+    await useEnvStore.getState().addManual('Choose one')
+
+    const state = useEnvStore.getState()
+    expect(state.rows).toEqual([DISCOVERED, respelled])
+    expect(state.selected).toBe(respelled.interpreter)
   })
 
   it('keeps a refused path off the list and shows why', async () => {
@@ -140,9 +199,11 @@ describe('the store', () => {
       openFor: ADDED.interpreter,
     })
 
-    await useEnvStore.getState().removeManual(ADDED.envHash)
+    await useEnvStore.getState().removeManual(ADDED.interpreter)
 
-    expect(ipc.envRemoveManual).toHaveBeenCalledWith(ADDED.envHash)
+    // By the path the row shows: for a file that is gone, the hash Rust would recompute from the
+    // stored text can differ from the one it was added under, and removing by it never matched.
+    expect(ipc.envRemoveManual).toHaveBeenCalledWith(ADDED.interpreter)
     const state = useEnvStore.getState()
     expect(state.rows).toEqual([DISCOVERED])
     expect(state.selected).toBe(DISCOVERED.interpreter)
@@ -153,9 +214,28 @@ describe('the store', () => {
 
   it('leaves the selection alone when another row is removed', async () => {
     useEnvStore.setState({ rows: [DISCOVERED, GONE], selected: DISCOVERED.interpreter })
-    await useEnvStore.getState().removeManual(GONE.envHash)
+    await useEnvStore.getState().removeManual(GONE.interpreter)
     expect(useEnvStore.getState().selected).toBe(DISCOVERED.interpreter)
     expect(useEnvStore.getState().rows).toEqual([DISCOVERED])
+  })
+
+  it('removes only the row it was asked about when another shares its envHash', async () => {
+    const linked: EnvRow = { ...ADDED, envHash: DISCOVERED.envHash }
+    useEnvStore.setState({ rows: [DISCOVERED, linked], selected: DISCOVERED.interpreter })
+    await useEnvStore.getState().removeManual(linked.interpreter)
+    expect(useEnvStore.getState().rows).toEqual([DISCOVERED])
+  })
+
+  it('refuses to remove while a scan runs, and to scan while a removal runs', async () => {
+    // A scan that read the list before the removal was written would bring the row back.
+    useEnvStore.setState({ rows: [DISCOVERED, ADDED], scanning: true })
+    await useEnvStore.getState().removeManual(ADDED.interpreter)
+    expect(ipc.envRemoveManual).not.toHaveBeenCalled()
+    expect(useEnvStore.getState().rows).toEqual([DISCOVERED, ADDED])
+
+    useEnvStore.setState({ scanning: false, removingManual: ADDED.interpreter })
+    await useEnvStore.getState().scan()
+    expect(ipc.envScan).not.toHaveBeenCalled()
   })
 })
 
@@ -195,6 +275,24 @@ describe('the screen', () => {
     ])
     // Forgetting an entry deletes nothing, so it is not drawn as destructive (UI-SPEC §7).
     for (const button of removes) expect(button).not.toHaveAttribute('data-destructive')
+  })
+
+  it('makes Remove from list busy while a scan runs, without taking focus from it', () => {
+    const removeManual = vi.fn()
+    useEnvStore.setState({ rows: [ADDED], scanning: true, scan: vi.fn(), removeManual })
+    render(<PdEnvironments />)
+
+    const remove = screen.getByRole('button', { name: `Remove from list: ${ADDED.interpreter}` })
+    expect(remove).toHaveAttribute('aria-disabled', 'true')
+    expect(remove).not.toBeDisabled()
+    fireEvent.click(remove)
+    expect(removeManual).not.toHaveBeenCalled()
+
+    act(() => {
+      useEnvStore.setState({ scanning: false })
+    })
+    fireEvent.click(remove)
+    expect(removeManual).toHaveBeenCalledWith(ADDED.interpreter)
   })
 
   it('says what was added in a status region that was there before the words', () => {

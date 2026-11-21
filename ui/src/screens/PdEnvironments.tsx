@@ -44,12 +44,12 @@ function SourceChip({ row }: { row: EnvRow }) {
 function RemoveButton({ row }: { row: EnvRow }) {
   const { t } = useTranslation()
   const removeManual = useEnvStore((s) => s.removeManual)
-  const busy = useEnvStore((s) => s.removingManual !== null)
+  const busy = useEnvStore((s) => s.removingManual !== null || s.scanning)
   return (
     <button
       type="button"
       onClick={() => {
-        if (!busy) void removeManual(row.envHash)
+        if (!busy) void removeManual(row.interpreter)
       }}
       aria-disabled={busy}
       // The visible words first, then the path: the name contains what is on the button.
