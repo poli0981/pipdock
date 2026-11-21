@@ -88,8 +88,14 @@ jobs:
         uses: JetBrains/qodana-action@3e8d76ff0e0241618abd808682f426afe84bab3f # v2026.2.2
         env:
           QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_RUST }}
+          # The container runs as the runner's user, and the image's CARGO_HOME (/usr/local/cargo)
+          # belongs to root, so `cargo metadata` could not write the registry it downloads and
+          # RustRover loaded no Cargo project — 0 problems from 0 files analysed. /data/cache is
+          # the container's mount of the action's cache directory, which this user owns.
+          CARGO_HOME: /data/cache/cargo-home
         with:
           args: --config qodana-rust.yaml --linter qodana-rust
+          env-vars-to-linter: CARGO_HOME
           pr-mode: false
           use-caches: false
           upload-result: true
