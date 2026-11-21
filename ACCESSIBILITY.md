@@ -46,7 +46,8 @@ never removed.
 | `Esc` | Close a dialog, the palette or the console drawer; inside a package row, return to the row |
 
 When the screen changes — a new tab, a plan's preview, its summary, the dependency view — focus
-moves to the new screen's heading. When a dialog, the palette or the console drawer closes, focus
+moves to the new screen's heading. So it does when *Remove from list* takes away the row whose
+button you pressed (1.6.0). When a dialog, the palette or the console drawer closes, focus
 returns to what opened it. A button that is busy after you press it stays where focus is. Every
 confirmation that removes, forces or rewrites something opens with focus on **Cancel**.
 
@@ -60,6 +61,10 @@ The full map and the reasoning behind it are in [`docs/UI-SPEC.md`](docs/UI-SPEC
 - Dialogs are named by their heading and described by their body.
 - A run announces its progress ("3 of 15 complete") once, not once per output line. Search
   announces that it is searching, how many results came back, and when nothing matched.
+- On Environments, adding or removing an interpreter is said in a status line ("Added … to the
+  list."). *Remove from list* is named with the path it removes, beginning with the words on the
+  button. The file picker *Add interpreter…* opens is Windows' own dialog, with Windows' own
+  accessibility.
 - Error messages are announced when they appear, and carry a code (`PD-XXX-000`) you can quote.
 - The interface is in English and Vietnamese, and the document language follows the one in use.
 
@@ -103,9 +108,10 @@ Honesty about this matters more than a long list.
 
 **Not tested, and said so rather than implied:**
 
-- **Narrator has not been run again on 1.5.0.** That release changed what a screen reader hears in
-  several places (see the [changelog](changelog/1.x.md)). Those changes were checked against the
-  accessibility tree, which says what is exposed — not against speech, which is what you hear.
+- **Narrator has not been run again on 1.5.0 or 1.6.0.** 1.5.0 changed what a screen reader hears
+  in several places (see the [changelog](changelog/1.x.md)), and 1.6.0 added *Add interpreter…* and
+  *Remove from list*. Those were checked against the accessibility tree, which says what is
+  exposed — not against speech, which is what you hear.
 - **NVDA and JAWS** have not been used with PipDock at all. Reports from people who use them are
   especially welcome.
 - **Each Windows contrast theme by hand.** Forced colours were emulated; the four built-in themes

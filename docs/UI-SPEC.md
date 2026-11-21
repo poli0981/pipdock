@@ -88,14 +88,18 @@ record of what PipDock ran, which outlives the window. The **console drawer** sl
 
 ## 4. Screens
 
-**Environments.** Auto-discovered list (source chip: registry / py launcher / uv / venv / manual) with Python version, package count and pip version; PEP 668 envs carry a red `MANAGED` chip and a line pointing at a virtual environment instead. Actions: *Use*, *Open* (the detail view below), *Rescan*, and *Upgrade pip* when pip is below the planner's floor (§5).
+**Environments.** Auto-discovered list (source chip: registry / py launcher / uv / venv / manual) with Python version, package count and pip version; PEP 668 envs carry a red `MANAGED` chip and a line pointing at a virtual environment instead. Actions: *Use*, *Open* (the detail view below), *Rescan*, *Add interpreter…*, *Remove from list* on a row it added, and *Upgrade pip* when pip is below the planner's floor (§5).
 
 **This line used to promise three things the screen does not have.** A managed environment is not
 *disabled*: it can be selected and read, and a change to it is refused with PD-ENV-002 by the flow —
 decided on a fresh probe since 1.4.0, not on whatever the row last cached — unless the Settings
-override is on. *Browse…* is still owed: `env_add_manual` is the one command left in `NOT_YET`, so an
-environment is found only by discovery — the registry, the `py` launcher, `uv python list`, and a
-`.venv`, `venv`, `env` or `.env` in the working directory. And there is no star-as-default: the
+override is on. *Browse…* shipped in 1.6.0 as **Add interpreter…**, beside *Rescan* and as the empty state's one
+action (§7): a native picker filtered to `.exe`, then `env_add_manual`, which refuses anything not
+named like a Python interpreter or inside PipDock's own venvs before it runs it, and selects the row
+it adds. An added row carries the `manual` chip and **Remove from list** — kept even when its file
+is gone, so the `PD-ENV-001` row can be removed — and the outcome is said in a `role="status"`
+line mounted before its words. Discovery is unchanged: the registry, the `py` launcher,
+`uv python list`, and a `.venv`, `venv`, `env` or `.env` in the working directory. And there is no star-as-default: the
 selection lasts for the session, and a rescan keeps it or falls back to the first usable row. The
 CLI's `env use` stores a default, honoured since 1.4.0; the GUI does not read it.
 

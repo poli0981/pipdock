@@ -86,7 +86,19 @@ the per-user site-packages directory — so its package count can be lower than 
 is non-null exactly when that applies, and null inside a venv. See SECURITY §2.
 
 **`venv_scan` matches exactly four directory names**: `.venv`, `venv`, `env`, `.env`. A virtual
-environment called anything else is invisible to `env list`, and you have to name it with `--env`.
+environment called anything else is not discovered — name it with `--env` for one command, or put
+it on the list for good (the GUI's *Add interpreter…* writes the same list):
+
+```powershell
+pipdock env add D:\work\scraper\myenv
+```
+
+It appears in `env list` after discovery's own rows, with `source: "manual"`, and in the GUI's
+Environments screen. `pipdock env remove D:\work\scraper\myenv` takes it off again; nothing on disk
+is touched, and its pins and snapshots stay for the day it comes back. Since 1.6.0 a path you give
+`--env`, `env use` or `env add` must be named like a Python interpreter (`python.exe`,
+`python3.exe`, `python3.12.exe`) and must not be one of PipDock's own venvs, or it is refused
+with PD-ENV-001 before anything runs it.
 
 Make one the default so you can stop typing `--env`:
 

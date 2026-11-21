@@ -27,7 +27,7 @@
 
 **Which environment.** In order:
 
-1. `--env` — an interpreter, or an environment directory whose `Scripts\python.exe` is used;
+1. `--env` — an interpreter, or an environment directory whose `Scripts\python.exe` is used; refused with PD-ENV-001 unless it is named like a Python interpreter and outside PipDock's own venvs (SECURITY §2);
 2. the default `pipdock env use` stored. If its interpreter is gone, stderr says `` warning: the default environment (<path>) no longer exists; `pipdock env use` sets another `` and the search goes on;
 3. the first of `.venv`, `venv`, `env`, `.env` in the working directory that holds an interpreter.
 
@@ -38,8 +38,10 @@ Nothing found is PD-ENV-001 (exit 3), naming all three ways. Only `env use` writ
 ## 3. Commands
 
 ```text
-pipdock env list                         # discovered envs, sources, PEP 668 flags
+pipdock env list                         # discovered envs, then the added ones; sources, PEP 668 flags
 pipdock env use <path>                   # set the default env (§2)
+pipdock env add <path>                   # add an interpreter or env dir to the list (the GUI's Add interpreter…)
+pipdock env remove <path>                # take an added one off the list; nothing on disk changes
 pipdock list [--outdated]                # installed packages, from the probe; --outdated asks the index
 pipdock search <query> [--limit n]       # local fuzzy index search (n defaults to 20)
 pipdock info <pkg>                       # cached PyPI metadata
@@ -139,8 +141,10 @@ An error's exit is derived from its code's area (`run::exit_for`) rather than wr
 | `snapshot create` | The new snapshot's `SnapshotMeta` |
 | `snapshot list` | `[SnapshotMeta]` |
 | `snapshot diff` | `Diff`, as a rollback with this engine would see it; the lines no index can restore are printed in text mode only |
-| `env list` | An array, one object per discovered interpreter: `interpreter`, `source`, `python`, `externallyManaged`, `hiddenUserSite`, `packages` (a count), `envHash`, `pipVersion` — or `interpreter`, `source` and `error: {code, message}` for one that could not be probed, without failing the rest |
+| `env list` | An array, one object per discovered interpreter and then per added one (`source: "manual"`, 1.6.0): `interpreter`, `source`, `python`, `externallyManaged`, `hiddenUserSite`, `packages` (a count), `envHash`, `pipVersion` — or `interpreter`, `source` and `error: {code, message}` for one that could not be probed, without failing the rest |
 | `env use` | The `PyEnv` that is now the default |
+| `env add` | The added interpreter as one `env list` element, `source: "manual"` |
+| `env remove` | `{interpreter, removed}` — `removed` is false when it was not on the list, which is not an error (exit 0) |
 | `list` | `[Dist]`, from the probe; with `--outdated`, `[OutdatedDist]` |
 | `search` | `[Hit]` |
 | `info` | `{meta: PackageMeta, freshness: Freshness}` |

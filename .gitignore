@@ -18,9 +18,9 @@ dist-ssr/
 # Environments (test venvs created by the integration suite / spikes)
 .venv/
 venv/
-# Scratch venvs for verifying by hand. Note that the GUI will only ever *see* one named exactly
-# `.venv`, `venv`, `env` or `.env` in the working directory — `envs::venv_scan` matches that fixed
-# list and `env_add_manual` (Browse…) is still owed — so a suffixed one here is CLI-only.
+# Scratch venvs for verifying by hand. Discovery only *finds* one named exactly `.venv`, `venv`,
+# `env` or `.env` in the working directory (`envs::venv_scan`'s fixed list); a suffixed one here has
+# to be added — Add interpreter… in the GUI, `pipdock env add` in the CLI.
 /.venv-*/
 __pycache__/
 *.py[cod]
