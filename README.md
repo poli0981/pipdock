@@ -1,14 +1,14 @@
 # PipDock
 
-[![CI · Rust](https://github.com/poli0981/pipdock/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/poli0981/pipdock/actions/workflows/ci-rust.yml)
-[![CI · Node](https://github.com/poli0981/pipdock/actions/workflows/ci-node.yml/badge.svg)](https://github.com/poli0981/pipdock/actions/workflows/ci-node.yml)
-[![CodeQL](https://github.com/poli0981/pipdock/actions/workflows/codeql.yml/badge.svg)](https://github.com/poli0981/pipdock/actions/workflows/codeql.yml)
-[![Release](https://img.shields.io/github/v/release/poli0981/pipdock?display_name=tag&sort=semver)](https://github.com/poli0981/pipdock/releases)
+[![CI · Rust](https://github.com/poli0981org/pipdock/actions/workflows/ci-rust.yml/badge.svg)](https://github.com/poli0981org/pipdock/actions/workflows/ci-rust.yml)
+[![CI · Node](https://github.com/poli0981org/pipdock/actions/workflows/ci-node.yml/badge.svg)](https://github.com/poli0981org/pipdock/actions/workflows/ci-node.yml)
+[![CodeQL](https://github.com/poli0981org/pipdock/actions/workflows/codeql.yml/badge.svg)](https://github.com/poli0981org/pipdock/actions/workflows/codeql.yml)
+[![Release](https://img.shields.io/github/v/release/poli0981org/pipdock?display_name=tag&sort=semver)](https://github.com/poli0981org/pipdock/releases)
 [![License: GPL-3.0](https://img.shields.io/badge/license-GPL--3.0-blue)](LICENSE)
 
 **A friendly dock for your Python environments.** Inspect, install, update, and clean up Python packages in bulk — through a keyboard-first GUI or a scriptable CLI — without ever hand-typing another `pip install` incantation or guessing why an upgrade broke your project.
 
-> Repo: `poli0981/pipdock` · License: **GPL-3.0-only** · Platform: **Windows 10/11** · Contact: [contact@poli0981.dev](mailto:contact@poli0981.dev) · [other channels](https://poli0981.dev/links/)
+> Repo: `poli0981org/pipdock` · License: **GPL-3.0-only** · Platform: **Windows 10/11** · Contact: [contact@poli0981.dev](mailto:contact@poli0981.dev) · [other channels](https://poli0981.dev/links/)
 
 ---
 
@@ -73,7 +73,7 @@
 
 ## Install
 
-Download the installer (NSIS `.exe` or `.msi`) from [GitHub Releases](https://github.com/poli0981/pipdock/releases).
+Download the installer (NSIS `.exe` or `.msi`) from [GitHub Releases](https://github.com/poli0981org/pipdock/releases).
 
 PipDock does not update itself — grab a new build from the same page when you want one. That is deliberate: a self-updater is a standing remote-code-execution path into a tool that already runs subprocesses against your interpreters, and it is not worth the convenience (see [docs/SECURITY.md](docs/SECURITY.md) §5).
 
@@ -88,10 +88,16 @@ PipDock does not update itself — grab a new build from the same page when you 
 > From 1.4.0 the `.exe` and `.msi` also carry a build-provenance attestation. A checksum published beside a file cannot prove where the file came from — whoever could replace one could replace both — but the attestation proves the installer was built by this repository's release workflow. With the [GitHub CLI](https://cli.github.com/):
 >
 > ```powershell
-> gh attestation verify .\PipDock_<version>_x64-setup.exe --repo poli0981/pipdock
+> gh attestation verify .\PipDock_<version>_x64-setup.exe --repo poli0981org/pipdock
 > ```
 >
-> It succeeds only when GitHub holds an attestation from this repository for that exact file. If it fails, do not run the file.
+> That is for 1.6.0 and later. **1.4.0 and 1.5.0 were built before the repository moved to the poli0981org organization** (2026-11-21), and their attestations stayed with the account that made them, so `--repo` finds none for them. Verify those against that account and the repository's old name instead:
+>
+> ```powershell
+> gh attestation verify .\PipDock_1.5.0_x64-setup.exe --owner poli0981 --signer-repo poli0981/pipdock
+> ```
+>
+> Either succeeds only when GitHub holds an attestation from this repository's release workflow for that exact file. If it fails, do not run the file.
 
 ## Quick start
 
@@ -115,10 +121,10 @@ pipdock snapshot rollback latest
 
 ## Documentation
 
-**Using PipDock?** The [wiki](https://github.com/poli0981/pipdock/wiki) is the user-facing set —
-[Getting Started](https://github.com/poli0981/pipdock/wiki/Getting-Started),
-[Troubleshooting](https://github.com/poli0981/pipdock/wiki/Troubleshooting) and an
-[FAQ](https://github.com/poli0981/pipdock/wiki/FAQ) that explains the design decisions rather than
+**Using PipDock?** The [wiki](https://github.com/poli0981org/pipdock/wiki) is the user-facing set —
+[Getting Started](https://github.com/poli0981org/pipdock/wiki/Getting-Started),
+[Troubleshooting](https://github.com/poli0981org/pipdock/wiki/Troubleshooting) and an
+[FAQ](https://github.com/poli0981org/pipdock/wiki/FAQ) that explains the design decisions rather than
 just stating them. Everything below is for reading the code.
 
 | Doc | Purpose |
@@ -134,7 +140,7 @@ just stating them. Everything below is for reading the code.
 | [docs/ERROR-CATALOG.md](docs/ERROR-CATALOG.md) | Error codes, stderr detection patterns, user guidance |
 | [docs/SECURITY.md](docs/SECURITY.md) | Threat model, PEP 668 policy, supply-chain hygiene |
 | [docs/TESTING.md](docs/TESTING.md) | Test strategy incl. disposable-venv integration tests |
-| [docs/RELEASE-CI.md](docs/RELEASE-CI.md) | CI callers into `poli0981/.github`, release pipeline |
+| [docs/RELEASE-CI.md](docs/RELEASE-CI.md) | Workflows, branch protection, Dependabot, release pipeline |
 | [docs/I18N.md](docs/I18N.md) | EN/VI localization rules |
 | [docs/ROADMAP.md](docs/ROADMAP.md) | Spike week, milestones, exit criteria |
 | [ACCESSIBILITY.md](ACCESSIBILITY.md) | What is supported, what has been tested, what is known not to work, and how to report a barrier |
@@ -146,7 +152,7 @@ just stating them. Everything below is for reading the code.
 
 PipDock is built to work with a keyboard alone, with a screen reader and under a Windows contrast theme, and `pipdock` on the command line is plain text with no colour and nothing that animates. The target is WCAG 2.2 AA; it is a target and not a conformance claim, and [ACCESSIBILITY.md](ACCESSIBILITY.md) says exactly what has been tested, by whom, and what is known to fall short.
 
-If something gets in your way, [open an accessibility issue](https://github.com/poli0981/pipdock/issues/new?template=accessibility.yml) or write to [accessibility@poli0981.dev](mailto:accessibility@poli0981.dev) — in English or Vietnamese, with no GitHub account needed and no diagnosis expected.
+If something gets in your way, [open an accessibility issue](https://github.com/poli0981org/pipdock/issues/new?template=accessibility.yml) or write to [accessibility@poli0981.dev](mailto:accessibility@poli0981.dev) — in English or Vietnamese, with no GitHub account needed and no diagnosis expected.
 
 ## Contributing
 
@@ -172,4 +178,4 @@ PipDock is an independent project. It is not affiliated with or endorsed by the 
 
 PipDock là ứng dụng Windows (GUI + CLI) giúp kiểm tra, cài đặt, cập nhật và gỡ **hàng loạt** gói thư viện Python một cách an toàn: luôn chạy dry-run xem trước thay đổi, xử lý xung đột phiên bản với 3 lựa chọn rõ ràng, tự chụp snapshot trước mỗi lần chạy để rollback một chạm, cảnh báo khi gỡ gói mà gói khác đang phụ thuộc, và tổng kết "13 thành công, 2 thất bại" kèm lý do từng gói. Hỗ trợ engine pip hoặc uv (chọn trong Settings), tìm gói tức thì nhờ cache chỉ mục PyPI, kèm module Code Health (deptry/vulture/ruff) để dọn dependency thừa và dead code. Không thu thập dữ liệu. Giấy phép GPL-3.0.
 
-**Khả năng tiếp cận:** PipDock dùng được chỉ với bàn phím, với trình đọc màn hình (đã thử với Narrator) và ở chế độ tương phản cao của Windows. Chi tiết, kể cả những gì chưa được kiểm thử, nằm trong [ACCESSIBILITY.md](ACCESSIBILITY.md). Nếu gặp rào cản, hãy [mở issue](https://github.com/poli0981/pipdock/issues/new?template=accessibility.yml) hoặc viết tới [accessibility@poli0981.dev](mailto:accessibility@poli0981.dev) — tiếng Việt cũng được.
+**Khả năng tiếp cận:** PipDock dùng được chỉ với bàn phím, với trình đọc màn hình (đã thử với Narrator) và ở chế độ tương phản cao của Windows. Chi tiết, kể cả những gì chưa được kiểm thử, nằm trong [ACCESSIBILITY.md](ACCESSIBILITY.md). Nếu gặp rào cản, hãy [mở issue](https://github.com/poli0981org/pipdock/issues/new?template=accessibility.yml) hoặc viết tới [accessibility@poli0981.dev](mailto:accessibility@poli0981.dev) — tiếng Việt cũng được.

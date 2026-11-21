@@ -1,14 +1,18 @@
-# Caller into the ops repo's CodeQL reusable.
+# CodeQL, project-local since the move to poli0981org (2026-11-21).
 #
-# Three languages. **Rust** — CodeQL analyses it without a build (`build-mode: none`, which the
-# reusable passes for every language outside its autobuild list); this file said for six releases
-# that CodeQL had no Rust support, which stopped being true in 2025. **Actions** — the workflows
-# themselves: the class of mistake SonarCloud kept finding by hand (write permissions at workflow
-# level, unpinned third-party actions). **JavaScript/TypeScript** — the frontend, and the one
-# whose check name `main`'s protection requires, so it keeps its exact name.
+# It was a caller into the owner's personal ops repo (`poli0981/.github`'s reusable-codeql.yml, at
+# `@main`), whose steps used `github/codeql-action@v4` by tag. The same analysis runs here with the
+# action pinned by commit, and the write permission on the one job that uploads.
 #
-# The reusable notes that repo Settings → Advanced Security → CodeQL "Default setup" must be
-# DISABLED, or this advanced-setup workflow is rejected at upload time.
+# Three languages, all `build-mode: none`. **Rust** — CodeQL analyses it without a build; this
+# file said for six releases that CodeQL had no Rust support, which stopped being true in 2025.
+# **Actions** — the workflows themselves: write permissions at workflow level, unpinned
+# third-party actions, untrusted input in a `run:`. **JavaScript/TypeScript** — the frontend, and
+# a required check under exactly the name `Analyze (javascript-typescript)` (RELEASE-CI.md §2).
+# The `category` values are the reusable's, so existing alerts keep their history.
+#
+# Settings → Advanced Security → CodeQL "Default setup" must stay disabled, or this advanced
+# setup is rejected at upload time.
 
 name: CodeQL
 
@@ -20,18 +24,36 @@ on:
     # Weekly, offset off the hour to avoid the top-of-hour scheduling pileup.
     - cron: '37 4 * * 1'
 
-# A caller cannot grant a called workflow less than its jobs declare, or the run is rejected before
-# it starts. reusable-codeql.yml's analyze job asks for `packages: read` to fetch internal CodeQL
-# packs, so omitting it here produced a startup_failure with no logs to explain it — the same
-# permissions trap RELEASE-CI.md §1 records, from the other direction.
 permissions:
-  actions: read
   contents: read
-  packages: read
-  security-events: write
 
 jobs:
   analyze:
-    uses: poli0981/.github/.github/workflows/reusable-codeql.yml@main
-    with:
-      languages: '["javascript-typescript", "rust", "actions"]'
+    name: Analyze (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      actions: read
+      contents: read
+      packages: read # CodeQL's own query packs
+      security-events: write # upload the results
+    strategy:
+      fail-fast: false
+      matrix:
+        language: [javascript-typescript, rust, actions]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          languages: ${{ matrix.language }}
+          build-mode: none
+
+      - name: Perform CodeQL analysis
+        uses: github/codeql-action/analyze@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          category: /language:${{ matrix.language }}

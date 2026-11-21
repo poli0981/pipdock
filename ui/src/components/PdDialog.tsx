@@ -26,7 +26,7 @@
  *   double-submitted and the user keeps reading what they were reading.
  */
 
-import { useEffect, useId, useRef } from 'react'
+import { useEffect, useId, useRef, type ReactNode } from 'react'
 
 interface PdDialogProps {
   /**
@@ -41,12 +41,12 @@ interface PdDialogProps {
   /** Heading text, already localized. */
   title: string
   /** Body: the explanation, the list, whatever the caller needs. */
-  children: React.ReactNode
+  children: ReactNode
   /** Cancel's label. Rendered first, focused on open. */
   cancelLabel: string
   onCancel: () => void
   /** Everything other than Cancel, in the order UI-SPEC §5 lists them. */
-  actions: React.ReactNode
+  actions: ReactNode
   /** While true every control is disabled: work is in flight and the answer would be stale. */
   busy?: boolean
 }

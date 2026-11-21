@@ -17,7 +17,7 @@
 use crate::model::EngineId;
 
 /// Where the template lives. Not configurable: an issue URL a caller can set is a phishing vector.
-const ISSUE_URL: &str = "https://github.com/poli0981/pipdock/issues/new?template=bug_report.yml";
+const ISSUE_URL: &str = "https://github.com/poli0981org/pipdock/issues/new?template=bug_report.yml";
 
 /// What a head knows about the failure it is reporting.
 #[derive(Debug, Clone, Default)]

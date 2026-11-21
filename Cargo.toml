@@ -7,7 +7,7 @@ version = "1.5.0"
 edition = "2024"
 rust-version = "1.99"
 license = "GPL-3.0-only"
-repository = "https://github.com/poli0981/pipdock"
+repository = "https://github.com/poli0981org/pipdock"
 authors = ["Kokone (poli0981)"]
 # Applications, not libraries: nothing here belongs on crates.io, and cargo-deny treats a
 # publishable crate's licence and path dependencies as a published one's (deny.toml).

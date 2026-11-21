@@ -10,7 +10,7 @@
  * test while a change to the dimming *rule* still does.
  */
 
-import { memo } from 'react'
+import { memo, type CSSProperties } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdBadge } from '@/components/PdBadge'
@@ -33,7 +33,7 @@ interface PdPackageRowProps {
   /** Open the dependency view focused on this package — UI-SPEC §4's "details" (PRD P1-6). */
   onDetails: (name: string) => void
   /** The virtualizer's absolute positioning. */
-  style: React.CSSProperties
+  style: CSSProperties
 }
 
 function Row({

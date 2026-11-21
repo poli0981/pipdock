@@ -4,13 +4,13 @@
 
 The latest release gets fixes. The previous minor gets security-only patches for 90 days. There is
 no update channel — PipDock does not update itself, so a fix reaches you when you download the new
-build from [Releases](https://github.com/poli0981/pipdock/releases).
+build from [Releases](https://github.com/poli0981org/pipdock/releases).
 
 ## Reporting a vulnerability
 
 **Do not open a public issue.** Use either:
 
-- [GitHub Security Advisories](https://github.com/poli0981/pipdock/security/advisories/new) — preferred
+- [GitHub Security Advisories](https://github.com/poli0981org/pipdock/security/advisories/new) — preferred
 - `code@poli0981.dev`
 
 Target acknowledgment is 7 days. Coordinated disclosure is preferred; tell us if you have a

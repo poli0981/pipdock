@@ -45,7 +45,7 @@ describe('Report bug', () => {
     resetStore(useEnvStore)
     useEnvStore.setState({ rows: [ROW], selected: ENV.interpreter })
     vi.mocked(ipc.reportBugUrl).mockResolvedValue({
-      url: 'https://github.com/poli0981/pipdock/issues/new',
+      url: 'https://github.com/poli0981org/pipdock/issues/new',
       log: '[log excerpt]',
     })
   })

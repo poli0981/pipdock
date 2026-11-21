@@ -1,0 +1,187 @@
+# JetBrains Qodana, in two parts — added 2026-11-21 with the move to poli0981org.
+#
+# **A monorepo to Qodana.** The repository holds a Rust workspace and a TypeScript frontend, and
+# Qodana Cloud has a project for each, with its own token (QODANA_TOKEN_RUST, QODANA_TOKEN_TS_JS)
+# and its own configuration (qodana-rust.yaml, qodana-js.yaml): JetBrains' layout for a monorepo.
+# The two jobs below never inspect the same file.
+#
+# **Rust runs in Docker, TypeScript natively.** qodana-rust has no native mode; it is RustRover in
+# a Linux container, so `#[cfg(windows)]` code is invisible to it — clippy, CodeQL and SonarQube
+# Cloud, all on Windows, cover that. qodana-js runs on the runner after `npm ci`, so it resolves
+# the node_modules the build does, with the Node every other workflow uses.
+#
+# **No token, no analysis**, the way sonar.yml does it: Dependabot's and a fork's pull requests get
+# no repository secrets, so their runs are skipped rather than failed.
+#
+# **No caches** (`use-caches: false`). The repository's Actions cache is near its 10 GB limit, and
+# a Qodana cache — an IDE's indexes, and Cargo's registry inside the container — would evict the
+# cargo caches the required checks restore. A run is slower for it, and it is not a required
+# check (RELEASE-CI.md §2): a failure on `main` reaches Discord through notify.yml.
+#
+# **Every run is a full scan, and only a new problem fails it.** `pr-mode` is off: a whole scan is
+# two to three minutes a part, so analysing only a pull request's files would save little and make
+# a result depend on which files happened to change. `.qodana/rust.sarif.json` is the baseline —
+# the 62 problems the first real run found, triaged on 2026-11-21 (ROADMAP: two Critical that are
+# RustRover misreading what rustc compiles, and 60 Moderate style findings), trimmed to the results
+# and their fingerprints. `--fail-threshold 0` then fails on anything outside it. The TypeScript
+# half has no baseline because it has no accepted problem: the six it found were fixed.
+#
+# **Only new problems reach Code scanning**, under `qodana-rust` and `qodana-js` — a baseline
+# problem is triaged already, and alerting on it again would bury the next real one.
+
+name: Qodana
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: qodana-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tokens:
+    name: tokens present
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    outputs:
+      rust: ${{ steps.check.outputs.rust }}
+      js: ${{ steps.check.outputs.js }}
+    steps:
+      # `secrets` cannot be read in an `if:`, so presence becomes an output. Only the emptiness test
+      # sees the values; nothing is checked out and nothing else runs.
+      - name: Check
+        id: check
+        env:
+          RUST: ${{ secrets.QODANA_TOKEN_RUST }}
+          JS: ${{ secrets.QODANA_TOKEN_TS_JS }}
+        run: |
+          for part in RUST JS; do
+            name=$(echo "$part" | tr '[:upper:]' '[:lower:]')
+            if [ -n "${!part}" ]; then
+              echo "$name=true" >> "$GITHUB_OUTPUT"
+            else
+              echo "$name=false" >> "$GITHUB_OUTPUT"
+              echo "::notice::No Qodana token for the $name part in this run (a Dependabot or fork pull request); it is skipped."
+            fi
+          done
+
+  rust:
+    name: qodana · rust
+    needs: tokens
+    if: needs.tokens.outputs.rust == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      checks: write # annotations
+      pull-requests: write # the summary comment
+      security-events: write # new problems to Code scanning
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The pull request's own head, and the history pull-request mode diffs against.
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Qodana
+        uses: JetBrains/qodana-action@3e8d76ff0e0241618abd808682f426afe84bab3f # v2026.2.2
+        env:
+          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_RUST }}
+          # The container runs as the runner's user, and the image's CARGO_HOME (/usr/local/cargo)
+          # belongs to root, so `cargo metadata` could not write the registry it downloads and
+          # RustRover loaded no Cargo project — 0 problems from 0 files analysed. /data/cache is
+          # the container's mount of the action's cache directory, which this user owns.
+          CARGO_HOME: /data/cache/cargo-home
+        with:
+          args: --config qodana-rust.yaml --linter qodana-rust --baseline .qodana/rust.sarif.json --fail-threshold 0
+          env-vars-to-linter: CARGO_HOME
+          pr-mode: false
+          use-caches: false
+          upload-result: true
+          artifact-name: qodana-rust
+
+      - name: Keep the problems outside the baseline
+        id: filter
+        if: ${{ !cancelled() }}
+        env:
+          SARIF: ${{ runner.temp }}/qodana/results/qodana.sarif.json
+        run: |
+          if [ ! -f "$SARIF" ]; then echo "::notice::The scan left no SARIF."; exit 0; fi
+          jq '.runs |= map(.results |= map(select((.baselineState // "new") != "unchanged" and (.baselineState // "new") != "absent")))' \
+            "$SARIF" > "$RUNNER_TEMP/qodana-rust.sarif"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Code scanning
+        if: ${{ !cancelled() && steps.filter.outputs.ready == 'true' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: ${{ runner.temp }}/qodana-rust.sarif
+          category: qodana-rust
+
+  js:
+    name: qodana · ts/js
+    needs: tokens
+    if: needs.tokens.outputs.js == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      checks: write # annotations
+      pull-requests: write # the summary comment
+      security-events: write # new problems to Code scanning
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Setup Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '26'
+          cache: npm
+
+      # No install script runs: the only package in the lockfile that has one is fsevents, which
+      # is macOS-only, and a lifecycle script is how a compromised dependency runs on the runner
+      # (SonarCloud githubactions:S6505). `npm licences` and `npm audit` never needed them either.
+      - name: Install
+        run: npm ci --ignore-scripts
+
+      - name: Qodana
+        uses: JetBrains/qodana-action@3e8d76ff0e0241618abd808682f426afe84bab3f # v2026.2.2
+        env:
+          QODANA_TOKEN: ${{ secrets.QODANA_TOKEN_TS_JS }}
+        with:
+          args: --config qodana-js.yaml --linter qodana-js --within-docker false --fail-threshold 0
+          pr-mode: false
+          use-caches: false
+          upload-result: true
+          artifact-name: qodana-js
+
+      - name: Keep the problems outside the baseline
+        id: filter
+        if: ${{ !cancelled() }}
+        env:
+          SARIF: ${{ runner.temp }}/qodana/results/qodana.sarif.json
+        run: |
+          if [ ! -f "$SARIF" ]; then echo "::notice::The scan left no SARIF."; exit 0; fi
+          jq '.runs |= map(.results |= map(select((.baselineState // "new") != "unchanged" and (.baselineState // "new") != "absent")))' \
+            "$SARIF" > "$RUNNER_TEMP/qodana-js.sarif"
+          echo "ready=true" >> "$GITHUB_OUTPUT"
+
+      - name: Upload to Code scanning
+        if: ${{ !cancelled() && steps.filter.outputs.ready == 'true' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: ${{ runner.temp }}/qodana-js.sarif
+          category: qodana-js

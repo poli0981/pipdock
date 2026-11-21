@@ -152,7 +152,7 @@ where there is a workaround it is given.
 
 Either of these reaches the same person:
 
-- **[Open an accessibility issue](https://github.com/poli0981/pipdock/issues/new?template=accessibility.yml)**
+- **[Open an accessibility issue](https://github.com/poli0981org/pipdock/issues/new?template=accessibility.yml)**
   on GitHub, or
 - write to **[accessibility@poli0981.dev](mailto:accessibility@poli0981.dev)** — no account needed.
 

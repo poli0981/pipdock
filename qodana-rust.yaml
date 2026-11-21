@@ -1,0 +1,55 @@
+# Qodana for the Rust half of the repository.
+#
+# One of two Qodana Cloud projects, each with its own token — QODANA_TOKEN_RUST for this file,
+# QODANA_TOKEN_TS_JS for qodana-js.yaml — which is JetBrains' layout for a monorepo: every part is
+# a project of its own, analysed by its own linter, and the two runs never report the same file.
+# .github/workflows/qodana.yml runs both, and passes `--linter qodana-rust` there rather than here,
+# so the linter's version is the action's and moves when Dependabot moves the action.
+#
+# **What this run cannot see.** The linter is RustRover in a Linux container (it has no native
+# mode), so code behind `#[cfg(windows)]` — the PEP 514 registry, Job Objects, the `py` launcher —
+# is inactive to it and is not analysed. Clippy, CodeQL and SonarQube Cloud run on Windows and
+# cover it; this run adds RustRover's inspections over the code every platform compiles.
+
+version: "1.0"
+
+profile:
+  name: qodana.recommended
+
+# **The container runs as the runner's user, not root**, so nothing can be installed into it — and
+# that includes the toolchain rust-toolchain.toml pins: rustup writes under /usr/local/rustup,
+# which root owns, so `cargo metadata` failed with "Permission denied", RustRover loaded no Cargo
+# project, and the first run reported **0 problems after analysing nothing** (2026-11-21). The job's
+# own checkout is writable, so the bootstrap points *that copy* at the toolchain the image ships;
+# the repository's pin is untouched. (GTK and WebKitGTK cannot be installed either, so Tauri's
+# Linux build scripts do not resolve; that touches macro expansion in src-tauri, not the analysis
+# of the code around it.)
+bootstrap: |
+  set -eu
+  shipped=$(rustup toolchain list | grep -m1 'default' | cut -d' ' -f1 || true)
+  if [ -z "$shipped" ]; then shipped=$(rustup toolchain list | head -n1 | cut -d' ' -f1); fi
+  printf '[toolchain]\nchannel = "%s"\n' "$shipped" > rust-toolchain.toml
+  echo "bootstrap: analysing with the image's $shipped instead of the pinned toolchain"
+  cargo metadata --format-version 1 --no-deps > /dev/null && echo "bootstrap: cargo metadata works"
+
+# Everything that is not Rust belongs to qodana-js.yaml or to no linter at all. Fixtures are
+# captured engine output and deliberately broken sample projects; snapshots are the CLI's goldens.
+exclude:
+  - name: All
+    paths:
+      - .github
+      - changelog
+      - coverage
+      - crates/pipdock-cli/tests/snapshots
+      - crates/pipdock-core/tests/fixtures
+      - dist
+      - docs
+      - legal
+      - node_modules
+      - screenshot
+      - spikes
+      - src-tauri/gen
+      - src-tauri/icons
+      - target
+      - tools
+      - ui

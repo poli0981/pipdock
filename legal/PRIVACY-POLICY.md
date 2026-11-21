@@ -45,7 +45,7 @@ Material changes to this policy bump the legal documents' version hash, and the 
 
 ## 7. Contact
 
-Privacy questions: email <contact@poli0981.dev>, or open a discussion or issue at <https://github.com/poli0981/pipdock>. The same contact details are listed in the application under **About**.
+Privacy questions: email <contact@poli0981.dev>, or open a discussion or issue at <https://github.com/poli0981org/pipdock>. The same contact details are listed in the application under **About**.
 
 ---
 

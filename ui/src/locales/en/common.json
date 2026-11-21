@@ -448,7 +448,7 @@
     },
     "summary": "PipDock is provided without warranty. It runs pip or uv against environments you choose, and every change is previewed and snapshotted first — but you remain responsible for what you install.",
     "accept": "I have read and accept these documents.",
-    "openFailed": "Could not open the link. The documents are on GitHub under poli0981/pipdock.",
+    "openFailed": "Could not open the link. The documents are on GitHub under poli0981org/pipdock.",
     "close": "Close"
   },
   "about": {

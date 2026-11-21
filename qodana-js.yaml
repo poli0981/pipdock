@@ -1,0 +1,31 @@
+# Qodana for the TypeScript/JavaScript half of the repository.
+#
+# The second of two Qodana Cloud projects (qodana-rust.yaml says why there are two), with its own
+# token, QODANA_TOKEN_TS_JS. .github/workflows/qodana.yml passes `--linter qodana-js` and runs it
+# natively on the runner, after `npm ci` with the Node version every other workflow uses, so the
+# TypeScript service resolves the same node_modules the build does.
+
+version: "1.0"
+
+profile:
+  name: qodana.recommended
+
+# The Rust workspace is qodana-rust.yaml's. generated.ts is `cargo run -p xtask -- bindings`
+# output; fixing a finding in it by hand would be undone by the next regeneration.
+exclude:
+  - name: All
+    paths:
+      - changelog
+      - coverage
+      - crates
+      - dist
+      - docs
+      - legal
+      - node_modules
+      - screenshot
+      - spikes
+      - src-tauri
+      - target
+      - tools
+      - ui/src/ipc/generated.ts
+      - xtask

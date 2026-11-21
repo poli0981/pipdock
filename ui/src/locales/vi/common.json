@@ -406,7 +406,7 @@
     },
     "summary": "PipDock được cung cấp không kèm bảo hành. Nó chạy pip hoặc uv trên những môi trường bạn chọn, và mọi thay đổi đều được xem trước và chụp ảnh trước — nhưng bạn vẫn chịu trách nhiệm về những gì mình cài.",
     "accept": "Tôi đã đọc và chấp nhận các tài liệu này.",
-    "openFailed": "Không mở được liên kết. Các tài liệu nằm trên GitHub tại poli0981/pipdock.",
+    "openFailed": "Không mở được liên kết. Các tài liệu nằm trên GitHub tại poli0981org/pipdock.",
     "close": "Đóng"
   },
   "about": {
