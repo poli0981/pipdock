@@ -7,9 +7,11 @@ Manage environments
 Usage: pipdock env [OPTIONS] <COMMAND>
 
 Commands:
-  list  List discovered environments, their sources and PEP 668 flags
-  use   Set the default environment
-  help  Print this message or the help of the given subcommand(s)
+  list    List discovered environments and the ones added with `env add`, their sources and PEP 668 flags
+  use     Set the default environment
+  add     Add an interpreter discovery does not find to the list (the GUI's Add interpreter…)
+  remove  Take an interpreter added with `env add` off the list. Nothing on disk is touched
+  help    Print this message or the help of the given subcommand(s)
 
 Options:
       --env <PATH>

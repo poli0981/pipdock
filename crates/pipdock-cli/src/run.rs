@@ -228,7 +228,8 @@ pub async fn select_env(opts: &GlobalOpts) -> Result<PyEnv> {
 /// default that mutates the wrong environment.
 pub async fn select(opts: &GlobalOpts) -> Result<envs::ProbeResult> {
     if let Some(path) = &opts.env {
-        return envs::probe(&interpreter_in(path), EnvSource::Manual).await;
+        let interpreter = envs::validate_interpreter(&envs::interpreter_in(path), &app_data_dir())?;
+        return envs::probe(&interpreter, EnvSource::Manual).await;
     }
 
     let stored = Store::open(&app_data_dir())
@@ -257,31 +258,21 @@ pub async fn select(opts: &GlobalOpts) -> Result<envs::ProbeResult> {
     ))
 }
 
-/// Accept either an interpreter path or an environment directory, as CLI-SPEC §2 promises.
-fn interpreter_in(path: &Path) -> PathBuf {
-    if path.is_file() {
-        return path.to_path_buf();
-    }
-    let exe: PathBuf = if cfg!(windows) {
-        ["Scripts", "python.exe"].iter().collect()
-    } else {
-        ["bin", "python"].iter().collect()
-    };
-    let candidate = path.join(&exe);
-    if candidate.is_file() {
-        candidate
-    } else {
-        path.to_path_buf()
-    }
-}
-
 /// `pipdock env list`
 ///
 /// # Errors
 /// Never fails as a whole: an interpreter that cannot be probed is reported in place rather than
 /// aborting the listing, because one broken environment must not hide the rest.
 pub async fn env_list(opts: &GlobalOpts) -> Result<Exit> {
-    let candidates = envs::scan().await;
+    // The interpreters `env add` (or the GUI's Add interpreter…) put on the list, after discovery's
+    // own. A store that cannot be read costs those rows, not the listing.
+    let manual: Vec<PathBuf> = Store::open(&app_data_dir())
+        .and_then(|store| store.manual_envs())
+        .unwrap_or_default()
+        .into_iter()
+        .map(|m| PathBuf::from(m.interpreter))
+        .collect();
+    let candidates = envs::scan_with(&manual).await;
 
     let mut rows = Vec::new();
     for Candidate { path, source } in candidates {
@@ -1020,7 +1011,7 @@ pub fn schema(type_name: &str) -> Result<Exit> {
 /// `PD-ENV-001` when the path is not a usable interpreter — chosen deliberately over accepting it
 /// silently, because a default that does not work fails on every later command instead of this one.
 pub async fn env_use(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
-    let interpreter = interpreter_in(path);
+    let interpreter = envs::validate_interpreter(&envs::interpreter_in(path), &app_data_dir())?;
     let probed = envs::probe(&interpreter, EnvSource::Manual).await?;
     let store = Store::open(&app_data_dir())?;
 
@@ -1041,6 +1032,96 @@ pub async fn env_use(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
         );
     }
     Ok(Exit::Success)
+}
+
+/// `pipdock env add <path>` — the GUI's *Add interpreter…* (PRD P0-1).
+///
+/// Validated, probed, then stored, so the list never gains an entry that was refused or broken on
+/// arrival. `--json` prints the entry exactly as `env list --json` will.
+///
+/// # Errors
+/// `PD-ENV-001` when the path is missing, not named like a Python interpreter, or one of PipDock's
+/// own environments; `PD-ENV-003` when the probe fails; `PD-INT-001` when the store cannot be
+/// written.
+pub async fn env_add(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
+    let interpreter = envs::validate_interpreter(&envs::interpreter_in(path), &app_data_dir())?;
+    let probed = envs::probe(&interpreter, EnvSource::Manual).await?;
+    let env_hash = envs::env_hash(&interpreter);
+    Store::open(&app_data_dir())?.add_manual_env(
+        &env_hash,
+        &interpreter.display().to_string(),
+        &jiff::Timestamp::now().to_string(),
+    )?;
+
+    if opts.json {
+        let pip = probed
+            .dists
+            .iter()
+            .find(|d| d.name.as_str() == "pip")
+            .map(|d| d.version.0.clone());
+        print_json(&serde_json::json!({
+            "interpreter": interpreter,
+            "source": EnvSource::Manual,
+            "python": probed.env.python_version,
+            "externallyManaged": probed.env.externally_managed,
+            "hiddenUserSite": probed.env.hidden_user_site,
+            "packages": probed.dists.len(),
+            "envHash": env_hash,
+            "pipVersion": pip,
+        }));
+    } else if !opts.quiet {
+        println!(
+            "added: {} (Python {})",
+            interpreter.display(),
+            probed.env.python_version
+        );
+    }
+    Ok(Exit::Success)
+}
+
+/// `pipdock env remove <path>`
+///
+/// Matched by identity, and by the path as stored when the file is gone — a deleted venv cannot be
+/// canonicalized into the identity it was added under, and it is exactly the entry someone wants
+/// gone. Not being on the list is not an error: the list is what was asked about, and it is right.
+///
+/// # Errors
+/// `PD-INT-001` when the store cannot be read or written.
+pub fn env_remove(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
+    let store = Store::open(&app_data_dir())?;
+    let interpreter = envs::interpreter_in(path);
+    let wanted = envs::env_hash(&interpreter);
+    let entry = store
+        .manual_envs()?
+        .into_iter()
+        .find(|m| m.env_hash == wanted || same_path(&m.interpreter, &interpreter));
+    let removed = match &entry {
+        Some(m) => store.remove_manual_env(&m.env_hash)?,
+        None => false,
+    };
+    let shown = entry.map_or_else(|| interpreter.display().to_string(), |m| m.interpreter);
+
+    if opts.json {
+        print_json(&serde_json::json!({ "interpreter": shown, "removed": removed }));
+    } else if !opts.quiet {
+        if removed {
+            println!("removed from the list: {shown} (nothing on disk was changed)");
+        } else {
+            println!("not on the list: {shown}");
+        }
+    }
+    Ok(Exit::Success)
+}
+
+/// Whether a stored path and a typed one name the same file, without asking the file system —
+/// which, for a deleted venv, has nothing to say. Case-insensitive on Windows (invariant 9).
+fn same_path(stored: &str, typed: &Path) -> bool {
+    let stored = Path::new(stored);
+    if cfg!(windows) {
+        stored.as_os_str().eq_ignore_ascii_case(typed.as_os_str())
+    } else {
+        stored == typed
+    }
 }
 
 /// `pipdock tools sync`
@@ -2270,8 +2351,20 @@ mod tests {
     #[test]
     fn an_env_directory_resolves_to_its_interpreter() {
         // CLI-SPEC §2 accepts "interpreter or env dir"; a non-existent path is passed through so
-        // the probe reports PD-ENV-001 against what the user actually typed.
+        // the validator reports PD-ENV-001 against what the user actually typed.
         let missing = Path::new("definitely-not-here");
-        assert_eq!(interpreter_in(missing), missing);
+        assert_eq!(envs::interpreter_in(missing), missing);
+    }
+
+    #[test]
+    fn a_stored_path_matches_what_was_typed_in_any_case_on_windows() {
+        let stored = r"D:\work\proj\myenv\Scripts\python.exe";
+        assert!(same_path(stored, Path::new(stored)));
+        assert_eq!(
+            same_path(stored, Path::new(&stored.to_lowercase())),
+            cfg!(windows),
+            "case-folded on Windows only"
+        );
+        assert!(!same_path(stored, Path::new(r"D:\work\other\python.exe")));
     }
 }
