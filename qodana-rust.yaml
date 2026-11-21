@@ -53,3 +53,12 @@ exclude:
       - target
       - tools
       - ui
+  # **Unused-crate reports are a coin toss in this container.** Every run's sanity check finds the
+  # Cargo project only partly loaded (the Tauri build scripts above) and paths in `model.rs` and
+  # others unresolved; on one run in five on #120 that became "Unused crate: sha2", a crate
+  # `model::sha256_hex` — and so every `env_hash` — is built on, on a commit that changed a Markdown
+  # file. A baseline entry would not hold: its fingerprint hashes the neighbouring lines, which
+  # Dependabot rewrites weekly. Nothing else here checks for unused crates, so this one goes rather
+  # than leave a check that fails at random; `cargo machete` is the backlog row that would replace
+  # it.
+  - name: CargoUnusedDependency
