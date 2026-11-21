@@ -232,7 +232,8 @@ pub async fn scan_with(manual: &[PathBuf]) -> Vec<Candidate> {
 /// enforcement point, not the picker, which only suggests:
 ///
 /// - it must exist and be a file, or there is nothing to probe;
-/// - its name must be `python.exe`, `python3.exe` or `python3.12.exe` (`python`, `python3`, … off
+/// - its name must be `python.exe`, `python3.exe`, `python3.12.exe` or the free-threaded
+///   `python3.14t.exe` (`python`, `python3`, … off
 ///   Windows), so that adding an interpreter is not a way to start any program with PipDock's
 ///   arguments. `pythonw.exe` is refused too: it has no console, the probe's output would be empty,
 ///   and the failure would read as a broken environment instead of the wrong file;
@@ -253,7 +254,7 @@ pub fn validate_interpreter(path: &Path, app_data: &Path) -> Result<PathBuf> {
     if !is_python_name(path) {
         return Err(refuse(format!(
             "{} is not a Python interpreter PipDock will run: the file has to be python.exe \
-             (or python3.exe, python3.12.exe)",
+             (or python3.exe, python3.12.exe, python3.14t.exe)",
             path.display()
         )));
     }
@@ -277,7 +278,10 @@ pub fn validate_interpreter(path: &Path, app_data: &Path) -> Result<PathBuf> {
     Ok(canonical)
 }
 
-/// `python`, `python3` or `python3.12`, with `.exe` on Windows; any case.
+/// `python`, `python3` or `python3.12`, with `.exe` on Windows; any case. A version may end in `t`,
+/// the free-threaded build's name (`python3.14t.exe`, PEP 703) — the python.org installer puts one
+/// beside `python.exe`, and the registry reports it; refusing it was found by running `env list`
+/// against this machine's own Pythons.
 fn is_python_name(path: &Path) -> bool {
     let Some(name) = path.file_name().and_then(|n| n.to_str()) else {
         return false;
@@ -293,6 +297,10 @@ fn is_python_name(path: &Path) -> bool {
     };
     let Some(version) = stem.strip_prefix("python") else {
         return false;
+    };
+    let version = match version.strip_suffix('t') {
+        Some(threaded) if !threaded.is_empty() => threaded,
+        _ => version,
     };
     version.is_empty()
         || (version.split('.').count() <= 2
@@ -623,12 +631,25 @@ mod tests {
 
     #[test]
     fn only_a_file_named_like_python_is_accepted() {
-        for name in ["python", "PYTHON", "python3", "python3.12", "Python3.14"] {
+        // The free-threaded build (PEP 703) is `python3.14t.exe`, beside `python.exe` in the same
+        // install — the registry lists it on this repository's own reference machine.
+        for name in [
+            "python",
+            "PYTHON",
+            "python3",
+            "python3.12",
+            "Python3.14",
+            "python3.14t",
+            "python3t",
+        ] {
             assert!(is_python_name(Path::new(&exe(name))), "{name}");
         }
         // pythonw has no console; the rest are other programs, or versions that are not versions.
         for name in [
             "pythonw",
+            "pythonw3.14t",
+            "pythont",
+            "python3.14tt",
             "notepad",
             "py",
             "python3.12.1",
