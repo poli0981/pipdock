@@ -10,6 +10,8 @@
 
 > Repo: `poli0981org/pipdock` · License: **GPL-3.0-only** · Platform: **Windows 10/11** · Contact: [contact@poli0981.dev](mailto:contact@poli0981.dev) · [other channels](https://poli0981.dev/links/)
 
+> **Status: maintenance mode, since 1.6.0.** PipDock is complete for what it set out to do, and is kept correct, safe and current rather than extended: dependency and security updates, major runtime upgrades, bug, UI/UX and accessibility fixes, and wording fixes in either language — no new features. [CONTRIBUTING.md](CONTRIBUTING.md#scope-in-maintenance-mode) says what is accepted. The repository moved from `poli0981/pipdock` to the **poli0981org** organization on 2026-11-21; the old address redirects.
+
 ---
 
 ## Why PipDock
@@ -50,7 +52,7 @@
 
 | Area | What you get |
 |---|---|
-| Environments | Auto-discovery of installed Pythons — the Windows registry (PEP 514), the `py` launcher and the Pythons `uv python list` reports — plus a `.venv`, `venv`, `env` or `.env` folder in the folder PipDock was started from. Adding an environment by path is not in the app yet; the CLI takes any interpreter or environment folder with `--env` |
+| Environments | Auto-discovery of installed Pythons — the Windows registry (PEP 514), the `py` launcher and the Pythons `uv python list` reports — plus a `.venv`, `venv`, `env` or `.env` folder in the folder PipDock was started from. **Add interpreter…** puts any other Python or virtual environment on the list (`pipdock env add` in the CLI), and *Remove from list* takes it off |
 | PEP 668 guard | Pythons marked externally managed are refused by default. An override in Settings, off by default, asks before it turns on, and while it applies every screen that can change that Python says so |
 | Installed | Full package list per env; up-to-date packages dimmed, outdated badged |
 | Updates | Bulk update with group dry-run resolve, held-back explanations, 3-way conflict choices. The preview names every package *Force latest* would break, anything left out because it needs a different Python, and withdrawn (yanked) releases |
@@ -65,7 +67,7 @@
 | pip upkeep | Check & update pip itself per environment |
 | CLI | `pipdock` — full parity for core operations, JSON output, CI-friendly exit codes |
 | Requirements | Export an environment as `requirements.txt`; import one and preview what it would install, with every line it will not use reported by number |
-| Disk usage | Everything PipDock writes is under `%LOCALAPPDATA%\PipDock\data\`. Settings shows it and clears the parts that are safe to clear — snapshots (`snapshots\`), the Code Health tools environment (`tools\`) and the Security tab's audit environment (`audit\`). `index.db` (package index, settings, pins, your acceptance of the legal documents) is shown but never cleared; the logs (`logs\`) are deleted automatically after 14 days |
+| Disk usage | Everything PipDock writes is under `%LOCALAPPDATA%\PipDock\data\`. Settings shows it and clears the parts that are safe to clear — snapshots (`snapshots\`), the Code Health tools environment (`tools\`) and the Security tab's audit environment (`audit\`). `index.db` (package index, settings, pins, the interpreters you added, your acceptance of the legal documents) is shown but never cleared; the logs (`logs\`) are deleted automatically after 14 days |
 | Logs | PipDock keeps its own log, one file per day in `data\logs\`, and never sends it anywhere. It records the commands PipDock ran, so it holds package names and file paths. Settings shows the folder and copies the recent lines for a bug report |
 | Keyboard | `Ctrl+K` command palette, `Ctrl+1`–`Ctrl+9` tabs (by key position, so AZERTY and other layouts work too), `/` for Search, full keyboard traversal |
 | i18n | English + Tiếng Việt, remembered across restarts |
@@ -177,5 +179,7 @@ PipDock is an independent project. It is not affiliated with or endorsed by the 
 ## Tiếng Việt (tóm tắt)
 
 PipDock là ứng dụng Windows (GUI + CLI) giúp kiểm tra, cài đặt, cập nhật và gỡ **hàng loạt** gói thư viện Python một cách an toàn: luôn chạy dry-run xem trước thay đổi, xử lý xung đột phiên bản với 3 lựa chọn rõ ràng, tự chụp snapshot trước mỗi lần chạy để rollback một chạm, cảnh báo khi gỡ gói mà gói khác đang phụ thuộc, và tổng kết "13 thành công, 2 thất bại" kèm lý do từng gói. Hỗ trợ engine pip hoặc uv (chọn trong Settings), tìm gói tức thì nhờ cache chỉ mục PyPI, kèm module Code Health (deptry/vulture/ruff) để dọn dependency thừa và dead code. Không thu thập dữ liệu. Giấy phép GPL-3.0.
+
+**Trạng thái: giai đoạn bảo trì, từ bản 1.6.0.** PipDock đã làm đủ những gì nó đặt ra, và từ nay được giữ cho đúng, an toàn và cập nhật chứ không mở rộng thêm: cập nhật phụ thuộc định kỳ, sửa lỗi bảo mật (CVE mức High trở lên hoặc lỗi nghiêm trọng của runtime), nâng cấp lớn ngôn ngữ/runtime/framework, sửa lỗi, lỗi UI/UX và rào cản tiếp cận, sửa câu chữ hoặc bản dịch dễ gây hiểu nhầm — **không nhận tính năng mới**; issue hay PR đề xuất tính năng sẽ tự động được gắn nhãn và đóng. Repo đã chuyển từ `poli0981/pipdock` sang tổ chức **poli0981org** ngày 2026-11-21; địa chỉ cũ vẫn tự chuyển hướng. Chi tiết trong [CONTRIBUTING.md](CONTRIBUTING.md#scope-in-maintenance-mode).
 
 **Khả năng tiếp cận:** PipDock dùng được chỉ với bàn phím, với trình đọc màn hình (đã thử với Narrator) và ở chế độ tương phản cao của Windows. Chi tiết, kể cả những gì chưa được kiểm thử, nằm trong [ACCESSIBILITY.md](ACCESSIBILITY.md). Nếu gặp rào cản, hãy [mở issue](https://github.com/poli0981org/pipdock/issues/new?template=accessibility.yml) hoặc viết tới [accessibility@poli0981.dev](mailto:accessibility@poli0981.dev) — tiếng Việt cũng được.

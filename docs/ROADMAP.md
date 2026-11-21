@@ -740,7 +740,7 @@ Three things it settled that outlive it:
 
 ## Post-1.0 (P1 wave)
 
-Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. **Six of the seven have shipped** — four in 1.1.0, the Security tab in 1.2.0 and the dependency view in 1.3.0; the scheduled check remains. Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
+Security tab (pip-audit), pin auto-suggest, requirements/constraints export-import, cache manager, command palette, dependency graph view, scheduled check. **Six of the seven have shipped** — four in 1.1.0, the Security tab in 1.2.0 and the dependency view in 1.3.0; the scheduled check is **not planned**, decided with the move to maintenance mode in 1.6.0 (*Maintenance mode*, below). Then P2 candidates by demand: macOS/Linux, per-env engine, elevation broker, winget, JP locale.
 
 **About shipped early, in Phase 4** — see above. Two smaller items were added to this wave rather
 than done at 1.0:
@@ -959,8 +959,9 @@ mode that is *silent*, and the reason SECURITY §4 requires the widening in pros
 has always said audit never applies anything; "update to fixed version" is the ordinary Update flow,
 reached by the user.
 
-**What is left of Post-1.0 is one item**: the scheduled check (PRD P1-7). The dependency view
-shipped as 1.3.0; its record is below.
+**Nothing is left of Post-1.0.** The scheduled check (PRD P1-7) was the last item, and on
+2026-11-21 the owner closed it as not planned, for the reasons the survey below gives; the
+dependency view shipped as 1.3.0, and its record is below.
 
 *This paragraph used to point at "the analysis above" for what blocked each of two items. There was
 no such analysis anywhere in this document* — the survey existed only outside the repository, and
@@ -1686,6 +1687,41 @@ reusable's missing `working-directory`) is gone, but SonarQube Cloud, Qodana, th
 Tauri's configuration all assume the root now. And `pr-mode` is off in `qodana.yml`, where the plan
 had put it back on: a whole scan is two to three minutes a part, so analysing only a pull
 request's files would save little and make a result depend on which files changed.
+
+## Maintenance mode — from 1.6.0
+
+**PipDock is maintained rather than developed from 1.6.0 on** (owner decision, 2026-11-21, with the
+move to the poli0981org organization). 1.6.0 closed the last P0 gap, *Browse…*; nothing else on
+this page will be built unless it qualifies below. CONTRIBUTING.md, "Scope in maintenance mode",
+is the public version of this section, and `.github/workflows/triage.yml` enforces its edge.
+
+**What the work is now:**
+
+| Kind | What qualifies |
+|---|---|
+| Dependencies | Dependabot's weekly proposals, past their cooldowns, one PR superseding the bot's (the 2026-11-04 shape) |
+| Security | A dependency advisory of High or Critical, or a serious security problem in a runtime or toolchain the program is built with (Node, Rust, WebView2) — fixed promptly, and released when it reaches the shipped binary |
+| Majors | Language, runtime and framework upgrades — Node, TypeScript, a Rust edition, Tauri — once stable. The held-back i18next 27 + react-i18next 18 pair is the next one, and wants a session of its own |
+| Defects | Bugs, UI/UX problems and accessibility barriers. **The Audit backlog above is this list**: every row that is a defect is in scope, every row that is a feature (X19, the engine caches) is not |
+| Wording | English or Vietnamese that is wrong, misleading, or not how people speak; `.github/ISSUE_TEMPLATE/wording.yml` |
+
+**What is not planned, and why** — each one decided, not dropped:
+
+| Item | Why not |
+|---|---|
+| P1-7, the scheduled check | Every prerequisite is absent (the survey above), and its persona is served by the CLI in Task Scheduler. One plugin and a permanent background process for one line of text |
+| P0-9's first-run uv detection (backlog X19) | Settings already shows both engines and their versions and switches with one click; a first-run prompt is a new surface, not a fix |
+| P1-4's engine caches (`pip cache`, `uv cache`) | A different feature wearing the same word (P1 wave, above) |
+| P2 — macOS/Linux, per-env engine, elevation broker, conda, portable mode, a Japanese locale | Each is a feature, and most a test matrix |
+| Generating THIRD-PARTY-NOTICES | The licence checks (`cargo deny`, `npm licences`) now hold the claim the inventory makes; the inventory itself stays hand-kept |
+| Retaking `screenshot/` | The owner's hands, when something visible changes enough to mislead |
+
+**How the edge is held.** A feature request — titled as one, a `feat:` pull request, or labelled
+`enhancement` — is labelled `out-of-scope` and closed by `triage.yml` with a bilingual answer that
+links CONTRIBUTING. Only unmistakable signals count, because closing a real bug report would be
+worse than leaving a request open; maintainers, bots and anything labelled `policy-exception` are
+never closed. `workflow_dispatch` on it is a dry run that classifies a title without touching
+anything.
 
 ## Standing risks
 
