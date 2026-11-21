@@ -9,6 +9,10 @@ body:
         Thanks for the report! If you came here from the in-app **Report bug** button, most fields
         are prefilled and the full log was copied to your clipboard — paste it below if asked.
         Vui lòng viết bằng English hoặc Tiếng Việt đều được.
+
+        PipDock is in **maintenance mode**: bugs, UI/UX defects and accessibility barriers are
+        exactly what it is maintained for. A feature request filed here is closed automatically —
+        see CONTRIBUTING.md, "Scope in maintenance mode".
   - type: input
     id: pd-version
     attributes:

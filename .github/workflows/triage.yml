@@ -1,0 +1,71 @@
+# Maintenance-mode triage, from 1.6.0 (CONTRIBUTING.md, "Scope in maintenance mode").
+#
+# A feature request — titled as one, a `feat:` pull request, or labelled `enhancement` — is labelled
+# `enhancement` and `out-of-scope`, answered in English and Vietnamese, and closed as not planned.
+# Never one opened by a maintainer or a bot, or labelled `policy-exception`, the maintainer's way of
+# keeping open a feature judged truly necessary. .github/scripts/triage.cjs holds the rules and says
+# why they are only ever the unmistakable ones; its tests run in ci-node.yml's `npm licences` job.
+#
+# **`pull_request_target` checks out the base branch and nothing else.** That event runs with a
+# write token even for a fork's pull request, which is the reason it is used here — a plain
+# `pull_request` from a fork gets a read-only token and could not label or close anything — and
+# exactly why nothing from the pull request is checked out or executed: the script reads the
+# event's title and labels as data.
+#
+# `workflow_dispatch` is a dry run: it classifies the title and labels it is given and touches
+# nothing, which is how the rules are tried without opening a public issue.
+
+name: Triage
+
+on:
+  issues:
+    types: [opened, labeled]
+  pull_request_target:
+    types: [opened, labeled]
+  workflow_dispatch:
+    inputs:
+      kind:
+        description: What to classify
+        type: choice
+        options: [issue, pull_request]
+        default: issue
+      title:
+        description: Its title
+        required: true
+        type: string
+      labels:
+        description: Its labels, comma-separated
+        required: false
+        type: string
+        default: ''
+      association:
+        description: The author's association
+        type: choice
+        options: [NONE, CONTRIBUTOR, FIRST_TIME_CONTRIBUTOR, COLLABORATOR, MEMBER, OWNER]
+        default: NONE
+
+permissions:
+  contents: read
+
+jobs:
+  policy:
+    name: maintenance policy
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      issues: write # label, comment, close
+      pull-requests: write # the same on a pull request
+    steps:
+      - name: Checkout the base branch's scripts
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+          sparse-checkout: .github/scripts
+
+      - name: Apply the policy
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const triage = require('./.github/scripts/triage.cjs')
+            await triage.run({ github, context, core })
