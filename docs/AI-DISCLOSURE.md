@@ -116,5 +116,5 @@ thing to trust.
 ## Questions
 
 `code@poli0981.dev`, or open a discussion at
-[github.com/poli0981/pipdock](https://github.com/poli0981/pipdock/discussions). If you think
+[github.com/poli0981org/pipdock](https://github.com/poli0981org/pipdock/discussions). If you think
 something in this page is inaccurate, that is worth an issue.

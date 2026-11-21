@@ -522,7 +522,7 @@ lives in `pipdock-core` (`pins::suggest`, `requirements::parse`, `cache::usage`,
 | Command palette | `Ctrl+K` | not applicable |
 
 If you want one of these on the command line, say so in an
-[issue](https://github.com/poli0981/pipdock/issues) — the core function is already there.
+[issue](https://github.com/poli0981org/pipdock/issues) — the core function is already there.
 
 **The PEP 668 override is GUI-only for a different reason, and stays so.** It is meant to be hard
 to reach — a decision made in the GUI, behind a confirm — and a flag would put it one shell-history

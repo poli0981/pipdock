@@ -7,12 +7,12 @@
   "type": "module",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/poli0981/pipdock.git"
+    "url": "git+https://github.com/poli0981org/pipdock.git"
   },
   "bugs": {
-    "url": "https://github.com/poli0981/pipdock/issues"
+    "url": "https://github.com/poli0981org/pipdock/issues"
   },
-  "homepage": "https://github.com/poli0981/pipdock#readme",
+  "homepage": "https://github.com/poli0981org/pipdock#readme",
   "scripts": {
     "dev": "vite",
     "build": "vite build",

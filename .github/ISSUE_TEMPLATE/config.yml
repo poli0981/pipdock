@@ -4,8 +4,8 @@ blank_issues_enabled: false
 
 contact_links:
   - name: Question or idea
-    url: https://github.com/poli0981/pipdock/discussions
+    url: https://github.com/poli0981org/pipdock/discussions
     about: Ask about usage, propose a feature, or share a workflow.
   - name: Security vulnerability
-    url: https://github.com/poli0981/pipdock/security/advisories/new
+    url: https://github.com/poli0981org/pipdock/security/advisories/new
     about: Report privately via GitHub Security Advisories. Please do not open a public issue.

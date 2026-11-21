@@ -11,7 +11,7 @@
  */
 
 /** The repository itself. Inside `https://github.com/*`, which the opener capability allows. */
-export const REPO = 'https://github.com/poli0981/pipdock'
+export const REPO = 'https://github.com/poli0981org/pipdock'
 
 const BLOB = `${REPO}/blob/main`
 

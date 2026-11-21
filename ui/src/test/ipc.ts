@@ -147,7 +147,7 @@ export function ipcMock(): IpcMock {
     // with itself. A mock of the wrong *shape* is worse than no mock: it makes the seam it covers
     // look tested.
     reportBugUrl: vi.fn().mockResolvedValue({
-      url: 'https://github.com/poli0981/pipdock/issues/new',
+      url: 'https://github.com/poli0981org/pipdock/issues/new',
       log: '[log excerpt]',
     }),
     // The one command in the surface that cannot fail — `app_info` is a `const fn` in Rust
