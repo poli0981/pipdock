@@ -97,7 +97,8 @@ It appears in `env list` after discovery's own rows, with `source: "manual"`, an
 Environments screen. `pipdock env remove D:\work\scraper\myenv` takes it off again; nothing on disk
 is touched, and its pins and snapshots stay for the day it comes back. Since 1.6.0 a path you give
 `--env`, `env use` or `env add` must be named like a Python interpreter (`python.exe`,
-`python3.exe`, `python3.12.exe`) and must not be one of PipDock's own venvs, or it is refused
+`python3.exe`, `python3.12.exe`, the free-threaded `python3.14t.exe`) and must not be one of
+PipDock's own venvs, or it is refused
 with PD-ENV-001 before anything runs it.
 
 Make one the default so you can stop typing `--env`:
