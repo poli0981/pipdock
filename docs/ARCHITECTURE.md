@@ -140,7 +140,8 @@ From `requires_dist` the core builds the **reverse-dependency graph** used by: h
 ## 6. Storage (`%LOCALAPPDATA%\PipDock\data\`)
 
 ```text
-index.db             # SQLite, schema v4: names, meta_cache, envs (recents, default),
+index.db             # SQLite, schema v5: names, meta_cache, envs (the CLI's recents, default),
+                     #   manual_envs (interpreters added with Browse… or `env add`, v5),
                      #   pins(env_hash, pkg, mode, version, reason), health_projects,
                      #   kv (settings, consent, index refresh stamp), release_meta
 snapshots/<env_hash>/<id>.freeze.txt + <id>.meta.json   # id: 20261016T145809-423560600Z
@@ -169,8 +170,9 @@ This table is the surface. A command that is not listed here does not exist; add
 |---|---|---|
 | `app_info` | `AppInfo` | PipDock's version, and the hash of the legal documents this build ships against. |
 | `env_scan` | `EnvRow[]` | Discover environments, streaming `scan-progress`. A probe failure is reported on its own row, never fatal to the scan. Carries `pipVersion` and `healthProject`, both read before the probe loop so the store guard is never held across a probe. Probes run four at a time (they ran in series until 1.4.0), each under its own 60 s watchdog, so one hung interpreter costs its own row; rows keep discovery order. |
-| `env_add_manual` | `EnvRow` | Persist an interpreter chosen through *Browse…*. **Not implemented** — the one entry left in `NOT_YET` (`src-tauri/src/lib.rs`), owed by M3. |
-| `env_probe` | `EnvRow` | Probe one interpreter without persisting it. Takes an optional `source`: absent means *Browse…*, and a **refresh must pass the row's own**, or the row comes back relabelled `manual`. Fills every field `env_scan` does, because `upgradePip` replaces the row wholesale. |
+| `env_add_manual` | `EnvRow` | Add an interpreter chosen through *Add interpreter…* (*Browse…*, PRD P0-1) to the list `env_scan` appends to discovery, and return its row (1.6.0; the last entry `NOT_YET` held). `envs::validate_interpreter` first — an existing file named like Python, not one of PipDock's own venvs — then the probe, then the store, so a refused or broken interpreter is never listed. The row carries the canonical path that is stored. |
+| `env_remove_manual` | `boolean` | Take an added interpreter off that list, by `envHash`; `false` when it was not on it. Touches nothing on disk, and leaves the pins, snapshots and Health folder keyed to it. |
+| `env_probe` | `EnvRow` | Probe one interpreter without persisting it. Takes an optional `source`: absent means manual, and a **refresh must pass the row's own**, or the row comes back relabelled `manual`. A `manual` path is validated as `env_add_manual` validates one. Fills every field `env_scan` does, because `upgradePip` replaces the row wholesale. |
 | `env_export` | `string` | Write the environment's `Engine::freeze` document to a user-chosen path and return it (PRD P1-3). Byte for byte, with no formatter: a freeze *is* a requirements file, and a constraints file is the same body under a different name. Rust-side for `health_save_report`'s reason — `dialog:allow-save` asks for a path and grants no `fs`. |
 | `requirements_read` | `ParsedRequirements` | Read a `requirements.txt` into install specs **and whatever it could not use**. The skipped lines are the point: an include or an editable install means the file asks for something PipDock will not do, and the user has to see that before a preview claims to represent their file. |
 | `pkg_list` | `Dist[]` | Installed distributions, read from `probe.py` rather than the engine — see §4 and DATA-FLOW §7. |

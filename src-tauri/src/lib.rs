@@ -18,7 +18,7 @@ pub mod window;
 /// runtime, and typechecked the whole time. This list is what makes the gap explicit instead of
 /// invisible: a name here is a promise with a date on it, and the test below fails the moment
 /// `COMMANDS` and reality disagree in either direction.
-pub const NOT_YET: &[(&str, &str)] = &[("env_add_manual", "M3 — Browse… has no surface yet")];
+pub const NOT_YET: &[(&str, &str)] = &[];
 
 /// Start the app's own log: `data\logs\pipdock.<date>.log`, at `PIPDOCK_LOG` or INFO.
 ///
@@ -140,6 +140,8 @@ pub fn run() {
             commands::app_info,
             commands::env_scan,
             commands::env_probe,
+            commands::env_add_manual,
+            commands::env_remove_manual,
             commands::pkg_list,
             commands::pkg_outdated,
             commands::pin_list,
@@ -233,7 +235,7 @@ mod tests {
                 "core:event:allow-unlisten",
                 // Decline on the legal gate.
                 "core:window:allow-close",
-                // Code Health's folder, Import requirements; Save report, Export.
+                // Code Health's folder, Import requirements, Add interpreter…; Save report, Export.
                 "dialog:allow-open",
                 "dialog:allow-save",
                 // Scoped; see the next test.

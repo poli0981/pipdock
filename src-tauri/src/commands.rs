@@ -169,8 +169,19 @@ pub async fn env_scan(
     app: tauri::AppHandle,
     state: tauri::State<'_, AppState>,
 ) -> Wire<Vec<EnvRow>> {
+    // The interpreters added through *Browse…*, read and the guard dropped before discovery
+    // spawns anything. A failed read costs those rows this once, not the screen.
+    let manual: Vec<std::path::PathBuf> = {
+        let store = state.store.lock().await;
+        store
+            .manual_envs()
+            .unwrap_or_default()
+            .into_iter()
+            .map(|m| std::path::PathBuf::from(m.interpreter))
+            .collect()
+    };
     let emitter = app.clone();
-    let candidates = envs::scan_reporting(&move |progress: ScanProgress| {
+    let candidates = envs::scan_reporting(&manual, &move |progress: ScanProgress| {
         // A UI that stopped listening is not a reason to abandon the scan.
         let _ = emitter.emit("scan-progress", &progress);
     })
@@ -240,6 +251,10 @@ pub async fn env_scan(
 ///   now a parameter: `None` is the *Browse…* path, which really is manual; a refresh passes the
 ///   source the row already had.
 ///
+/// A path the webview names as `manual` is checked by [`envs::validate_interpreter`] before the
+/// probe runs it, as `env_add_manual` checks one: discovery found the others where Python puts
+/// interpreters, and only a manual path can name anything at all.
+///
 /// # Errors
 /// `PD-ENV-001` when there is no usable interpreter there, `PD-ENV-003` when the probe output
 /// cannot be read.
@@ -252,6 +267,9 @@ pub async fn env_probe(
     let path = std::path::PathBuf::from(&interpreter);
     let env_hash = envs::env_hash(&path);
     let source = source.unwrap_or(EnvSource::Manual);
+    if source == EnvSource::Manual {
+        validated(&state.app_data, path.clone()).await?;
+    }
     let folder = {
         let store = state.store.lock().await;
         store.health_project(&env_hash).ok().flatten()
@@ -270,6 +288,75 @@ pub async fn env_probe(
         env: Some(probed.env),
         error: None,
     })
+}
+
+/// Add an interpreter the person picked with *Browse…* to the list, and return its row (PRD P0-1).
+///
+/// Validated, probed, then stored — in that order, so the list never gains an entry that was
+/// refused or broken on arrival. The row carries the canonical path, which is what is stored and
+/// what the next `env_scan` returns, so the screen does not change under the user's eyes. Adding
+/// one already listed — by discovery or by an earlier *Browse…* — is not an error: the row comes
+/// back, and the frontend merges it by `envHash`.
+///
+/// # Errors
+/// `PD-ENV-001` when the file is missing, is not named like a Python interpreter, or is one of
+/// PipDock's own environments; `PD-ENV-003` when the probe fails; `PD-INT-001` when the store
+/// cannot be written.
+#[tauri::command]
+pub async fn env_add_manual(
+    state: tauri::State<'_, AppState>,
+    interpreter: String,
+) -> Wire<EnvRow> {
+    let path = validated(&state.app_data, std::path::PathBuf::from(interpreter)).await?;
+    let env_hash = envs::env_hash(&path);
+    let folder = {
+        let store = state.store.lock().await;
+        store.health_project(&env_hash).ok().flatten()
+    };
+    let probed = envs::probe(&path, EnvSource::Manual).await?;
+    let shown = path.display().to_string();
+    {
+        let store = state.store.lock().await;
+        store.add_manual_env(&env_hash, &shown, &jiff::Timestamp::now().to_string())?;
+    }
+    Ok(EnvRow {
+        interpreter: shown,
+        source: EnvSource::Manual,
+        env_hash,
+        packages: Some(probed.dists.len()),
+        pip_version: pip_version_of(&probed.dists),
+        health_project: folder,
+        env: Some(probed.env),
+        error: None,
+    })
+}
+
+/// Take an interpreter off the list *Browse…* put it on. Nothing on disk is touched, and its pins,
+/// snapshots and Health folder stay keyed to it for the day it is added again.
+///
+/// # Errors
+/// `PD-INT-001` when the store cannot be written. `false` when it was not on the list.
+#[tauri::command]
+pub async fn env_remove_manual(state: tauri::State<'_, AppState>, env_hash: String) -> Wire<bool> {
+    let store = state.store.lock().await;
+    Ok(store.remove_manual_env(&env_hash)?)
+}
+
+/// [`envs::validate_interpreter`], off the async workers: it reads the file system, which
+/// `rust:S7493` keeps out of an `async fn`.
+async fn validated(
+    app_data: &std::path::Path,
+    path: std::path::PathBuf,
+) -> pipdock_core::Result<std::path::PathBuf> {
+    let app_data = app_data.to_path_buf();
+    tokio::task::spawn_blocking(move || envs::validate_interpreter(&path, &app_data))
+        .await
+        .map_err(|e| {
+            PdError::new(
+                pipdock_core::errors::Code::IntUnexpected,
+                format!("interpreter check stopped: {e}"),
+            )
+        })?
 }
 
 /// Everything installed in one environment — the Installed table (UI-SPEC §4).

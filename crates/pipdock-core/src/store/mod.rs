@@ -20,7 +20,7 @@ use crate::errors::{Code, PdError, Result};
 pub const DB_FILE: &str = "index.db";
 
 /// Schema version this build expects. Bump when adding a migration.
-pub const SCHEMA_VERSION: i64 = 4;
+pub const SCHEMA_VERSION: i64 = 5;
 
 /// An open store.
 #[derive(Debug)]
@@ -192,6 +192,16 @@ impl Store {
                      version          TEXT NOT NULL,
                      requires_python  TEXT,
                      PRIMARY KEY (normalized, version)
+                 );
+
+                 -- v5. Interpreters a person added - Browse... in the GUI, `pipdock env add` in the
+                 -- CLI - for discovery to list beside its own (PRD P0-1). Not the `envs` table:
+                 -- that is the CLI's recents and its starred default, and adding an interpreter to
+                 -- the list is not choosing it. Same env_hash as everywhere, case-folded (SP-6).
+                 CREATE TABLE IF NOT EXISTS manual_envs (
+                     env_hash     TEXT PRIMARY KEY,
+                     interpreter  TEXT NOT NULL,
+                     added_at     TEXT NOT NULL
                  );",
             )
             .map_err(sql)?;
@@ -201,6 +211,17 @@ impl Store {
             .map_err(sql)?;
         Ok(())
     }
+}
+
+/// An interpreter a person added with *Browse…* or `pipdock env add`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ManualEnv {
+    /// Identity, case-folded (SP-6).
+    pub env_hash: String,
+    /// The canonical interpreter path, as stored.
+    pub interpreter: String,
+    /// RFC 3339, which orders the list.
+    pub added_at: String,
 }
 
 /// A remembered environment (ARCHITECTURE §6, PRD P0-1 "recents persisted").
@@ -285,6 +306,67 @@ impl Store {
         Ok(self.recent_envs()?.into_iter().find(|e| e.is_default))
     }
 
+    /// Put an interpreter a person added on the list (PRD P0-1's manual browse).
+    ///
+    /// Adding one that is already there keeps its place and its date — the list is in the order
+    /// things were added, and adding again is not a new addition — but takes the path as given
+    /// this time, which is the canonical one [`crate::envs::validate_interpreter`] returned.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the write fails.
+    pub fn add_manual_env(&self, env_hash: &str, interpreter: &str, now: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO manual_envs (env_hash, interpreter, added_at) VALUES (?1, ?2, ?3)
+                 ON CONFLICT (env_hash) DO UPDATE SET interpreter = excluded.interpreter",
+                rusqlite::params![env_hash, interpreter, now],
+            )
+            .map_err(|e| PdError::new(Code::IntUnexpected, format!("manual env store: {e}")))?;
+        Ok(())
+    }
+
+    /// The interpreters a person added, oldest first.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the read fails.
+    pub fn manual_envs(&self) -> Result<Vec<ManualEnv>> {
+        let err = |e: rusqlite::Error| {
+            PdError::new(Code::IntUnexpected, format!("manual env store: {e}"))
+        };
+        let mut stmt = self
+            .conn
+            .prepare(
+                "SELECT env_hash, interpreter, added_at FROM manual_envs
+                 ORDER BY added_at, rowid",
+            )
+            .map_err(err)?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(ManualEnv {
+                    env_hash: r.get(0)?,
+                    interpreter: r.get(1)?,
+                    added_at: r.get(2)?,
+                })
+            })
+            .map_err(err)?;
+        rows.collect::<std::result::Result<Vec<_>, _>>()
+            .map_err(err)
+    }
+
+    /// Take an interpreter off the list. Only the entry goes: nothing on disk is touched, and the
+    /// pins, snapshots and Health folder keyed to the same `env_hash` stay, ready for the day it
+    /// is added — or discovered — again.
+    ///
+    /// # Errors
+    /// `PD-INT-001` when the write fails. `Ok(false)` when it was not on the list.
+    pub fn remove_manual_env(&self, env_hash: &str) -> Result<bool> {
+        let removed = self
+            .conn
+            .execute("DELETE FROM manual_envs WHERE env_hash = ?1", [env_hash])
+            .map_err(|e| PdError::new(Code::IntUnexpected, format!("manual env store: {e}")))?;
+        Ok(removed > 0)
+    }
+
     /// The project folder Code Health last ran in for this environment (CODE-HEALTH-SPEC §3).
     ///
     /// Per environment, because deptry compares declared dependencies against what is *installed*
@@ -351,7 +433,14 @@ mod tests {
             .filter_map(std::result::Result::ok)
             .collect();
 
-        for expected in ["envs", "health_projects", "meta_cache", "names", "pins"] {
+        for expected in [
+            "envs",
+            "health_projects",
+            "manual_envs",
+            "meta_cache",
+            "names",
+            "pins",
+        ] {
             assert!(
                 tables.contains(&expected.to_owned()),
                 "missing {expected}: {tables:?}"
@@ -457,5 +546,88 @@ mod tests {
                 [],
             )
             .expect("the v4 table exists");
+    }
+
+    #[test]
+    fn a_v4_store_gains_the_manual_list_and_keeps_its_data() {
+        let store = Store::in_memory().expect("open");
+        store
+            .remember_env("h1", r"C:\a\python.exe", "2026-11-01T00:00:00Z", true)
+            .expect("a CLI default from 1.5.0");
+        store
+            .conn()
+            .execute_batch("DROP TABLE manual_envs; PRAGMA user_version = 4;")
+            .expect("rewind to v4");
+        store.migrate().expect("migrate");
+        assert!(store.manual_envs().expect("the v5 table exists").is_empty());
+        assert_eq!(
+            store.default_env().expect("read").map(|e| e.env_hash),
+            Some("h1".to_owned()),
+            "the migration does not touch what was there"
+        );
+    }
+
+    #[test]
+    fn the_manual_list_keeps_its_order_and_takes_no_duplicates() {
+        let store = Store::in_memory().expect("open");
+        store
+            .add_manual_env("b", r"D:\b\python.exe", "2026-11-02T00:00:00Z")
+            .expect("add");
+        store
+            .add_manual_env("a", r"D:\a\python.exe", "2026-11-03T00:00:00Z")
+            .expect("add");
+        // Added again, later and spelled differently: one entry, first place, the new spelling.
+        store
+            .add_manual_env("b", r"D:\B\python.exe", "2026-11-04T00:00:00Z")
+            .expect("add again");
+
+        let listed = store.manual_envs().expect("read");
+        assert_eq!(
+            listed
+                .iter()
+                .map(|m| (
+                    m.env_hash.as_str(),
+                    m.interpreter.as_str(),
+                    m.added_at.as_str()
+                ))
+                .collect::<Vec<_>>(),
+            [
+                ("b", r"D:\B\python.exe", "2026-11-02T00:00:00Z"),
+                ("a", r"D:\a\python.exe", "2026-11-03T00:00:00Z"),
+            ]
+        );
+    }
+
+    #[test]
+    fn removing_from_the_manual_list_touches_nothing_else() {
+        let store = Store::in_memory().expect("open");
+        store
+            .add_manual_env("h", r"D:\p\python.exe", "2026-11-02T00:00:00Z")
+            .expect("add");
+        store
+            .remember_env("h", r"D:\p\python.exe", "2026-11-02T00:00:00Z", true)
+            .expect("also the CLI default");
+        store
+            .set_health_project("h", r"D:\p", "2026-11-02T00:00:00Z")
+            .expect("and Health's folder");
+
+        assert!(
+            store.remove_manual_env("h").expect("remove"),
+            "it was there"
+        );
+        assert!(
+            !store.remove_manual_env("h").expect("again"),
+            "and is not now"
+        );
+        assert!(store.manual_envs().expect("read").is_empty());
+        assert!(
+            store.default_env().expect("read").is_some(),
+            "the CLI default is another list"
+        );
+        assert_eq!(
+            store.health_project("h").expect("read").as_deref(),
+            Some(r"D:\p"),
+            "keyed data outlives the entry"
+        );
     }
 }
