@@ -1,6 +1,6 @@
 {
   "errors": {
-    "PD-ENV-001": "That interpreter is missing or cannot be run.",
+    "PD-ENV-001": "That interpreter is missing, or PipDock cannot run it.",
     "PD-ENV-002": "This Python is managed by the operating system.",
     "PD-ENV-003": "PipDock could not read this environment.",
     "PD-ENG-001": "The selected engine is not installed or not on PATH.",

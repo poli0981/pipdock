@@ -55,6 +55,7 @@ export const COMMANDS = [
   'app_info',
   'env_scan',
   'env_add_manual',
+  'env_remove_manual',
   'env_probe',
   'pkg_list',
   'pkg_outdated',
@@ -209,6 +210,18 @@ export const envScan = (): Promise<EnvRow[]> => invoke('env_scan')
  */
 export const envProbe = (interpreter: string, source?: EnvSource): Promise<EnvRow> =>
   invoke('env_probe', source === undefined ? { interpreter } : { interpreter, source })
+
+/**
+ * Add an interpreter the person picked to the list discovery is shown beside, and return its row —
+ * *Add interpreter…* (PRD P0-1). Rust validates the path before anything runs it, probes it, and
+ * stores it only when both succeed; the row carries the canonical path it stored.
+ */
+export const envAddManual = (interpreter: string): Promise<EnvRow> =>
+  invoke('env_add_manual', { interpreter })
+
+/** Take an added interpreter off that list. Nothing on disk is touched. `false` if it was not on it. */
+export const envRemoveManual = (envHash: string): Promise<boolean> =>
+  invoke('env_remove_manual', { envHash })
 
 /**
  * Everything installed in `env` — the Installed table.

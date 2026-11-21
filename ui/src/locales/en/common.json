@@ -48,7 +48,7 @@
     "pipUpgradeNoSnapshot": "No snapshot is taken: restoring one would need the pip being replaced.",
     "title": "Environments",
     "empty": "no Python environments found",
-    "emptyHint": "Install Python, or create a virtual environment named .venv, venv, env or .env in this folder.",
+    "emptyHint": "Install Python, or add one you already have — the python.exe inside a virtual environment’s Scripts folder, for example.",
     "scanning": "Discovering environments…",
     "scanPhase": {
       "registry": "Reading the Windows registry",
@@ -66,7 +66,13 @@
     },
     "managed": "MANAGED",
     "managedDetail": "Externally managed (PEP 668). Create a virtual environment instead; the override lives in Settings and is discouraged.",
-    "selected": "Selected"
+    "selected": "Selected",
+    "add": "Add interpreter…",
+    "addTitle": "Choose a Python interpreter (python.exe)",
+    "added": "Added {{path}} to the list.",
+    "remove": "Remove from list",
+    "removeLabel": "Remove from list: {{path}}",
+    "removed": "Removed {{path}} from the list. Nothing on disk was changed."
   },
   "packages": {
     "installedTitle": "Installed",
@@ -198,7 +204,8 @@
     "clearQueue": "Empty the install queue",
     "groups": {
       "go": "Go to"
-    }
+    },
+    "addInterpreter": "Add a Python interpreter…"
   },
   "pins": {
     "empty": "no pins in this environment",

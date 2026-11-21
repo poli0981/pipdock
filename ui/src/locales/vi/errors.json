@@ -1,6 +1,6 @@
 {
   "errors": {
-    "PD-ENV-001": "Không tìm thấy hoặc không chạy được trình thông dịch đó.",
+    "PD-ENV-001": "Không tìm thấy trình thông dịch đó, hoặc PipDock không thể chạy nó.",
     "PD-ENV-002": "Bản Python này do hệ điều hành quản lý.",
     "PD-ENV-003": "PipDock không đọc được môi trường này.",
     "PD-ENG-001": "Bộ máy đã chọn chưa được cài, hoặc không có trong PATH.",

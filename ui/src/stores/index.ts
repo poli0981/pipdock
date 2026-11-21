@@ -23,7 +23,9 @@ import i18n, {
   type Locale,
 } from '@/i18n'
 import {
+  envAddManual,
   envProbe,
+  envRemoveManual,
   envScan,
   legalConsentGet,
   legalConsentSet,
@@ -32,6 +34,7 @@ import {
   pinRemove,
   pinSuggestions,
   pipUpgrade,
+  pickOpenFile,
   pkgList,
   pkgOutdated,
   snapshotCreate,
@@ -175,6 +178,29 @@ interface EnvState {
    * rescan can.
    */
   upgradePip: (interpreter: string) => Promise<void>
+
+  /** An *Add interpreter…* in flight, from the picker opening to the row arriving. */
+  addingManual: boolean
+  /**
+   * *Add interpreter…* (PRD P0-1): ask for a `python.exe`, put it on the list, select it.
+   *
+   * `title` arrives localized — `@/ipc` has no `t`. Cancelling the picker changes nothing. The new
+   * row is merged **by `envHash`**, not by path: Rust returns the canonical path it stored, and the
+   * same interpreter may already be listed under the spelling discovery found. Pins and snapshots
+   * key on the hash, so a second row would split nothing — it would only show one environment
+   * twice. Refused while a scan runs: the scan read the list before this add wrote to it, and its
+   * result would replace `rows` without the new one.
+   */
+  addManual: (title: string) => Promise<void>
+  /** Which added interpreter is being taken off the list, by `envHash`. */
+  removingManual: string | null
+  /**
+   * Take an added interpreter off the list. Nothing on disk is touched. A selected or opened row
+   * that goes is deselected or closed; selection falls back as a rescan's would.
+   */
+  removeManual: (envHash: string) => Promise<void>
+  /** What the last add or removal did, for the screen's status region — a path, or null. */
+  manualNotice: { kind: 'added' | 'removed'; path: string } | null
 
   // -- the package slice, for Installed and Updates ------------------------------------------
 
@@ -337,7 +363,9 @@ export const useEnvStore = create<EnvState>((set, get) => ({
     // expensive thing the app can do twice. `PdEnvironments` has started two on every mount since
     // Stage 1 — StrictMode runs effects twice in development — which was invisible because both
     // produce the same rows.
-    if (get().scanning) return
+    // Nor while an *Add interpreter…* is in flight: a scan that read the list before the add wrote
+    // to it would replace `rows` without the row the add is about to append.
+    if (get().scanning || get().addingManual) return
     set({ scanning: true, error: null })
     try {
       const rows = await envScan()
@@ -388,6 +416,64 @@ export const useEnvStore = create<EnvState>((set, get) => ({
       }))
     } catch (e) {
       set({ upgradingPip: null, error: asPdError(e) })
+    }
+  },
+
+  addingManual: false,
+  removingManual: null,
+  manualNotice: null,
+
+  addManual: async (title) => {
+    const { addingManual, scanning } = get()
+    if (addingManual || scanning) return
+    set({ addingManual: true, error: null })
+    try {
+      const picked = await pickOpenFile(title, ['exe'])
+      if (picked === null) {
+        set({ addingManual: false })
+        return
+      }
+      const row = await envAddManual(picked)
+      set((state) => {
+        const listed = state.rows.find((r) => r.envHash === row.envHash)
+        const interpreter = listed?.interpreter ?? row.interpreter
+        return {
+          rows: listed === undefined ? [...state.rows, row] : state.rows,
+          addingManual: false,
+          manualNotice: { kind: 'added', path: interpreter },
+          ...(state.selected === interpreter ? {} : { selected: interpreter, ...NO_PACKAGES }),
+        }
+      })
+    } catch (e) {
+      set({ addingManual: false, error: asPdError(e) })
+    }
+  },
+
+  removeManual: async (envHash) => {
+    if (get().removingManual !== null) return
+    set({ removingManual: envHash, error: null })
+    try {
+      await envRemoveManual(envHash)
+      set((state) => {
+        const gone = state.rows.find((r) => r.envHash === envHash)
+        if (gone === undefined) return { removingManual: null }
+        const rows = state.rows.filter((r) => r.envHash !== envHash)
+        const deselect = state.selected === gone.interpreter
+        return {
+          rows,
+          removingManual: null,
+          manualNotice: { kind: 'removed', path: gone.interpreter },
+          ...(deselect
+            ? {
+                selected: rows.find((r) => r.env !== undefined)?.interpreter ?? null,
+                ...NO_PACKAGES,
+              }
+            : {}),
+          ...(state.openFor === gone.interpreter ? { openFor: null, ...NO_SNAPSHOTS } : {}),
+        }
+      })
+    } catch (e) {
+      set({ removingManual: null, error: asPdError(e) })
     }
   },
 
