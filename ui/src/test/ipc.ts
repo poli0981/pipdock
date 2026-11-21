@@ -48,6 +48,8 @@ export interface IpcMock {
   onPlanProgress: ReturnType<typeof vi.fn>
   envScan: ReturnType<typeof vi.fn>
   envProbe: ReturnType<typeof vi.fn>
+  envAddManual: ReturnType<typeof vi.fn>
+  envRemoveManual: ReturnType<typeof vi.fn>
   pipUpgrade: ReturnType<typeof vi.fn>
   healthRun: ReturnType<typeof vi.fn>
   auditRun: ReturnType<typeof vi.fn>
@@ -114,6 +116,8 @@ export function ipcMock(): IpcMock {
     onPlanProgress: vi.fn().mockResolvedValue(() => undefined),
     envScan: vi.fn().mockResolvedValue([]),
     envProbe: vi.fn(),
+    envAddManual: vi.fn(),
+    envRemoveManual: vi.fn().mockResolvedValue(true),
     pipUpgrade: vi.fn().mockResolvedValue(undefined),
     healthRun: vi.fn(),
     auditRun: vi.fn(),

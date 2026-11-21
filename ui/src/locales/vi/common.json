@@ -47,7 +47,7 @@
     "pipUpgradeNoSnapshot": "Không tạo bản chụp: khôi phục nó sẽ cần chính pip đang được thay thế.",
     "title": "Môi trường",
     "empty": "không tìm thấy môi trường Python nào",
-    "emptyHint": "Hãy cài Python, hoặc tạo một môi trường ảo tên .venv, venv, env hoặc .env trong thư mục này.",
+    "emptyHint": "Hãy cài Python, hoặc thêm một trình thông dịch bạn đã có — ví dụ python.exe trong thư mục Scripts của một môi trường ảo.",
     "scanning": "Đang tìm môi trường…",
     "scanPhase": {
       "registry": "Đang đọc registry của Windows",
@@ -65,7 +65,13 @@
     },
     "managed": "HỆ THỐNG",
     "managedDetail": "Môi trường do hệ điều hành quản lý (PEP 668). Hãy tạo một môi trường ảo; tuỳ chọn ghi đè nằm trong Cài đặt và không được khuyến khích.",
-    "selected": "Đang chọn"
+    "selected": "Đang chọn",
+    "add": "Thêm trình thông dịch…",
+    "addTitle": "Chọn trình thông dịch Python (python.exe)",
+    "added": "Đã thêm {{path}} vào danh sách.",
+    "remove": "Bỏ khỏi danh sách",
+    "removeLabel": "Bỏ khỏi danh sách: {{path}}",
+    "removed": "Đã bỏ {{path}} khỏi danh sách. Không có gì trên đĩa bị thay đổi."
   },
   "packages": {
     "installedTitle": "Đã cài",
@@ -185,7 +191,8 @@
     "clearQueue": "Xoá hàng đợi cài đặt",
     "groups": {
       "go": "Đi tới"
-    }
+    },
+    "addInterpreter": "Thêm trình thông dịch Python…"
   },
   "pins": {
     "empty": "môi trường này chưa có gói nào được ghim",

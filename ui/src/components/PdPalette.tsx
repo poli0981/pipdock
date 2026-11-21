@@ -49,6 +49,7 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
 
   const setNav = useUiStore((s) => s.setNav)
   const scan = useEnvStore((s) => s.scan)
+  const addManual = useEnvStore((s) => s.addManual)
   const loadPackages = useEnvStore((s) => s.loadPackages)
   const loadOutdated = useEnvStore((s) => s.loadOutdated)
   const takeSnapshot = useEnvStore((s) => s.takeSnapshot)
@@ -77,6 +78,16 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
         run: () => {
           setNav('environments')
           void scan()
+        },
+      },
+      {
+        // The picker opens over whichever screen is showing; Environments is where the row lands.
+        id: 'env:add-manual',
+        label: t('palette.addInterpreter'),
+        group: t('nav.environments'),
+        run: () => {
+          setNav('environments')
+          void addManual(t('env.addTitle'))
         },
       },
       {
@@ -137,6 +148,7 @@ export function PdPalette({ onClose }: { onClose: () => void }) {
       t,
       setNav,
       scan,
+      addManual,
       loadPackages,
       loadOutdated,
       clearSelection,

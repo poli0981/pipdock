@@ -7,9 +7,14 @@
  *
  * A row whose probe failed renders **in place** with its code rather than disappearing: one broken
  * interpreter must not hide the rest, which is the rule `pipdock env list` already follows.
+ *
+ * *Add interpreter…* (PRD P0-1's manual browse, 1.6.0) puts any `python.exe` on the list — the GUI
+ * has no working directory worth scanning, so before it a venv anywhere but the four folder names
+ * beside the program was out of reach. An added row carries *Remove from list*, broken or not: a
+ * venv deleted from disk stays listed with `PD-ENV-001` precisely so it can be removed.
  */
 
-import { useEffect, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { PdDialog } from '@/components/PdDialog'
@@ -31,6 +36,49 @@ function SourceChip({ row }: { row: EnvRow }) {
     <span className="rounded-pd border border-border px-1.5 py-0.5 text-data text-text-dim">
       {t(`env.source.${row.source}`)}
     </span>
+  )
+}
+
+/** *Remove from list*, on a row *Add interpreter…* put there. Never `data-destructive`: it forgets
+ * an entry, deletes nothing, and the same picker adds it back. */
+function RemoveButton({ row }: { row: EnvRow }) {
+  const { t } = useTranslation()
+  const removeManual = useEnvStore((s) => s.removeManual)
+  const busy = useEnvStore((s) => s.removingManual !== null)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!busy) void removeManual(row.envHash)
+      }}
+      aria-disabled={busy}
+      // The visible words first, then the path: the name contains what is on the button.
+      aria-label={t('env.removeLabel', { path: row.interpreter })}
+      data-action="remove-manual"
+      className="rounded-pd border border-border px-3 py-1 text-data aria-disabled:opacity-40"
+    >
+      {t('env.remove')}
+    </button>
+  )
+}
+
+/** *Add interpreter…*, in the header and as the empty state's one action (UI-SPEC §7). */
+function AddButton() {
+  const { t } = useTranslation()
+  const addManual = useEnvStore((s) => s.addManual)
+  const busy = useEnvStore((s) => s.addingManual || s.scanning)
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        if (!busy) void addManual(t('env.addTitle'))
+      }}
+      aria-disabled={busy}
+      data-action="add-manual"
+      className="rounded-pd border border-border px-3 py-1 text-data aria-disabled:opacity-40"
+    >
+      {t('env.add')}
+    </button>
   )
 }
 
@@ -87,8 +135,9 @@ function Row({ row }: { row: EnvRow }) {
       ) : null}
 
       {row.error !== undefined ? (
-        <div className="mt-2">
+        <div className="mt-2 space-y-2">
           <PdErrorRow error={row.error} />
+          {row.source === 'manual' ? <RemoveButton row={row} /> : null}
         </div>
       ) : (
         <div className="mt-2 flex items-center gap-2">
@@ -134,6 +183,7 @@ function Row({ row }: { row: EnvRow }) {
               {upgrading ? t('env.pipUpgrading') : t('env.pipUpgrade')}
             </button>
           ) : null}
+          {row.source === 'manual' ? <RemoveButton row={row} /> : null}
         </div>
       )}
 
@@ -181,12 +231,28 @@ export function PdEnvironments() {
   // a detail view or selecting a snapshot would re-render the whole environment list.
   const rows = useEnvStore((s) => s.rows)
   const scanning = useEnvStore((s) => s.scanning)
+  const adding = useEnvStore((s) => s.addingManual)
   const progress = useEnvStore((s) => s.progress)
   const error = useEnvStore((s) => s.error)
   const scan = useEnvStore((s) => s.scan)
   const setProgress = useEnvStore((s) => s.setProgress)
   const openFor = useEnvStore((s) => s.openFor)
+  const manualNotice = useEnvStore((s) => s.manualNotice)
   const { open, failed: openFailed } = useOpenExternal()
+  const headingRef = useRef<HTMLHeadingElement>(null)
+
+  // *Remove from list* unmounts the button that was pressed, so focus fell to <body> and the next
+  // Tab started from the top of the window. App's lost-focus rule covers screens being replaced;
+  // a row leaving the list is this screen's own business. Same condition: only when focus was
+  // actually lost, so a rescan never pulls anyone off the control they are on.
+  useEffect(() => {
+    const active = document.activeElement
+    if (active !== null && active !== document.body && active.isConnected) return
+    const heading = headingRef.current
+    if (heading === null) return
+    heading.setAttribute('tabindex', '-1')
+    heading.focus()
+  }, [rows])
 
   useEffect(() => {
     // Subscribe before scanning, or the first phases are emitted into nothing.
@@ -209,20 +275,33 @@ export function PdEnvironments() {
   return (
     <section aria-labelledby="env-title" className="h-full overflow-auto p-6">
       <div className="flex items-center justify-between">
-        <h1 id="env-title" className="text-accent">
+        <h1 id="env-title" ref={headingRef} className="text-accent">
           {t('env.title')}
         </h1>
-        <button
-          type="button"
-          onClick={() => {
-            if (!scanning) void scan()
-          }}
-          aria-disabled={scanning}
-          className="rounded-pd border border-border px-3 py-1 text-data aria-disabled:opacity-40"
-        >
-          {t('actions.rescan')}
-        </button>
+        <div className="flex items-center gap-2">
+          <AddButton />
+          <button
+            type="button"
+            onClick={() => {
+              if (!scanning && !adding) void scan()
+            }}
+            aria-disabled={scanning || adding}
+            className="rounded-pd border border-border px-3 py-1 text-data aria-disabled:opacity-40"
+          >
+            {t('actions.rescan')}
+          </button>
+        </div>
       </div>
+
+      {/* Mounted from the start and only its text changes: a live region that arrives together
+          with its words may never be announced (ACCESSIBILITY.md, backlog A2). */}
+      <p role="status" className="mt-2 text-data text-text-dim">
+        {manualNotice === null
+          ? ''
+          : t(manualNotice.kind === 'added' ? 'env.added' : 'env.removed', {
+              path: manualNotice.path,
+            })}
+      </p>
 
       {scanning ? (
         <p aria-live="polite" className="mt-4 text-text-dim">
@@ -239,7 +318,7 @@ export function PdEnvironments() {
       ) : null}
 
       {!scanning && rows.length === 0 && error === null ? (
-        <PdEmptyState message={t('env.empty')} hint={t('env.emptyHint')} />
+        <PdEmptyState message={t('env.empty')} hint={t('env.emptyHint')} action={<AddButton />} />
       ) : null}
 
       <ul className="mt-4 space-y-2">
