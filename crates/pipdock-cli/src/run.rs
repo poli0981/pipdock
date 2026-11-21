@@ -284,20 +284,7 @@ pub async fn env_list(opts: &GlobalOpts) -> Result<Exit> {
         let payload: Vec<serde_json::Value> = rows
             .iter()
             .map(|(path, source, probed)| match probed {
-                Ok(p) => serde_json::json!({
-                    "interpreter": path,
-                    "source": source,
-                    "python": p.env.python_version,
-                    "externallyManaged": p.env.externally_managed,
-                    "hiddenUserSite": p.env.hidden_user_site,
-                    "packages": p.dists.len(),
-                    "envHash": envs::env_hash(path),
-                    // Same field the GUI's EnvRow carries, out of the same list, so `env list`
-                    // and the Environments screen cannot disagree about which pip is installed.
-                    "pipVersion": p.dists.iter()
-                        .find(|d| d.name.as_str() == "pip")
-                        .map(|d| d.version.0.clone()),
-                }),
+                Ok(p) => env_json(path, *source, p),
                 Err(e) => serde_json::json!({
                     "interpreter": path,
                     "source": source,
@@ -1034,6 +1021,25 @@ pub async fn env_use(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
     Ok(Exit::Success)
 }
 
+/// One probed environment as `env list --json` prints it — and `env add --json`, which promises the
+/// same element, so the two are built here once rather than kept in step by hand.
+fn env_json(path: &Path, source: EnvSource, probed: &envs::ProbeResult) -> serde_json::Value {
+    serde_json::json!({
+        "interpreter": path,
+        "source": source,
+        "python": probed.env.python_version,
+        "externallyManaged": probed.env.externally_managed,
+        "hiddenUserSite": probed.env.hidden_user_site,
+        "packages": probed.dists.len(),
+        "envHash": envs::env_hash(path),
+        // Same field the GUI's EnvRow carries, out of the same list, so `env list` and the
+        // Environments screen cannot disagree about which pip is installed.
+        "pipVersion": probed.dists.iter()
+            .find(|d| d.name.as_str() == "pip")
+            .map(|d| d.version.0.clone()),
+    })
+}
+
 /// `pipdock env add <path>` — the GUI's *Add interpreter…* (PRD P0-1).
 ///
 /// Validated, probed, then stored, so the list never gains an entry that was refused or broken on
@@ -1046,29 +1052,14 @@ pub async fn env_use(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
 pub async fn env_add(opts: &GlobalOpts, path: &Path) -> Result<Exit> {
     let interpreter = envs::validate_interpreter(&envs::interpreter_in(path), &app_data_dir())?;
     let probed = envs::probe(&interpreter, EnvSource::Manual).await?;
-    let env_hash = envs::env_hash(&interpreter);
     Store::open(&app_data_dir())?.add_manual_env(
-        &env_hash,
+        &envs::env_hash(&interpreter),
         &interpreter.display().to_string(),
         &jiff::Timestamp::now().to_string(),
     )?;
 
     if opts.json {
-        let pip = probed
-            .dists
-            .iter()
-            .find(|d| d.name.as_str() == "pip")
-            .map(|d| d.version.0.clone());
-        print_json(&serde_json::json!({
-            "interpreter": interpreter,
-            "source": EnvSource::Manual,
-            "python": probed.env.python_version,
-            "externallyManaged": probed.env.externally_managed,
-            "hiddenUserSite": probed.env.hidden_user_site,
-            "packages": probed.dists.len(),
-            "envHash": env_hash,
-            "pipVersion": pip,
-        }));
+        print_json(&env_json(&interpreter, EnvSource::Manual, &probed));
     } else if !opts.quiet {
         println!(
             "added: {} (Python {})",
