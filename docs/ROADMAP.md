@@ -1717,6 +1717,12 @@ the same version. [#120](https://github.com/poli0981org/pipdock/pull/120).
 - `env remove <dir>` answered "not on the list" for a deleted venv — the one case it exists for —
   because `interpreter_in` resolves only what is there. Found by its own test.
 - Qodana for JS flagged a non-ASCII identifier in `triage.cjs`; renamed.
+- Qodana for Rust failed one run in five on #120 — the last on a commit that changed only this
+  file — with "Unused crate: sha2", the crate `env_hash` is built on. Every run's sanity check finds
+  the Cargo project only partly loaded in its container, and the unused-crate inspection sometimes
+  draws its conclusion from that. A baseline entry would not have held, since its fingerprint
+  hashes neighbouring lines Dependabot rewrites, so the inspection is excluded in
+  `qodana-rust.yaml`, with the reason.
 - The installed build — the release dry run's NSIS installer, a scratch `LOCALAPPDATA`, driven over
   CDP: the legal gate once on a fresh profile; an interpreter added, rescanned, updated and rolled
   back in a scratch venv named `myproj-env` outside the working directory; the entry kept across a
