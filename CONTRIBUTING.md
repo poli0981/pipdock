@@ -6,6 +6,37 @@ one thing and proves it.
 
 By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 
+## Scope in maintenance mode
+
+**Since 1.6.0 (2026-11), PipDock is maintained rather than developed.** It does what it was
+designed to do — the last missing core feature, adding an interpreter by path, shipped in 1.6.0 —
+and from here the work is keeping it correct, safe and current. What that takes in:
+
+- **Regular dependency updates** — Rust crates, npm packages, GitHub Actions and the Code Health
+  tool pins, the way Dependabot proposes them.
+- **Security fixes** — a dependency with a High or Critical advisory, or a serious security problem
+  in a runtime or toolchain PipDock is built with (Node, Rust, WebView2), fixed promptly and
+  released when it reaches the shipped program.
+- **Major language, runtime and framework upgrades** — Node 26 to 28, TypeScript 6 to 7, a Rust
+  edition, Tauri 2 to 3 — when they arrive and are stable.
+- **Bugs, UI/UX defects and accessibility barriers** — anything that does not work as the docs
+  describe, gets in someone's way, or cannot be used with a keyboard, a screen reader or high
+  contrast.
+- **Wording and translation** — English or Vietnamese text that is wrong, misspelt in a way that
+  changes the meaning, misleading, or does not read the way people actually speak. There is an
+  issue form for it.
+
+**New features are not taken**, as issues or as pull requests. One that asks for a feature — titled
+as a feature request, a `feat:` pull request, or labelled `enhancement` — is labelled
+`out-of-scope` and closed automatically, with this section linked. That is not a judgement of the
+idea. If you believe something is **truly necessary** — it fixes data loss, a security hole, or
+makes the program unusable for someone without it — make the case in
+[Discussions → Ideas](https://github.com/poli0981org/pipdock/discussions/categories/ideas); the
+maintainer can keep an item open with the `policy-exception` label.
+
+What is planned, and what was deliberately not built, is in [`docs/ROADMAP.md`](docs/ROADMAP.md)
+under *Maintenance mode*.
+
 ## Before you write code
 
 - **A bug** — [open an issue](https://github.com/poli0981org/pipdock/issues/new/choose). The in-app
@@ -13,11 +44,11 @@ By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md).
 - **Something that gets in your way as a keyboard, screen-reader or high-contrast user** — see
   [ACCESSIBILITY.md](ACCESSIBILITY.md). That report does not need a diagnosis.
 - **A security problem** — do not open an issue; follow the [security policy](.github/SECURITY.md).
-- **A question or an idea** — [Discussions](https://github.com/poli0981org/pipdock/discussions).
-- **A feature** — please ask first. The design is written down in `docs/`, the feature list and its
-  non-goals are in [`docs/PRD.md`](docs/PRD.md), and what is planned and why is in
-  [`docs/ROADMAP.md`](docs/ROADMAP.md). A pull request that contradicts those will be asked to
-  change them first, and that is a conversation better had before the code.
+- **Wrong or misleading text, in either language** — the *Wording or translation problem* form.
+- **A question** — [Discussions](https://github.com/poli0981org/pipdock/discussions).
+- **A feature** — not during maintenance; see [above](#scope-in-maintenance-mode). The design is
+  written down in `docs/`, and a fix that contradicts it will be asked to change the docs first,
+  which is a conversation better had before the code.
 
 ## Setting up
 
