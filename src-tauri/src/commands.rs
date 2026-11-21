@@ -301,7 +301,8 @@ pub async fn env_probe(
 /// (a `--symlinks` venv's `python.exe` is the venv; its target is the base), which is what is stored
 /// and what the next `env_scan` returns, so the screen does not change under the user's eyes.
 /// Adding one already listed — by discovery or by an earlier *Browse…* — is not an error: the row
-/// comes back, and the frontend merges it by that path, not by `envHash`, which follows links.
+/// comes back, and the frontend merges it by that path, not by `envHash`: a row is what a person
+/// sees, and two names for one Python — a link to it — share a hash.
 ///
 /// # Errors
 /// `PD-ENV-001` when the file is missing, is not named like a Python interpreter, or is one of

@@ -47,7 +47,9 @@ pub struct ProbeResult {
 
 /// Identity of an environment: SHA-256 of the canonicalized interpreter path (ARCHITECTURE §6).
 ///
-/// Case-folded on Windows — see the SP-6 note above. This value keys the pin store, the snapshot
+/// Case-folded on Windows — see the SP-6 note above. Links are resolved, except that a venv's own
+/// interpreter is resolved only up to its folder (since 1.6.0, [`canonical_interpreter`] says why):
+/// a `--symlinks` venv is not the Python it was made from. This value keys the pin store, the snapshot
 /// directory and the recents list, so a change here orphans a user's data.
 #[must_use]
 pub fn env_hash(interpreter: &Path) -> String {
@@ -467,9 +469,10 @@ pub async fn scan_reporting(
 /// the order they were added.
 ///
 /// Compared by the path as listed — made absolute, case-folded on Windows — and **not** by
-/// [`canonical_interpreter`], which follows links: a venv made with `--symlinks` would otherwise
-/// collapse into the base interpreter its `python.exe` points at, and the venv a person added would
-/// never be listed.
+/// [`canonical_interpreter`]: the first version compared identities, and while identity still
+/// followed a venv's link, a venv made with `--symlinks` collapsed into the base interpreter its
+/// `python.exe` points at and the venv a person added was never listed. Identity resolves other
+/// links still, and what a person added is listed as they added it.
 fn merge_manual(found: BTreeMap<String, Candidate>, manual: &[PathBuf]) -> Vec<Candidate> {
     let mut out: Vec<Candidate> = found.into_values().collect();
     let mut seen: std::collections::HashSet<String> =

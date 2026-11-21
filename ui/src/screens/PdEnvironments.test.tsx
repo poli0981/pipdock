@@ -3,9 +3,11 @@
  *
  * The store half and the screen half, because the seam between them is where this app's bugs have
  * lived (CLAUDE.md, `PdPlanPanel`). Both key on the interpreter **path**: the first version merged
- * and removed by `envHash`, which follows links — so a venv made with `--symlinks` merged into the
- * base Python it points at, and *Remove from list* took every row sharing the hash with it. An
- * independent review of 1.6.0 found both, and the cases below are the ones it named.
+ * and removed by `envHash`, which then followed a venv's link — so a venv made with `--symlinks`
+ * merged into the base Python it points at, and *Remove from list* took every row sharing the hash
+ * with it. An independent review of 1.6.0 found both, and the cases below are the ones it named.
+ * Identity no longer follows a venv's link, but two names for one Python still share a hash, so
+ * the rows stay keyed on what they show.
  */
 
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react'
@@ -109,8 +111,9 @@ describe('the store', () => {
   })
 
   it('lists a venv made with --symlinks beside the base Python it links to, and selects the venv', async () => {
-    // Its `python.exe` is a link to the base, so the two share an `envHash`. Merging on the hash
-    // selected the base: the next update would have changed the system's Python, not the venv's.
+    // Its `python.exe` is a link to the base, and the two shared an `envHash` until 1.6.0's review.
+    // Merging on the hash selected the base: the next update would have changed the system's
+    // Python, not the venv's. Any two rows that share a hash must still be told apart by path.
     const linked: EnvRow = { ...ADDED, envHash: DISCOVERED.envHash }
     vi.mocked(ipc.pickOpenFile).mockResolvedValueOnce(linked.interpreter)
     vi.mocked(ipc.envAddManual).mockResolvedValueOnce(linked)

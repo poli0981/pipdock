@@ -313,9 +313,9 @@ impl Store {
     /// this time, which is the absolute one [`crate::envs::validate_interpreter`] returned, links
     /// left alone.
     ///
-    /// Keyed by `env_hash`, which follows links, so a `--symlinks` venv and its base interpreter
-    /// are one entry here: added after the base, the venv replaces it. Only an added base and an
-    /// added venv of it meet this; the backlog records it with the rest of that identity.
+    /// Keyed by `env_hash`, so two names for one interpreter are one entry. A venv made with
+    /// `--symlinks` has an identity of its own since 1.6.0 (`exec::canonical_interpreter`), and is
+    /// not its base's entry.
     ///
     /// # Errors
     /// `PD-INT-001` when the write fails.

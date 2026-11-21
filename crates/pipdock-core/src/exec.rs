@@ -625,9 +625,19 @@ pub fn user_file_error(path: &Path, e: &std::io::Error) -> PdError {
 /// — a Chocolatey shim yields `c:\python314\python.exe` where the direct install yields
 /// `C:\Python314\python.exe`. `env_hash` is derived from this string (ARCHITECTURE §6), so without
 /// case folding one environment would silently split its pins and snapshot history in two.
+///
+/// **Links are followed — except the one a virtual environment's own interpreter can be.** A venv
+/// made with `python -m venv --symlinks` (the default off Windows) has a `python.exe` that links to
+/// the Python it was made from, and following it made the venv the same environment as its base:
+/// one pin store, one snapshot history, one cached graph, report and audit. Until 1.6.0 nothing in
+/// the GUI could list the two apart, so nothing showed it; *Add interpreter…* can, and an
+/// independent review of 1.6.0 found what came with it. For an interpreter whose environment has a
+/// `pyvenv.cfg`, the folders are resolved and the file's own name is kept. Only such a venv's
+/// identity changed: every other path, a copied venv's included, resolves exactly as it did, and a
+/// linked venv's pins and snapshots from before stay with the base they were always filed under.
 #[must_use]
 pub fn canonical_interpreter(path: &Path) -> String {
-    let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
+    let resolved = identity_path(path);
     let text = resolved.display().to_string();
     // Strip the Windows verbatim prefix canonicalize() adds; it is noise in logs and in the hash.
     let text = text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned();
@@ -636,6 +646,21 @@ pub fn canonical_interpreter(path: &Path) -> String {
     } else {
         text
     }
+}
+
+/// The path [`canonical_interpreter`] names: every link resolved, but a venv's own interpreter only
+/// up to its folder. A venv is recognised by the `pyvenv.cfg` beside `Scripts\` (`bin/` off
+/// Windows), which is how Python itself recognises one.
+fn identity_path(path: &Path) -> PathBuf {
+    if let (Some(dir), Some(name)) = (path.parent(), path.file_name())
+        && dir
+            .parent()
+            .is_some_and(|prefix| prefix.join("pyvenv.cfg").is_file())
+        && let Ok(dir) = std::fs::canonicalize(dir)
+    {
+        return dir.join(name);
+    }
+    std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf())
 }
 
 #[cfg(test)]
@@ -1082,5 +1107,84 @@ mod tests {
     fn canonical_paths_have_no_verbatim_prefix() {
         let p = canonical_interpreter(Path::new("."));
         assert!(!p.starts_with(r"\\?\"), "got {p}");
+    }
+
+    fn identity_scratch(name: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("pd-identity-{name}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).expect("scratch dir");
+        dir
+    }
+
+    fn file_at(path: &Path) -> PathBuf {
+        std::fs::create_dir_all(path.parent().expect("a parent")).expect("parents");
+        std::fs::write(path, "").expect("write");
+        path.to_path_buf()
+    }
+
+    /// A file link, or `None` where this machine may not make one (Windows without Developer Mode).
+    fn file_link(target: &Path, at: &Path) -> Option<()> {
+        std::fs::create_dir_all(at.parent().expect("a parent")).expect("parents");
+        #[cfg(windows)]
+        let made = std::os::windows::fs::symlink_file(target, at);
+        #[cfg(not(windows))]
+        let made = std::os::unix::fs::symlink(target, at);
+        made.ok()
+    }
+
+    /// What the identity was before 1.6.0, for every path it did not mean to change.
+    fn resolved_fully(path: &Path) -> String {
+        let text = std::fs::canonicalize(path)
+            .expect("exists")
+            .display()
+            .to_string();
+        let text = text.strip_prefix(r"\\?\").unwrap_or(&text).to_owned();
+        if cfg!(windows) {
+            text.to_lowercase()
+        } else {
+            text
+        }
+    }
+
+    #[test]
+    fn a_venv_made_with_symlinks_is_its_own_environment() {
+        let dir = identity_scratch("venv");
+        let bin = if cfg!(windows) { "Scripts" } else { "bin" };
+        let exe = if cfg!(windows) {
+            "python.exe"
+        } else {
+            "python"
+        };
+        let base = file_at(&dir.join("base").join(exe));
+
+        // A copied venv — Windows' default — resolves exactly as before.
+        let copied = file_at(&dir.join("copied").join(bin).join(exe));
+        file_at(&dir.join("copied").join("pyvenv.cfg"));
+        assert_eq!(canonical_interpreter(&copied), resolved_fully(&copied));
+        assert_eq!(canonical_interpreter(&base), resolved_fully(&base));
+
+        let linked = dir.join("linked").join(bin).join(exe);
+        let Some(()) = file_link(&base, &linked) else {
+            eprintln!("skipped: this machine cannot create symbolic links");
+            return;
+        };
+        // A link that is not a venv's still resolves: two names for one file are one Python.
+        let alias = dir.join("alias").join(exe);
+        file_link(&base, &alias).expect("links work here");
+        assert_eq!(canonical_interpreter(&alias), canonical_interpreter(&base));
+
+        // Before it is a venv, the link is the base; once `pyvenv.cfg` says so, it is itself.
+        assert_eq!(canonical_interpreter(&linked), canonical_interpreter(&base));
+        file_at(&dir.join("linked").join("pyvenv.cfg"));
+        assert_ne!(
+            canonical_interpreter(&linked),
+            canonical_interpreter(&base),
+            "the venv is not the Python it was made from"
+        );
+        let folder = resolved_fully(&dir.join("linked").join(bin));
+        assert_eq!(
+            canonical_interpreter(&linked),
+            format!("{folder}{}{exe}", std::path::MAIN_SEPARATOR)
+        );
     }
 }
